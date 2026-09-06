@@ -1,18 +1,36 @@
 # Lantern Bazaar
 
-A traveler’s market of emoji goods. You walk between biomes, gather on real timers, post your own buy and sell prices, and craft the **🌟 Celestial Relic** to win. Close the tab mid-walk or mid-mine — the clock keeps running, and your pack is still there when you sign back in.
+A traveler’s market of emoji goods. Check in at real-world stops (or tap **I'm here** at a desk), search biomes on timers, post your own buy and sell prices, and craft the **🌟 Celestial Relic** to win. Close the tab mid-search — the clock keeps running, and your pack is still there when you sign back in.
+
+The UI is built for a phone in the pocket and a computer at the desk. Arrival is a **check-in**, not a travel timer.
 
 ## How to play
 
-1. Create a traveler name and password.
-2. Walk from **Lantern Plaza** to the woods, ridge, shore, or fields. Travel takes time.
+1. Create a traveler name and password, or press **Play as Guest** (Guest / play).
+2. Arrive at a place by scanning that stop’s QR, or by tapping **I'm here** on the map while you test on a computer.
 3. **Search** a biome for a random material. Commons show up more often. If several people search the same place, each pull takes longer until that area sits quiet for 45 seconds.
-4. Return to the plaza to craft, sell to the bank, or buy cosmetics.
+4. Check in at the plaza to craft, sell to the bank, or buy cosmetics.
 5. On the public board, post a **bid** or **ask**. Click someone else’s order to take it. If a bid sits above an ask, they match at the **lower (ask) price**.
 6. The **bank never posts bids or asks**. It only buys at **50% of MV**. Each unit they take of that emoji drops the cut; after 60s quiet it returns to 50%.
 7. Win by crafting the relic: 🗡️ blade + 💍 jewel + 🕯️ candle + 🍲 stew.
 
 You start with a little gold, wheat, wood, and flax so the first bread or basket is possible without a full circuit.
+
+## Test arrivals on a computer
+
+You do not need printed codes to play. On the map, tap **I'm here** next to a place. That is the same check-in a QR scan uses.
+
+Open `/codes` (or **Codes** in the header) to see the five QR images and an **Open to test** link under each one.
+
+## Real-life QR codes
+
+1. Sign in, open `/codes`.
+2. If phones will not be on this same machine, paste a reachable URL (LAN IP or hosted origin) into **URL printed on the codes**.
+3. Print the page (or screenshot the five squares) and stick each code at the matching real-world spot.
+4. A signed-in player scans the code. Their phone opens `/here/woods` (or ridge, shore, fields, town) and they arrive there instantly.
+5. If they are not signed in, they land on the gate with a return path, then bounce to the check-in after they sign in.
+
+Use the phone’s camera. No extra app. Codes printed from `127.0.0.1` only work on that computer.
 
 ## The catalog
 
@@ -27,11 +45,11 @@ You start with a little gold, wheat, wood, and flax so the first bread or basket
 
 Side goods are **supplies**. Use them from your pack:
 
-- 🍞 Bread / 🪜 Planks — next walk(s) take half as long
-- 🍓 Berries — next search is faster
+- 🍞 Bread — next search takes half as long
+- 🍓 Berries — next search is a bit faster
 - 🍄 Mushrooms — next search finds two things
 - 🌸 Flower / 🐚 Shell / 📿 Charm — next search leans Rare+
-- 🩹 Salve / 🧱 Brick — next search ignores crowd strain
+- 🩹 Salve / 🧱 Brick / 🪜 Planks — ignore crowd strain (planks cover two pulls)
 - 🧺 Basket — next find +1
 
 That is why wheat, wood, stone, berries, flowers, shells, and mushrooms still trade.
@@ -40,9 +58,9 @@ That is why wheat, wood, stone, berries, flowers, shells, and mushrooms still tr
 
 ```bash
 npm install
-npm run dev -- --port 43147
+npm run dev
 ```
 
-Open [http://localhost:43147](http://localhost:43147). Data lives in `data/bazaar.db` (created on first boot). The plaza **Banker** seeds a few starter listings so a solo traveler can still trade.
+Open [http://127.0.0.1:43147](http://127.0.0.1:43147). Data lives in `data/bazaar.db` (created on first boot).
 
 No extra services or API keys. Accounts are stored on this machine; do not reuse a real password.

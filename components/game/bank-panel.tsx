@@ -92,6 +92,7 @@ export function BankPanel({
               />
               <Button
                 size="sm"
+                className="h-11 md:h-7"
                 disabled={!inTown || pending || free < 1}
                 onClick={() =>
                   onSell(row.itemId, Number(qty[row.itemId] ?? Math.min(free, 1)))

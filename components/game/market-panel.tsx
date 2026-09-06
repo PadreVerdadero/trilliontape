@@ -152,6 +152,7 @@ export function MarketPanel({
               <div className="flex gap-1">
                 <Button
                   size="sm"
+                  className="h-11 flex-1 md:h-7"
                   variant={side === "buy" ? "default" : "outline"}
                   onClick={() => setSide("buy")}
                 >
@@ -159,6 +160,7 @@ export function MarketPanel({
                 </Button>
                 <Button
                   size="sm"
+                  className="h-11 flex-1 md:h-7"
                   variant={side === "sell" ? "default" : "outline"}
                   onClick={() => setSide("sell")}
                 >
@@ -186,7 +188,7 @@ export function MarketPanel({
               />
             </div>
             <div className="flex flex-col justify-end gap-1">
-              <Button className="w-full" disabled={pending} onClick={() => void place()}>
+              <Button className="h-11 w-full md:h-8" disabled={pending} onClick={() => void place()}>
                 Post {side === "buy" ? "bid" : "ask"}
               </Button>
               {draftTotal != null ? (
@@ -263,7 +265,7 @@ function OrderList({
             type="button"
             disabled={pending || row.playerId === selfId}
             onClick={() => onTake(row.id)}
-            className="flex w-full items-center justify-between rounded-lg bg-background/50 px-2 py-1.5 text-left text-xs ring-1 ring-foreground/10 hover:bg-background disabled:opacity-60"
+            className="flex min-h-11 w-full items-center justify-between rounded-lg bg-background/50 px-2 py-2.5 text-left text-xs ring-1 ring-foreground/10 hover:bg-background disabled:opacity-60 md:min-h-0 md:py-1.5"
           >
             <span>
               {row.remaining} @ {row.price}🪙

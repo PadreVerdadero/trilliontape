@@ -52,6 +52,7 @@ export function WardrobePanel({
                     {owned ? (
                       <Button
                         size="sm"
+                        className="h-11 shrink-0 md:h-7"
                         variant={equipped ? "secondary" : "outline"}
                         disabled={pending}
                         onClick={() => onEquip(equipped ? null : item.id, slot)}
@@ -61,6 +62,7 @@ export function WardrobePanel({
                     ) : (
                       <Button
                         size="sm"
+                        className="h-11 shrink-0 md:h-7"
                         disabled={!inTown || pending || player.availableGold < item.price}
                         onClick={() => onBuy(item.id)}
                       >

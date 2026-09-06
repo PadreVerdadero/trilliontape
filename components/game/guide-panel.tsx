@@ -15,10 +15,15 @@ export function GuidePanel() {
           gets slower until that place sits quiet for 45 seconds.
         </p>
         <p>
-          Side goods are supplies, not trash. Bread and planks cut walk time. Berries speed a
-          search. Mushrooms double a find. Flowers, shells, and charms tilt luck toward rares.
-          Salve and brick ignore a crowded node. Baskets add +1 yield. Relic hunters buy this
-          stuff so they can race; foragers sell it.
+          Arrival is a check-in, not a walk timer. In the real world, print the codes from
+          Check-in codes and tape them at each stop. Scanning one (while signed in) puts you
+          there. At a computer, tap I&apos;m here on the map — same check-in, no walk.
+        </p>
+        <p>
+          Side goods are supplies, not trash. Bread and berries speed a search. Planks, salve,
+          and brick ignore a crowded node. Mushrooms double a find. Flowers, shells, and charms
+          tilt luck toward rares. Baskets add +1 yield. Relic hunters buy this stuff so they
+          can race; foragers sell it.
         </p>
       </section>
       <section className="space-y-2">

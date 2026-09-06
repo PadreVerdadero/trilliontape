@@ -1,9 +1,12 @@
 import { loginUser, registerUser } from "@/lib/game/auth";
+import { nextFromForm } from "@/lib/game/auth-redirect";
 import { redirect } from "next/navigation";
 
 const GUEST = { username: "Guest", password: "play" };
 
-export async function POST() {
+export async function POST(request: Request) {
+  const form = await request.formData();
+  const next = nextFromForm(form);
   try {
     await loginUser(GUEST.username, GUEST.password);
   } catch {
@@ -12,8 +15,8 @@ export async function POST() {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Could not open the Guest stall.";
-      redirect(`/?error=${encodeURIComponent(message)}`);
+      redirect(`/?error=${encodeURIComponent(message)}&next=${encodeURIComponent(next)}`);
     }
   }
-  redirect("/play");
+  redirect(next);
 }

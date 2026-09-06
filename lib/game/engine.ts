@@ -466,6 +466,24 @@ export function consumeItem(userId: number, itemId: string) {
   );
 }
 
+export function arriveAt(userId: number, locationId: string) {
+  requireIdle(userId);
+  const dest = locationById[locationId];
+  if (!dest) throw new Error("Unknown place. That check-in code is not on the map.");
+  const player = loadPlayerRow(userId);
+  if (player.location_id === locationId) {
+    setEvent(userId, `You are already at ${dest.emoji} ${dest.name}.`);
+    return;
+  }
+  getDb()
+    .prepare("UPDATE players SET location_id = ?, last_event = ? WHERE user_id = ?")
+    .run(
+      locationId,
+      `Checked in at ${dest.emoji} ${dest.name}.`,
+      userId
+    );
+}
+
 export function startTravel(userId: number, locationId: string) {
   requireIdle(userId);
   const dest = locationById[locationId];
@@ -497,7 +515,7 @@ export function startSearch(userId: number) {
   const player = loadPlayerRow(userId);
   const location = locationById[player.location_id];
   if (!location?.searchSeconds) {
-    throw new Error("There is nothing to search here. Walk to the woods, ridge, shore, or fields.");
+    throw new Error("There is nothing to search here. Check in at the woods, ridge, shore, or fields.");
   }
   const strain = bumpStrain(location.id);
   const calm = takeBuff(userId, "search_calm");

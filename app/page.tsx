@@ -1,15 +1,17 @@
 import { Landing } from "@/components/game/landing";
 import { getSessionUserId } from "@/lib/game/auth";
+import { safeReturnPath } from "@/lib/game/places";
 import { redirect } from "next/navigation";
 
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string }>;
 }) {
-  if (await getSessionUserId()) {
-    redirect("/play");
-  }
   const params = await searchParams;
-  return <Landing error={params.error} />;
+  const next = params.next ? safeReturnPath(params.next) : "/play";
+  if (await getSessionUserId()) {
+    redirect(next);
+  }
+  return <Landing error={params.error} next={params.next ? next : undefined} />;
 }

@@ -7,6 +7,7 @@ import {
   equipCosmetic,
   getGameState,
   placeOrder,
+  arriveAt,
   startMine,
   startSearch,
   startTravel,
@@ -16,6 +17,7 @@ import {
 
 type ActionBody =
   | { action: "travel"; locationId: string }
+  | { action: "arrive"; locationId: string }
   | { action: "search" }
   | { action: "mine"; itemId?: string }
   | { action: "craft"; outputId: string }
@@ -34,6 +36,9 @@ export async function POST(request: Request) {
     switch (body.action) {
       case "travel":
         startTravel(userId, body.locationId);
+        break;
+      case "arrive":
+        arriveAt(userId, body.locationId);
         break;
       case "search":
         startSearch(userId);

@@ -60,7 +60,7 @@ export function InventoryPanel({
               <Button
                 size="xs"
                 variant="secondary"
-                className="mt-2 w-full"
+                className="mt-2 h-11 w-full md:h-6"
                 disabled={pending}
                 title={consumable.blurb}
                 onClick={() => onUse?.(row.itemId)}

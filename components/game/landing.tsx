@@ -4,8 +4,8 @@ import { items } from "@/lib/game/catalog";
 const highlights = [
   {
     emoji: "🗺️",
-    title: "The road takes time",
-    body: "Walk between five places on the map. Start a trip, log out, and you will be there when you return.",
+    title: "Check in where you stand",
+    body: "Scan a real-world QR to arrive at a biome. On a computer, tap I'm here to test the same check-in.",
   },
   {
     emoji: "⛏️",
@@ -25,15 +25,16 @@ const highlights = [
 ];
 
 const fieldClass =
-  "h-9 w-full rounded-lg border border-input bg-background/60 px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+  "h-11 w-full rounded-lg border border-input bg-background/60 px-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:h-9 md:text-sm";
 const primaryBtn =
-  "inline-flex h-9 w-full items-center justify-center rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/80";
+  "inline-flex h-11 w-full items-center justify-center rounded-lg bg-primary px-3 text-base font-medium text-primary-foreground hover:bg-primary/80 md:h-9 md:text-sm";
 const secondaryBtn =
-  "inline-flex h-9 w-full items-center justify-center rounded-lg bg-secondary px-3 text-sm font-medium text-secondary-foreground hover:bg-secondary/80";
+  "inline-flex h-11 w-full items-center justify-center rounded-lg bg-secondary px-3 text-base font-medium text-secondary-foreground hover:bg-secondary/80 md:h-9 md:text-sm";
 const outlineBtn =
-  "inline-flex h-9 w-full items-center justify-center rounded-lg border border-border bg-background px-3 text-sm font-medium hover:bg-muted";
+  "inline-flex h-11 w-full items-center justify-center rounded-lg border border-border bg-background px-3 text-base font-medium hover:bg-muted md:h-9 md:text-sm";
 
-export function Landing({ error }: { error?: string }) {
+export function Landing({ error, next }: { error?: string; next?: string }) {
+  const nextField = next ? <input type="hidden" name="next" value={next} /> : null;
   return (
     <div className="relative min-h-full">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(232,176,80,0.18),_transparent_42%),radial-gradient(circle_at_80%_20%,_rgba(255,120,70,0.12),_transparent_30%)]" />
@@ -79,8 +80,8 @@ export function Landing({ error }: { error?: string }) {
             <CardHeader>
               <CardTitle>Return to the plaza</CardTitle>
               <CardDescription>
-                Use the Guest stall or create your own. Pack, gold, and timers are saved when you
-                leave.
+                Use the Guest stall or create your own. Pack, gold, and mid-search timers are
+                saved when you leave.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -91,6 +92,7 @@ export function Landing({ error }: { error?: string }) {
               ) : null}
 
               <form action="/auth/guest" method="post" className="space-y-2">
+                {nextField}
                 <button className={primaryBtn} type="submit">
                   Play as Guest
                 </button>
@@ -109,6 +111,7 @@ export function Landing({ error }: { error?: string }) {
               </div>
 
               <form action="/auth/login" method="post" className="space-y-3">
+                {nextField}
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium" htmlFor="login-username">
                     Traveler name
@@ -149,6 +152,7 @@ export function Landing({ error }: { error?: string }) {
               </div>
 
               <form action="/auth/register" method="post" className="space-y-3">
+                {nextField}
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium" htmlFor="register-username">
                     New name

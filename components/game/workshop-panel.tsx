@@ -26,7 +26,7 @@ export function WorkshopPanel({
       </p>
       {!inTown ? (
         <p className="rounded-lg bg-amber-400/10 px-3 py-2 text-sm">
-          Walk back to 🏮 Lantern Plaza to use the workshop.
+          Check in at 🏮 Lantern Plaza to use the workshop.
         </p>
       ) : null}
       {recipes.map((recipe) => {
@@ -68,6 +68,7 @@ export function WorkshopPanel({
               </div>
               <Button
                 size="sm"
+                className="h-11 shrink-0 md:h-7"
                 disabled={!inTown || !ready || pending}
                 onClick={() => onCraft(recipe.outputId)}
               >

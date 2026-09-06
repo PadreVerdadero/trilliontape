@@ -1,4 +1,4 @@
-import { locations, materialsAt, travelSeconds } from "@/lib/game/catalog";
+import { locations, materialsAt } from "@/lib/game/catalog";
 import { formatDuration } from "@/lib/game/format";
 import { rarityClass, rarityLabel, rarityOf, rarityText } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
@@ -18,13 +18,13 @@ export function MapPanel({
   player,
   pending,
   areas,
-  onTravel,
+  onArrive,
   onSearch,
 }: {
   player: PlayerState;
   pending: boolean;
   areas: AreaCrowd[];
-  onTravel: (locationId: string) => void;
+  onArrive: (locationId: string) => void;
   onSearch: () => void;
 }) {
   const here = locations.find((location) => location.id === player.locationId);
@@ -34,10 +34,13 @@ export function MapPanel({
 
   return (
     <div className="space-y-4">
+      <p className="text-sm leading-6 text-muted-foreground">
+        In real life, scan the QR at the stop. On this computer, tap{" "}
+        <span className="text-foreground">I&apos;m here</span> to check in the same way.
+      </p>
       <div className="grid gap-3 md:grid-cols-3">
         {locations.map((location) => {
           const current = location.id === player.locationId;
-          const walk = travelSeconds(player.locationId, location.id);
           const area = areas.find((entry) => entry.locationId === location.id);
           const crowded = (area?.strain ?? 0) > 0 || (area?.searchers ?? 0) > 0;
           return (
@@ -75,12 +78,13 @@ export function MapPanel({
                 )}
                 {current ? null : (
                   <Button
-                    size="sm"
+                    size="lg"
                     variant="outline"
+                    className="h-11 w-full md:h-8 md:w-auto"
                     disabled={!idle || pending}
-                    onClick={() => onTravel(location.id)}
+                    onClick={() => onArrive(location.id)}
                   >
-                    Walk · {formatDuration(walk * 1000)}
+                    I&apos;m here
                   </Button>
                 )}
               </CardContent>
@@ -124,7 +128,12 @@ export function MapPanel({
                   ? `Strain ${crowd.strain} · this search ${crowd.nextSearchSeconds}s · cools in ${formatDuration(crowd.cooldownMs)}`
                   : `Quiet · this search ${crowd?.nextSearchSeconds ?? here.searchSeconds}s`}
               </p>
-              <Button size="sm" disabled={!idle || pending} onClick={onSearch}>
+              <Button
+                size="lg"
+                className="h-11 w-full sm:w-auto md:h-8"
+                disabled={!idle || pending}
+                onClick={onSearch}
+              >
                 Search
               </Button>
             </div>
@@ -137,8 +146,8 @@ export function MapPanel({
           <CardHeader>
             <CardTitle>Plaza work</CardTitle>
             <CardDescription>
-              Use the tabs for the public board, workshop, bank window, and wardrobe. The relic is
-              crafted here from a blade, jewel, candle, and stew.
+              Use Board, Craft, Bank, and Wardrobe below. The relic is crafted here from a blade,
+              jewel, candle, and stew.
             </CardDescription>
           </CardHeader>
         </Card>
