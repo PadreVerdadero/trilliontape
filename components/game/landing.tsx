@@ -31,23 +31,28 @@ const highlights = [
   },
 ];
 
+const GUEST = { username: "Guest", password: "play" };
+
 export function Landing() {
   const router = useRouter();
-  const [mode, setMode] = useState<"login" | "register">("register");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [username, setUsername] = useState(GUEST.username);
+  const [password, setPassword] = useState(GUEST.password);
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = useState<"form" | "guest" | null>(null);
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    setPending(true);
+  async function authenticate(
+    nextMode: "login" | "register",
+    creds: { username: string; password: string },
+    pendingKey: "form" | "guest"
+  ) {
+    setPending(pendingKey);
     setError(null);
     try {
-      const response = await fetch(`/api/auth/${mode}`, {
+      const response = await fetch(`/api/auth/${nextMode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify(creds),
       });
       const data = (await response.json()) as { error?: string };
       if (!response.ok) {
@@ -59,12 +64,24 @@ export function Landing() {
     } catch {
       setError("Network hiccup. Try again.");
     } finally {
-      setPending(false);
+      setPending(null);
+    }
+  }
+
+  function switchMode(next: "login" | "register") {
+    setMode(next);
+    setError(null);
+    if (next === "login") {
+      setUsername(GUEST.username);
+      setPassword(GUEST.password);
+    } else if (username === GUEST.username) {
+      setUsername("");
+      setPassword("");
     }
   }
 
   return (
-    <div className="relative min-h-full overflow-hidden">
+    <div className="relative min-h-full">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(232,176,80,0.18),_transparent_42%),radial-gradient(circle_at_80%_20%,_rgba(255,120,70,0.12),_transparent_30%)]" />
       <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 py-10 md:py-16">
         <header className="flex items-center justify-between gap-4">
@@ -104,16 +121,41 @@ export function Landing() {
             </div>
           </div>
 
-          <Card className="bg-card/90 backdrop-blur">
+          <Card className="overflow-visible bg-card/90 backdrop-blur">
             <CardHeader>
-              <CardTitle>{mode === "register" ? "Take a stall" : "Return to the plaza"}</CardTitle>
+              <CardTitle>
+                {mode === "register" ? "Take a stall" : "Return to the plaza"}
+              </CardTitle>
               <CardDescription>
                 Your pack, gold, open orders, and any running timer are saved. Come back mid-walk
                 or mid-mine.
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <form className="space-y-4" onSubmit={submit}>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={mode === "login" ? "default" : "outline"}
+                  onClick={() => switchMode("login")}
+                >
+                  Sign in
+                </Button>
+                <Button
+                  type="button"
+                  variant={mode === "register" ? "default" : "outline"}
+                  onClick={() => switchMode("register")}
+                >
+                  Create traveler
+                </Button>
+              </div>
+
+              <form
+                className="space-y-4"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void authenticate(mode, { username, password }, "form");
+                }}
+              >
                 <div className="space-y-2">
                   <Label htmlFor="username">Traveler name</Label>
                   <Input
@@ -134,31 +176,35 @@ export function Landing() {
                     onChange={(event) => setPassword(event.target.value)}
                   />
                 </div>
+                {mode === "login" ? (
+                  <p className="text-xs text-muted-foreground">
+                    Demo stall is filled in: <span className="text-foreground">Guest</span> /{" "}
+                    <span className="text-foreground">play</span>
+                  </p>
+                ) : null}
                 {error ? (
                   <p className="text-sm text-destructive" role="alert">
                     {error}
                   </p>
                 ) : null}
-                <Button className="w-full" disabled={pending} type="submit">
-                  {pending
+                <Button className="w-full" disabled={pending !== null} type="submit">
+                  {pending === "form"
                     ? "Opening the gate…"
                     : mode === "register"
                       ? "Create traveler"
                       : "Enter the bazaar"}
                 </Button>
-                <button
-                  type="button"
-                  className="w-full text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-                  onClick={() => {
-                    setMode(mode === "register" ? "login" : "register");
-                    setError(null);
-                  }}
-                >
-                  {mode === "register"
-                    ? "Already have a stall? Sign in"
-                    : "New here? Create a traveler"}
-                </button>
               </form>
+
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full"
+                disabled={pending !== null}
+                onClick={() => void authenticate("login", GUEST, "guest")}
+              >
+                {pending === "guest" ? "Signing in Guest…" : "Play as Guest"}
+              </Button>
             </CardContent>
           </Card>
         </div>
