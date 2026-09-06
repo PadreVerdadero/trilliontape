@@ -25,7 +25,16 @@ You start with a little gold, wheat, wood, and flax so the first bread or basket
 | 🏖️ Sunshore | 🐟 fish, 🐚 shell, 🧂 salt, 🪸 coral |
 | 🌾 Golden Fields | 🌾 wheat, 🧵 flax, 🍯 honey, 🌸 flower |
 
-Side crafts (bread, planks, salve, baskets, bricks, charms) exist so the board has volume that is not only the relic race.
+Side goods are **supplies**. Use them from your pack:
+
+- 🍞 Bread / 🪜 Planks — next walk(s) take half as long
+- 🍓 Berries — next search is faster
+- 🍄 Mushrooms — next search finds two things
+- 🌸 Flower / 🐚 Shell / 📿 Charm — next search leans Rare+
+- 🩹 Salve / 🧱 Brick — next search ignores crowd strain
+- 🧺 Basket — next find +1
+
+That is why wheat, wood, stone, berries, flowers, shells, and mushrooms still trade.
 
 ## Run locally
 

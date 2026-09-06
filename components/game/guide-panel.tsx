@@ -15,9 +15,10 @@ export function GuidePanel() {
           gets slower until that place sits quiet for 45 seconds.
         </p>
         <p>
-          The market is the social game. Undercut an ask. Park a bid under the bank average and
-          wait. If two orders cross, the seller&apos;s lower price wins — so aggressive bids lift
-          stock instead of overpaying.
+          Side goods are supplies, not trash. Bread and planks cut walk time. Berries speed a
+          search. Mushrooms double a find. Flowers, shells, and charms tilt luck toward rares.
+          Salve and brick ignore a crowded node. Baskets add +1 yield. Relic hunters buy this
+          stuff so they can race; foragers sell it.
         </p>
       </section>
       <section className="space-y-2">

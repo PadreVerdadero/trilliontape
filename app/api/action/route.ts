@@ -11,6 +11,7 @@ import {
   startSearch,
   startTravel,
   takeOrder,
+  consumeItem,
 } from "@/lib/game/engine";
 
 type ActionBody =
@@ -23,7 +24,8 @@ type ActionBody =
   | { action: "cancel"; orderId: number }
   | { action: "bank"; itemId: string; quantity: number }
   | { action: "buyCosmetic"; cosmeticId: string }
-  | { action: "equip"; cosmeticId: string | null; slot: string };
+  | { action: "equip"; cosmeticId: string | null; slot: string }
+  | { action: "use"; itemId: string };
 
 export async function POST(request: Request) {
   try {
@@ -59,6 +61,9 @@ export async function POST(request: Request) {
         break;
       case "equip":
         equipCosmetic(userId, body.cosmeticId, body.slot);
+        break;
+      case "use":
+        consumeItem(userId, body.itemId);
         break;
       default:
         throw new Error("Unknown action.");

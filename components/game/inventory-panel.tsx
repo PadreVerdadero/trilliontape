@@ -1,14 +1,20 @@
+import { Button } from "@/components/ui/button";
 import { itemById } from "@/lib/game/catalog";
+import { consumableById } from "@/lib/game/consumables";
 import { rarityClass, rarityLabel, rarityOf, rarityText } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
 import type { PlayerState } from "@/lib/game/types";
 
 export function InventoryPanel({
   player,
+  pending,
   onSelect,
+  onUse,
 }: {
   player: PlayerState;
+  pending?: boolean;
   onSelect?: (itemId: string) => void;
+  onUse?: (itemId: string) => void;
 }) {
   if (player.inventory.length === 0) {
     return (
@@ -26,26 +32,43 @@ export function InventoryPanel({
         const reserved = player.reservedItems[row.itemId] ?? 0;
         const free = row.quantity - reserved;
         const rarity = rarityOf(row.itemId);
+        const consumable = consumableById[row.itemId];
         return (
-          <button
+          <div
             key={row.itemId}
-            type="button"
-            onClick={() => onSelect?.(row.itemId)}
             className={cn(
-              "rounded-xl bg-background/40 p-2 text-left ring-1 transition hover:bg-background/70",
+              "rounded-xl bg-background/40 p-2 text-left ring-1",
               rarityClass(row.itemId)
             )}
           >
-            <div className="text-2xl">{item?.emoji}</div>
-            <div className="truncate text-sm font-medium">{item?.name}</div>
-            <div className={cn("text-[10px] uppercase tracking-wide", rarityText[rarity])}>
-              {rarityLabel[rarity]}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {free}
-              {reserved ? ` free · ${reserved} listed` : ""}
-            </div>
-          </button>
+            <button
+              type="button"
+              onClick={() => onSelect?.(row.itemId)}
+              className="w-full text-left"
+            >
+              <div className="text-2xl">{item?.emoji}</div>
+              <div className="truncate text-sm font-medium">{item?.name}</div>
+              <div className={cn("text-[10px] uppercase tracking-wide", rarityText[rarity])}>
+                {rarityLabel[rarity]}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {free}
+                {reserved ? ` free · ${reserved} listed` : ""}
+              </div>
+            </button>
+            {consumable && free > 0 ? (
+              <Button
+                size="xs"
+                variant="secondary"
+                className="mt-2 w-full"
+                disabled={pending}
+                title={consumable.blurb}
+                onClick={() => onUse?.(row.itemId)}
+              >
+                {consumable.verb}
+              </Button>
+            ) : null}
+          </div>
         );
       })}
     </div>

@@ -21,8 +21,8 @@ export function WorkshopPanel({
   return (
     <div className="space-y-3">
       <p className="text-sm leading-6 text-muted-foreground">
-        Crafting is instant and only happens in Lantern Plaza. Ingredients sitting on sell orders
-        do not count.
+        Crafting is instant and only happens in Lantern Plaza. Side crafts (bread, planks, salve,
+        baskets, bricks, charms) are supplies you or other travelers can use from the pack.
       </p>
       {!inTown ? (
         <p className="rounded-lg bg-amber-400/10 px-3 py-2 text-sm">

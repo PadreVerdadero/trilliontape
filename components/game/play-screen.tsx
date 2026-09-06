@@ -103,10 +103,12 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
             <CardContent>
               <InventoryPanel
                 player={player}
+                pending={pending}
                 onSelect={(id) => {
                   setItemId(id);
                   setTab("market");
                 }}
+                onUse={(id) => void run({ action: "use", itemId: id })}
               />
             </CardContent>
           </Card>

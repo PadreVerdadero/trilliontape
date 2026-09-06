@@ -13,6 +13,13 @@ import {
   travelSeconds,
   WIN_ITEM_ID,
 } from "@/lib/game/catalog";
+import {
+  buffLabel,
+  consumableById,
+  describeBuff,
+  type BuffKind,
+} from "@/lib/game/consumables";
+import { rarityOf } from "@/lib/game/rarity";
 import { getDb } from "@/lib/game/db";
 import type {
   AreaCrowd,
@@ -152,17 +159,31 @@ export function resolveBusy(userId: number) {
     }
   }
   if (player.busy_type === "mine" || player.busy_type === "search") {
-    let itemId = String(payload.itemId ?? "");
-    let qty = Number(payload.qty ?? 0);
-    if (!itemId) {
-      const loot = rollSearchLoot(String(payload.locationId ?? player.location_id));
-      itemId = loot.itemId;
-      qty = loot.qty;
+    const locationId = String(payload.locationId ?? player.location_id);
+    const luck = Number(payload.luck ?? 1);
+    const extraQty = Number(payload.extraQty ?? 0);
+    const double = Boolean(payload.double);
+    const rolls = double ? 2 : 1;
+    const finds: { itemId: string; qty: number }[] = [];
+    if (payload.itemId) {
+      finds.push({ itemId: String(payload.itemId), qty: Number(payload.qty ?? 0) });
+    } else {
+      for (let i = 0; i < rolls; i += 1) {
+        const loot = rollSearchLoot(locationId, luck);
+        if (loot.itemId) {
+          finds.push({ itemId: loot.itemId, qty: loot.qty + extraQty });
+        }
+      }
     }
-    const item = itemById[itemId];
-    if (item && qty > 0) {
-      addItem(userId, item.id, qty);
-      setEvent(userId, `You pull ${item.emoji} ${item.name} ×${qty} from the search.`);
+    const bits: string[] = [];
+    for (const find of finds) {
+      const item = itemById[find.itemId];
+      if (!item || find.qty <= 0) continue;
+      addItem(userId, item.id, find.qty);
+      bits.push(`${item.emoji} ${item.name} ×${find.qty}`);
+    }
+    if (bits.length > 0) {
+      setEvent(userId, `You pull ${bits.join(" and ")} from the search.`);
     }
   }
   clearBusy(userId);
@@ -202,10 +223,19 @@ function busyState(player: PlayerRow): BusyState {
   };
 }
 
-function rollSearchLoot(locationId: string) {
+function rollSearchLoot(locationId: string, luck = 1) {
   const pool = materialsAt(locationId);
   if (pool.length === 0) return { itemId: "", qty: 0 };
-  const weights = pool.map((item) => searchWeight(item));
+  const weights = pool.map((item) => {
+    let weight = searchWeight(item);
+    const rarity = rarityOf(item.id);
+    if (luck > 1 && (rarity === "unique" || rarity === "legendary")) {
+      weight *= luck;
+    } else if (luck > 1 && rarity === "rare") {
+      weight *= 1 + (luck - 1) * 0.5;
+    }
+    return weight;
+  });
   let roll = Math.random() * weights.reduce((sum, weight) => sum + weight, 0);
   let picked = pool[0];
   for (let index = 0; index < pool.length; index += 1) {
@@ -374,13 +404,79 @@ function requireTown(userId: number) {
   }
 }
 
+function addBuff(userId: number, kind: BuffKind, charges: number, power: number) {
+  const row = getDb()
+    .prepare("SELECT charges, power FROM player_buffs WHERE user_id = ? AND kind = ?")
+    .get(userId, kind) as { charges: number; power: number } | undefined;
+  if (!row) {
+    getDb()
+      .prepare(
+        "INSERT INTO player_buffs (user_id, kind, charges, power) VALUES (?, ?, ?, ?)"
+      )
+      .run(userId, kind, charges, power);
+    return;
+  }
+  getDb()
+    .prepare(
+      "UPDATE player_buffs SET charges = ?, power = ? WHERE user_id = ? AND kind = ?"
+    )
+    .run(row.charges + charges, Math.max(row.power, power), userId, kind);
+}
+
+function takeBuff(userId: number, kind: BuffKind) {
+  const row = getDb()
+    .prepare("SELECT charges, power FROM player_buffs WHERE user_id = ? AND kind = ?")
+    .get(userId, kind) as { charges: number; power: number } | undefined;
+  if (!row || row.charges <= 0) return null;
+  if (row.charges <= 1) {
+    getDb().prepare("DELETE FROM player_buffs WHERE user_id = ? AND kind = ?").run(userId, kind);
+  } else {
+    getDb()
+      .prepare("UPDATE player_buffs SET charges = charges - 1 WHERE user_id = ? AND kind = ?")
+      .run(userId, kind);
+  }
+  return { power: row.power };
+}
+
+function listBuffs(userId: number) {
+  const rows = getDb()
+    .prepare("SELECT kind, charges, power FROM player_buffs WHERE user_id = ? AND charges > 0")
+    .all(userId) as { kind: BuffKind; charges: number; power: number }[];
+  return rows.map((row) => ({
+    kind: row.kind,
+    charges: row.charges,
+    power: row.power,
+    label: describeBuff(row.kind, row.charges, row.power),
+  }));
+}
+
+export function consumeItem(userId: number, itemId: string) {
+  resolveBusy(userId);
+  const consumable = consumableById[itemId];
+  if (!consumable) throw new Error("That cannot be used.");
+  if (availableItem(userId, itemId) < 1) {
+    throw new Error("You do not have a free one to use.");
+  }
+  removeItem(userId, itemId, 1);
+  addBuff(userId, consumable.kind, consumable.charges, consumable.power);
+  const item = itemById[itemId];
+  setEvent(
+    userId,
+    `${consumable.verb} ${item.emoji} ${item.name}. ${buffLabel[consumable.kind]} is ready.`
+  );
+}
+
 export function startTravel(userId: number, locationId: string) {
   requireIdle(userId);
   const dest = locationById[locationId];
   if (!dest) throw new Error("Unknown place on the map.");
   const player = loadPlayerRow(userId);
   if (player.location_id === locationId) throw new Error("You are already there.");
-  const seconds = travelSeconds(player.location_id, locationId);
+  let seconds = travelSeconds(player.location_id, locationId);
+  const haste = takeBuff(userId, "travel_haste");
+  if (haste) {
+    seconds = Math.max(6, Math.round((seconds * haste.power) / 100));
+  }
   const ends = nowMs() + seconds * 1000;
   getDb()
     .prepare(
@@ -389,7 +485,9 @@ export function startTravel(userId: number, locationId: string) {
     .run(
       ends,
       JSON.stringify({ locationId }),
-      `You set out for ${dest.emoji} ${dest.name}.`,
+      haste
+        ? `You set out for ${dest.emoji} ${dest.name} on a fast road (${seconds}s).`
+        : `You set out for ${dest.emoji} ${dest.name}.`,
       userId
     );
 }
@@ -402,11 +500,26 @@ export function startSearch(userId: number) {
     throw new Error("There is nothing to search here. Walk to the woods, ridge, shore, or fields.");
   }
   const strain = bumpStrain(location.id);
-  const seconds = searchDurationSeconds(location.id, strain);
+  const calm = takeBuff(userId, "search_calm");
+  const haste = takeBuff(userId, "search_haste");
+  const yieldBuff = takeBuff(userId, "search_yield");
+  const luck = takeBuff(userId, "search_luck");
+  const double = takeBuff(userId, "search_double");
+  let seconds = searchDurationSeconds(location.id, calm ? 0 : strain);
+  if (haste) {
+    seconds = Math.max(8, Math.round((seconds * haste.power) / 100));
+  }
   const ends = nowMs() + seconds * 1000;
+  const extras = [
+    calm ? "steady ground" : null,
+    haste ? "quick hands" : null,
+    yieldBuff ? "deep pockets" : null,
+    luck ? "lucky pull" : null,
+    double ? "second find" : null,
+  ].filter(Boolean);
   const crowdNote =
-    strain > 0
-      ? ` The area is crowded — this pull takes ${seconds}s until it goes quiet.`
+    !calm && strain > 0
+      ? ` Crowded — ${seconds}s.`
       : "";
   getDb()
     .prepare(
@@ -414,8 +527,15 @@ export function startSearch(userId: number) {
     )
     .run(
       ends,
-      JSON.stringify({ locationId: location.id }),
-      `You start searching ${location.emoji} ${location.name}.${crowdNote}`,
+      JSON.stringify({
+        locationId: location.id,
+        extraQty: yieldBuff ? 1 : 0,
+        luck: luck?.power ?? 1,
+        double: Boolean(double),
+      }),
+      `You start searching ${location.emoji} ${location.name}.${crowdNote}${
+        extras.length ? ` (${extras.join(", ")})` : ""
+      }`,
       userId
     );
 }
@@ -770,6 +890,7 @@ export function getGameState(userId: number): GameState {
     wonAt: player.won_at,
     busy: busyState(player),
     lastEvent: player.last_event,
+    buffs: listBuffs(userId),
   };
 
   const myOrders = (

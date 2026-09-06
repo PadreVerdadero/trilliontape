@@ -98,6 +98,7 @@ export type PlayerState = {
   wonAt: number | null;
   busy: BusyState;
   lastEvent: string | null;
+  buffs: { kind: string; charges: number; power: number; label: string }[];
 };
 
 export type MarketPrice = {

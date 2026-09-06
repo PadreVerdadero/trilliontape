@@ -83,6 +83,14 @@ function migrate(db: Database.Database) {
       cools_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS player_buffs (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      charges INTEGER NOT NULL,
+      power INTEGER NOT NULL,
+      PRIMARY KEY (user_id, kind)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_orders_book ON orders(item_id, side, price, created_at);
     CREATE INDEX IF NOT EXISTS idx_trades_item ON trades(item_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);

@@ -15,7 +15,7 @@ const highlights = [
   {
     emoji: "📒",
     title: "A real order book",
-    body: "Post a bid or an ask at your price. Click an order to take it. If a bid sits above an ask, they match at the lower price.",
+    body: "Post a bid or an ask at your price. Side goods sell because they are supplies: bread for the road, charms for luck, baskets for bigger pulls.",
   },
   {
     emoji: "🏦",

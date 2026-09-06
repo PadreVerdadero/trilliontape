@@ -45,6 +45,18 @@ export function CharacterCard({ player }: { player: PlayerState }) {
           Coin on open bids is reserved until those orders fill or cancel.
         </p>
       ) : null}
+      {player.buffs?.length ? (
+        <ul className="w-full space-y-1 text-left text-xs text-muted-foreground">
+          {player.buffs.map((buff) => (
+            <li
+              key={buff.kind}
+              className="rounded-lg bg-primary/10 px-2 py-1 text-foreground/90"
+            >
+              {buff.label}
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
