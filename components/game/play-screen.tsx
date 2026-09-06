@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -19,16 +18,9 @@ import { itemById } from "@/lib/game/catalog";
 import { formatDuration } from "@/lib/game/format";
 
 export function PlayScreen() {
-  const router = useRouter();
   const { state, error, loading, pending, run, setError } = useGame();
   const [tab, setTab] = useState("market");
   const [itemId, setItemId] = useState("wheat");
-
-  async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/");
-    router.refresh();
-  }
 
   if (loading) {
     return (
@@ -66,9 +58,14 @@ export function PlayScreen() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => void logout()}>
-              Sign out
-            </Button>
+            <form action="/auth/logout" method="post">
+              <button
+                type="submit"
+                className="inline-flex h-7 items-center rounded-lg px-2.5 text-[0.8rem] text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                Sign out
+              </button>
+            </form>
           </div>
         </div>
         {busy ? (

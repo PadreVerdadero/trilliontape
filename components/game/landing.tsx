@@ -1,11 +1,4 @@
-"use client";
-
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { items } from "@/lib/game/catalog";
 
 const highlights = [
@@ -31,55 +24,16 @@ const highlights = [
   },
 ];
 
-const GUEST = { username: "Guest", password: "play" };
+const fieldClass =
+  "h-9 w-full rounded-lg border border-input bg-background/60 px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+const primaryBtn =
+  "inline-flex h-9 w-full items-center justify-center rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/80";
+const secondaryBtn =
+  "inline-flex h-9 w-full items-center justify-center rounded-lg bg-secondary px-3 text-sm font-medium text-secondary-foreground hover:bg-secondary/80";
+const outlineBtn =
+  "inline-flex h-9 w-full items-center justify-center rounded-lg border border-border bg-background px-3 text-sm font-medium hover:bg-muted";
 
-export function Landing() {
-  const router = useRouter();
-  const [mode, setMode] = useState<"login" | "register">("login");
-  const [username, setUsername] = useState(GUEST.username);
-  const [password, setPassword] = useState(GUEST.password);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState<"form" | "guest" | null>(null);
-
-  async function authenticate(
-    nextMode: "login" | "register",
-    creds: { username: string; password: string },
-    pendingKey: "form" | "guest"
-  ) {
-    setPending(pendingKey);
-    setError(null);
-    try {
-      const response = await fetch(`/api/auth/${nextMode}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(creds),
-      });
-      const data = (await response.json()) as { error?: string };
-      if (!response.ok) {
-        setError(data.error ?? "Could not sign in.");
-        return;
-      }
-      router.push("/play");
-      router.refresh();
-    } catch {
-      setError("Network hiccup. Try again.");
-    } finally {
-      setPending(null);
-    }
-  }
-
-  function switchMode(next: "login" | "register") {
-    setMode(next);
-    setError(null);
-    if (next === "login") {
-      setUsername(GUEST.username);
-      setPassword(GUEST.password);
-    } else if (username === GUEST.username) {
-      setUsername("");
-      setPassword("");
-    }
-  }
-
+export function Landing({ error }: { error?: string }) {
   return (
     <div className="relative min-h-full">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(232,176,80,0.18),_transparent_42%),radial-gradient(circle_at_80%_20%,_rgba(255,120,70,0.12),_transparent_30%)]" />
@@ -123,88 +77,106 @@ export function Landing() {
 
           <Card className="overflow-visible bg-card/90 backdrop-blur">
             <CardHeader>
-              <CardTitle>
-                {mode === "register" ? "Take a stall" : "Return to the plaza"}
-              </CardTitle>
+              <CardTitle>Return to the plaza</CardTitle>
               <CardDescription>
-                Your pack, gold, open orders, and any running timer are saved. Come back mid-walk
-                or mid-mine.
+                Use the Guest stall or create your own. Pack, gold, and timers are saved when you
+                leave.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  type="button"
-                  variant={mode === "login" ? "default" : "outline"}
-                  onClick={() => switchMode("login")}
-                >
-                  Sign in
-                </Button>
-                <Button
-                  type="button"
-                  variant={mode === "register" ? "default" : "outline"}
-                  onClick={() => switchMode("register")}
-                >
-                  Create traveler
-                </Button>
-              </div>
+            <CardContent className="space-y-5">
+              {error ? (
+                <p className="text-sm text-destructive" role="alert">
+                  {error}
+                </p>
+              ) : null}
 
-              <form
-                className="space-y-4"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void authenticate(mode, { username, password }, "form");
-                }}
-              >
-                <div className="space-y-2">
-                  <Label htmlFor="username">Traveler name</Label>
-                  <Input
-                    id="username"
-                    autoComplete="username"
-                    value={username}
-                    onChange={(event) => setUsername(event.target.value)}
-                    placeholder="e.g. EmberWalker"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    autoComplete={mode === "register" ? "new-password" : "current-password"}
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                  />
-                </div>
-                {mode === "login" ? (
-                  <p className="text-xs text-muted-foreground">
-                    Demo stall is filled in: <span className="text-foreground">Guest</span> /{" "}
-                    <span className="text-foreground">play</span>
-                  </p>
-                ) : null}
-                {error ? (
-                  <p className="text-sm text-destructive" role="alert">
-                    {error}
-                  </p>
-                ) : null}
-                <Button className="w-full" disabled={pending !== null} type="submit">
-                  {pending === "form"
-                    ? "Opening the gate…"
-                    : mode === "register"
-                      ? "Create traveler"
-                      : "Enter the bazaar"}
-                </Button>
+              <form action="/auth/guest" method="post" className="space-y-2">
+                <button className={primaryBtn} type="submit">
+                  Play as Guest
+                </button>
+                <p className="text-center text-xs text-muted-foreground">
+                  Opens the demo stall · Guest / play
+                </p>
               </form>
 
-              <Button
-                type="button"
-                variant="secondary"
-                className="w-full"
-                disabled={pending !== null}
-                onClick={() => void authenticate("login", GUEST, "guest")}
-              >
-                {pending === "guest" ? "Signing in Guest…" : "Play as Guest"}
-              </Button>
+              <div className="relative py-1">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-border/80" />
+                </div>
+                <p className="relative mx-auto w-fit bg-card px-2 text-xs text-muted-foreground">
+                  or sign in
+                </p>
+              </div>
+
+              <form action="/auth/login" method="post" className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium" htmlFor="login-username">
+                    Traveler name
+                  </label>
+                  <input
+                    id="login-username"
+                    name="username"
+                    autoComplete="username"
+                    defaultValue="Guest"
+                    className={fieldClass}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium" htmlFor="login-password">
+                    Password
+                  </label>
+                  <input
+                    id="login-password"
+                    name="password"
+                    type="password"
+                    autoComplete="current-password"
+                    defaultValue="play"
+                    className={fieldClass}
+                  />
+                </div>
+                <button className={secondaryBtn} type="submit">
+                  Enter the bazaar
+                </button>
+              </form>
+
+              <div className="relative py-1">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-border/80" />
+                </div>
+                <p className="relative mx-auto w-fit bg-card px-2 text-xs text-muted-foreground">
+                  new traveler
+                </p>
+              </div>
+
+              <form action="/auth/register" method="post" className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium" htmlFor="register-username">
+                    New name
+                  </label>
+                  <input
+                    id="register-username"
+                    name="username"
+                    autoComplete="username"
+                    placeholder="e.g. EmberWalker"
+                    className={fieldClass}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium" htmlFor="register-password">
+                    New password
+                  </label>
+                  <input
+                    id="register-password"
+                    name="password"
+                    type="password"
+                    autoComplete="new-password"
+                    className={fieldClass}
+                  />
+                </div>
+                <button className={outlineBtn} type="submit">
+                  Create traveler
+                </button>
+              </form>
             </CardContent>
           </Card>
         </div>

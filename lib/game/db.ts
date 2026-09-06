@@ -147,22 +147,21 @@ function seedBanker(db: Database.Database) {
   }
 }
 
-export function getDb() {
-  if (!globalForDb.bazaarDb) {
-    const dir = path.join(process.cwd(), "data");
-    fs.mkdirSync(dir, { recursive: true });
-    const db = new Database(path.join(dir, "bazaar.db"));
-    db.pragma("journal_mode = WAL");
-    db.pragma("foreign_keys = ON");
-    migrate(db);
-    seedBanker(db);
-    globalForDb.bazaarDb = db;
-  }
-  return globalForDb.bazaarDb;
+function seedGuest(db: Database.Database) {
+  const existing = db
+    .prepare("SELECT id FROM users WHERE username = ?")
+    .get("Guest") as { id: number } | undefined;
+  if (existing) return;
+  const now = Date.now();
+  const info = db
+    .prepare(
+      "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)"
+    )
+    .run("Guest", bcrypt.hashSync("play", 10), now);
+  createPlayerWithDb(db, Number(info.lastInsertRowid));
 }
 
-export function createPlayer(userId: number) {
-  const db = getDb();
+function createPlayerWithDb(db: Database.Database, userId: number) {
   db.prepare(
     "INSERT INTO players (user_id, gold, location_id, last_event) VALUES (?, ?, 'town', ?)"
   ).run(
@@ -177,4 +176,23 @@ export function createPlayer(userId: number) {
   for (const [itemId, qty] of Object.entries(starter)) {
     insert.run(userId, itemId, qty);
   }
+}
+
+export function getDb() {
+  if (!globalForDb.bazaarDb) {
+    const dir = path.join(process.cwd(), "data");
+    fs.mkdirSync(dir, { recursive: true });
+    const db = new Database(path.join(dir, "bazaar.db"));
+    db.pragma("journal_mode = WAL");
+    db.pragma("foreign_keys = ON");
+    migrate(db);
+    seedBanker(db);
+    seedGuest(db);
+    globalForDb.bazaarDb = db;
+  }
+  return globalForDb.bazaarDb;
+}
+
+export function createPlayer(userId: number) {
+  createPlayerWithDb(getDb(), userId);
 }
