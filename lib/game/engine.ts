@@ -2,12 +2,17 @@ import {
   cosmeticById,
   itemById,
   locationById,
+  materialsAt,
   recipeByOutput,
+  SEARCH_COOLDOWN_MS,
+  searchDurationSeconds,
+  searchWeight,
   travelSeconds,
   WIN_ITEM_ID,
 } from "@/lib/game/catalog";
 import { getDb } from "@/lib/game/db";
 import type {
+  AreaCrowd,
   BusyState,
   Equipped,
   GameState,
@@ -142,12 +147,18 @@ export function resolveBusy(userId: number) {
       setEvent(userId, `You arrive at ${location.emoji} ${location.name}.`);
     }
   }
-  if (player.busy_type === "mine") {
-    const item = itemById[String(payload.itemId ?? "")];
-    const qty = Number(payload.qty ?? 0);
+  if (player.busy_type === "mine" || player.busy_type === "search") {
+    let itemId = String(payload.itemId ?? "");
+    let qty = Number(payload.qty ?? 0);
+    if (!itemId) {
+      const loot = rollSearchLoot(String(payload.locationId ?? player.location_id));
+      itemId = loot.itemId;
+      qty = loot.qty;
+    }
+    const item = itemById[itemId];
     if (item && qty > 0) {
       addItem(userId, item.id, qty);
-      setEvent(userId, `Finished mining ${item.emoji} ${item.name} ×${qty}.`);
+      setEvent(userId, `You pull ${item.emoji} ${item.name} ×${qty} from the search.`);
     }
   }
   clearBusy(userId);
@@ -175,14 +186,85 @@ function busyState(player: PlayerRow): BusyState {
       detail: "Safe to close the tab. You will arrive while you are away.",
     };
   }
-  const item = itemById[String(payload.itemId ?? "")];
+  const place =
+    locationById[String(payload.locationId ?? player.location_id)] ??
+    locationById[player.location_id];
   return {
-    type: "mine",
+    type: "search",
     endsAt: player.busy_until,
     remainingMs: remaining,
-    label: `Gathering ${item?.emoji ?? ""} ${item?.name ?? "materials"}`,
-    detail: "Leave and come back — the timer keeps running.",
+    label: `Searching ${place?.emoji ?? ""} ${place?.name ?? "the wilds"}`,
+    detail: "The find stays hidden until the timer ends. Safe to leave.",
   };
+}
+
+function rollSearchLoot(locationId: string) {
+  const pool = materialsAt(locationId);
+  if (pool.length === 0) return { itemId: "", qty: 0 };
+  const weights = pool.map((item) => searchWeight(item));
+  let roll = Math.random() * weights.reduce((sum, weight) => sum + weight, 0);
+  let picked = pool[0];
+  for (let index = 0; index < pool.length; index += 1) {
+    roll -= weights[index];
+    if (roll <= 0) {
+      picked = pool[index];
+      break;
+    }
+  }
+  const yieldSpec = picked.mine!;
+  const span = yieldSpec.yieldMax - yieldSpec.yieldMin + 1;
+  const qty = yieldSpec.yieldMin + Math.floor(Math.random() * span);
+  return { itemId: picked.id, qty };
+}
+
+function readStrain(locationId: string) {
+  const row = getDb()
+    .prepare("SELECT strain, cools_at FROM area_strain WHERE location_id = ?")
+    .get(locationId) as { strain: number; cools_at: number } | undefined;
+  if (!row || row.cools_at <= nowMs()) return 0;
+  return row.strain;
+}
+
+function bumpStrain(locationId: string) {
+  const current = readStrain(locationId);
+  const next = current + 1;
+  getDb()
+    .prepare(
+      `INSERT INTO area_strain (location_id, strain, cools_at) VALUES (?, ?, ?)
+       ON CONFLICT(location_id) DO UPDATE SET strain = excluded.strain, cools_at = excluded.cools_at`
+    )
+    .run(locationId, next, nowMs() + SEARCH_COOLDOWN_MS);
+  return current;
+}
+
+function countSearchers(locationId: string) {
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(*) AS n FROM players
+       WHERE location_id = ? AND busy_type IN ('search', 'mine') AND busy_until IS NOT NULL AND busy_until > ?`
+    )
+    .get(locationId, nowMs()) as { n: number };
+  return row.n;
+}
+
+function listAreas(): AreaCrowd[] {
+  return Object.values(locationById)
+    .filter((location) => location.searchSeconds)
+    .map((location) => {
+      const strain = readStrain(location.id);
+      const row = getDb()
+        .prepare("SELECT cools_at FROM area_strain WHERE location_id = ?")
+        .get(location.id) as { cools_at: number } | undefined;
+      const cooldownMs =
+        strain > 0 && row && row.cools_at > nowMs() ? row.cools_at - nowMs() : 0;
+      return {
+        locationId: location.id,
+        searchers: countSearchers(location.id),
+        strain,
+        cooldownMs,
+        nextSearchSeconds: searchDurationSeconds(location.id, strain),
+      };
+    });
 }
 
 function marketPrice(itemId: string): number {
@@ -308,27 +390,34 @@ export function startTravel(userId: number, locationId: string) {
     );
 }
 
-export function startMine(userId: number, itemId: string) {
+export function startSearch(userId: number) {
   requireIdle(userId);
-  const item = itemById[itemId];
-  if (!item?.mine) throw new Error("That cannot be gathered.");
   const player = loadPlayerRow(userId);
-  if (player.location_id !== item.mine.locationId) {
-    throw new Error(`Travel to ${locationById[item.mine.locationId].name} first.`);
+  const location = locationById[player.location_id];
+  if (!location?.searchSeconds) {
+    throw new Error("There is nothing to search here. Walk to the woods, ridge, shore, or fields.");
   }
-  const span = item.mine.yieldMax - item.mine.yieldMin + 1;
-  const qty = item.mine.yieldMin + Math.floor(Math.random() * span);
-  const ends = nowMs() + item.mine.seconds * 1000;
+  const strain = bumpStrain(location.id);
+  const seconds = searchDurationSeconds(location.id, strain);
+  const ends = nowMs() + seconds * 1000;
+  const crowdNote =
+    strain > 0
+      ? ` The area is crowded — this pull takes ${seconds}s until it goes quiet.`
+      : "";
   getDb()
     .prepare(
-      "UPDATE players SET busy_type = 'mine', busy_until = ?, busy_payload = ?, last_event = ? WHERE user_id = ?"
+      "UPDATE players SET busy_type = 'search', busy_until = ?, busy_payload = ?, last_event = ? WHERE user_id = ?"
     )
     .run(
       ends,
-      JSON.stringify({ itemId, qty }),
-      `You start gathering ${item.emoji} ${item.name}.`,
+      JSON.stringify({ locationId: location.id }),
+      `You start searching ${location.emoji} ${location.name}.${crowdNote}`,
       userId
     );
+}
+
+export function startMine(userId: number) {
+  startSearch(userId);
 }
 
 export function craftItem(userId: number, outputId: string) {
@@ -723,5 +812,6 @@ export function getGameState(userId: number): GameState {
     myOrders,
     recentTrades,
     winners,
+    areas: listAreas(),
   };
 }

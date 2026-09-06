@@ -2,7 +2,7 @@ import { locations, materialsAt, travelSeconds } from "@/lib/game/catalog";
 import { formatDuration } from "@/lib/game/format";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import type { PlayerState } from "@/lib/game/types";
+import type { AreaCrowd, PlayerState } from "@/lib/game/types";
 
 const layout: Record<string, string> = {
   ridge: "md:col-start-2",
@@ -15,16 +15,19 @@ const layout: Record<string, string> = {
 export function MapPanel({
   player,
   pending,
+  areas,
   onTravel,
-  onMine,
+  onSearch,
 }: {
   player: PlayerState;
   pending: boolean;
+  areas: AreaCrowd[];
   onTravel: (locationId: string) => void;
-  onMine: (itemId: string) => void;
+  onSearch: () => void;
 }) {
   const here = locations.find((location) => location.id === player.locationId);
   const nodes = materialsAt(player.locationId);
+  const crowd = areas.find((area) => area.locationId === player.locationId);
   const idle = player.busy.type === "idle";
 
   return (
@@ -33,6 +36,8 @@ export function MapPanel({
         {locations.map((location) => {
           const current = location.id === player.locationId;
           const walk = travelSeconds(player.locationId, location.id);
+          const area = areas.find((entry) => entry.locationId === location.id);
+          const crowded = (area?.strain ?? 0) > 0 || (area?.searchers ?? 0) > 0;
           return (
             <Card
               key={location.id}
@@ -51,10 +56,22 @@ export function MapPanel({
                 </CardTitle>
                 <CardDescription>{location.blurb}</CardDescription>
               </CardHeader>
-              <CardContent>
-                {current ? (
-                  <p className="text-xs text-muted-foreground">{location.region}</p>
+              <CardContent className="space-y-2">
+                {crowded ? (
+                  <p className="text-xs text-amber-100/90">
+                    Crowded · next search {area?.nextSearchSeconds}s
+                    {area && area.cooldownMs > 0
+                      ? ` · quiet in ${formatDuration(area.cooldownMs)}`
+                      : ""}
+                  </p>
+                ) : location.searchSeconds ? (
+                  <p className="text-xs text-muted-foreground">
+                    Search {location.searchSeconds}s · random find
+                  </p>
                 ) : (
+                  <p className="text-xs text-muted-foreground">{location.region}</p>
+                )}
+                {current ? null : (
                   <Button
                     size="sm"
                     variant="outline"
@@ -73,38 +90,36 @@ export function MapPanel({
       {here && nodes.length > 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle>Gather at {here.name}</CardTitle>
+            <CardTitle>Search {here.name}</CardTitle>
             <CardDescription>
-              Each action starts a timer. You cannot walk or gather again until it finishes.
+              One pull, random loot from this biome. Commons show up more often. If other
+              travelers are pulling here too, the timer stretches until the area goes quiet
+              for 45s.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-2 sm:grid-cols-2">
-            {nodes.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between gap-3 rounded-xl bg-background/40 p-3 ring-1 ring-foreground/10"
-              >
-                <div>
-                  <p className="font-medium">
-                    {item.emoji} {item.name}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {item.mine!.seconds}s · {item.mine!.yieldMin}
-                    {item.mine!.yieldMax !== item.mine!.yieldMin
-                      ? `–${item.mine!.yieldMax}`
-                      : ""}{" "}
-                    each pull
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  disabled={!idle || pending}
-                  onClick={() => onMine(item.id)}
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {nodes.map((item) => (
+                <span
+                  key={item.id}
+                  title={`${item.name} — rarer if it takes longer to find`}
+                  className="inline-flex items-center gap-1 rounded-full bg-background/50 px-2 py-1 text-xs ring-1 ring-foreground/10"
                 >
-                  Gather
-                </Button>
-              </div>
-            ))}
+                  <span className="text-sm">{item.emoji}</span>
+                  {item.name}
+                </span>
+              ))}
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                {crowd && crowd.strain > 0
+                  ? `Strain ${crowd.strain} · this search ${crowd.nextSearchSeconds}s · cools in ${formatDuration(crowd.cooldownMs)}`
+                  : `Quiet · this search ${crowd?.nextSearchSeconds ?? here.searchSeconds}s`}
+              </p>
+              <Button size="sm" disabled={!idle || pending} onClick={onSearch}>
+                Search
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : null}

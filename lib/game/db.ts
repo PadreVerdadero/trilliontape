@@ -71,6 +71,12 @@ function migrate(db: Database.Database) {
       created_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS area_strain (
+      location_id TEXT PRIMARY KEY,
+      strain INTEGER NOT NULL,
+      cools_at INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_orders_book ON orders(item_id, side, price, created_at);
     CREATE INDEX IF NOT EXISTS idx_trades_item ON trades(item_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
@@ -189,6 +195,8 @@ export function getDb() {
     seedBanker(db);
     seedGuest(db);
     globalForDb.bazaarDb = db;
+  } else {
+    migrate(globalForDb.bazaarDb);
   }
   return globalForDb.bazaarDb;
 }

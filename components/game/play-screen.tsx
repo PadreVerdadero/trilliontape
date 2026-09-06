@@ -140,8 +140,9 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
           <MapPanel
             player={player}
             pending={pending}
+            areas={state.areas ?? []}
             onTravel={(locationId) => void run({ action: "travel", locationId })}
-            onMine={(mineId) => void run({ action: "mine", itemId: mineId })}
+            onSearch={() => void run({ action: "search" })}
           />
           <Card>
             <CardHeader>

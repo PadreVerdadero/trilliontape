@@ -8,13 +8,15 @@ import {
   getGameState,
   placeOrder,
   startMine,
+  startSearch,
   startTravel,
   takeOrder,
 } from "@/lib/game/engine";
 
 type ActionBody =
   | { action: "travel"; locationId: string }
-  | { action: "mine"; itemId: string }
+  | { action: "search" }
+  | { action: "mine"; itemId?: string }
   | { action: "craft"; outputId: string }
   | { action: "order"; itemId: string; side: "buy" | "sell"; price: number; quantity: number }
   | { action: "take"; orderId: number; quantity?: number }
@@ -31,8 +33,11 @@ export async function POST(request: Request) {
       case "travel":
         startTravel(userId, body.locationId);
         break;
+      case "search":
+        startSearch(userId);
+        break;
       case "mine":
-        startMine(userId, body.itemId);
+        startMine(userId);
         break;
       case "craft":
         craftItem(userId, body.outputId);

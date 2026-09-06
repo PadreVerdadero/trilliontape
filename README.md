@@ -6,7 +6,7 @@ A traveler’s market of emoji goods. You walk between biomes, gather on real ti
 
 1. Create a traveler name and password.
 2. Walk from **Lantern Plaza** to the woods, ridge, shore, or fields. Travel takes time.
-3. Gather materials. Rare stuff (💎 gem, 🪸 coral, 🍯 honey) is slower on purpose.
+3. **Search** a biome for a random material. Commons show up more often. If several people search the same place, each pull takes longer until that area sits quiet for 45 seconds.
 4. Return to the plaza to craft, sell to the bank, or buy cosmetics.
 5. On the public board, post a **bid** or **ask**. Click someone else’s order to take it. If a bid sits above an ask, they match at the **lower (ask) price**.
 6. The bank always buys at the **average trade price** for that emoji.

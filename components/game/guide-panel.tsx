@@ -10,8 +10,9 @@ export function GuidePanel() {
         <h3 className="font-heading text-foreground">Why this is fun</h3>
         <p>
           You are not clicking a win button. You are choosing a life: ridge miner, shore diver,
-          field beekeeper, or plaza trader. Specializing makes the public board useful. A gem
-          chisel takes long enough that leaving the game is part of the loop, not a penalty.
+          field beekeeper, or plaza trader. Search an area and you pull a random find — gems and
+          coral are just unlucky (or lucky). If several people comb the same biome, each search
+          gets slower until that place sits quiet for 45 seconds.
         </p>
         <p>
           The market is the social game. Undercut an ask. Park a bid under the bank average and

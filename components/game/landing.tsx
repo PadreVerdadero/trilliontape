@@ -9,8 +9,8 @@ const highlights = [
   },
   {
     emoji: "⛏️",
-    title: "Gathering is a timer",
-    body: "Mining, foraging, fishing, and harvesting all run on a clock. Rare gems and coral are slow on purpose.",
+    title: "Search the wilds",
+    body: "You search a whole area and pull a random find. If too many travelers comb the same place, searches slow down until it goes quiet.",
   },
   {
     emoji: "📒",

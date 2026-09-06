@@ -1,6 +1,6 @@
 export type ItemKind = "material" | "good" | "relic";
 export type CosmeticSlot = "hat" | "outfit" | "accessory";
-export type BusyType = "idle" | "travel" | "mine";
+export type BusyType = "idle" | "travel" | "search";
 export type OrderSide = "buy" | "sell";
 
 export type Item = {
@@ -24,6 +24,7 @@ export type Location = {
   name: string;
   blurb: string;
   region: string;
+  searchSeconds?: number;
 };
 
 export type Recipe = {
@@ -107,6 +108,14 @@ export type MarketPrice = {
   bestAsk: number | null;
 };
 
+export type AreaCrowd = {
+  locationId: string;
+  searchers: number;
+  strain: number;
+  cooldownMs: number;
+  nextSearchSeconds: number;
+};
+
 export type GameState = {
   now: number;
   player: PlayerState;
@@ -114,6 +123,7 @@ export type GameState = {
   myOrders: OrderRow[];
   recentTrades: TradeRow[];
   winners: { username: string; wonAt: number }[];
+  areas: AreaCrowd[];
 };
 
 export type OrderBook = {

@@ -18,6 +18,7 @@ export const locations: Location[] = [
     name: "Whispering Woods",
     region: "West Path",
     blurb: "Damp shade and old timber. Herbs and mushrooms hide under the roots.",
+    searchSeconds: 14,
   },
   {
     id: "ridge",
@@ -25,6 +26,7 @@ export const locations: Location[] = [
     name: "Ironridge",
     region: "North Climb",
     blurb: "Pickaxe country. Stone is easy; gems make you wait.",
+    searchSeconds: 16,
   },
   {
     id: "shore",
@@ -32,6 +34,7 @@ export const locations: Location[] = [
     name: "Sunshore",
     region: "South Tide",
     blurb: "Salt air and tide pools. Coral is slow, fish are not.",
+    searchSeconds: 15,
   },
   {
     id: "fields",
@@ -39,6 +42,7 @@ export const locations: Location[] = [
     name: "Golden Fields",
     region: "East Road",
     blurb: "Wheat, flax, and stubborn bees. Bring patience for honey.",
+    searchSeconds: 14,
   },
 ];
 
@@ -490,8 +494,24 @@ export function travelSeconds(fromId: string, toId: string): number {
   return TRAVEL[fromId]?.[toId] ?? 20;
 }
 
+export const SEARCH_COOLDOWN_MS = 45_000;
+export const SEARCH_STRAIN_STEP = 0.5;
+export const SEARCH_STRAIN_CAP = 3;
+
 export function materialsAt(locationId: string): Item[] {
   return items.filter((item) => item.mine?.locationId === locationId);
+}
+
+export function searchWeight(item: Item): number {
+  const seconds = item.mine?.seconds ?? 20;
+  return Math.max(1, Math.round(4000 / (seconds * seconds)));
+}
+
+export function searchDurationSeconds(locationId: string, strain: number): number {
+  const base = locationById[locationId]?.searchSeconds ?? 0;
+  if (!base) return 0;
+  const multiplier = Math.min(SEARCH_STRAIN_CAP, 1 + SEARCH_STRAIN_STEP * Math.max(0, strain));
+  return Math.round(base * multiplier);
 }
 
 export function defaultBodyEmoji(): string {
