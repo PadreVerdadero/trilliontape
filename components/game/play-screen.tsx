@@ -16,9 +16,10 @@ import { WorkshopPanel } from "@/components/game/workshop-panel";
 import { useGame } from "@/hooks/use-game";
 import { itemById } from "@/lib/game/catalog";
 import { formatDuration } from "@/lib/game/format";
+import type { GameState } from "@/lib/game/types";
 
-export function PlayScreen() {
-  const { state, error, loading, pending, run, setError } = useGame();
+export function PlayScreen({ initialState }: { initialState: GameState }) {
+  const { state, error, loading, pending, run, setError } = useGame(initialState);
   const [tab, setTab] = useState("market");
   const [itemId, setItemId] = useState("wheat");
 

@@ -6,11 +6,11 @@ import type { GameState, OrderBook } from "@/lib/game/types";
 
 type ActionBody = Record<string, unknown> & { action: string };
 
-export function useGame() {
+export function useGame(initialState?: GameState | null) {
   const router = useRouter();
-  const [state, setState] = useState<GameState | null>(null);
+  const [state, setState] = useState<GameState | null>(initialState ?? null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialState);
   const [pending, setPending] = useState(false);
   const lastEvent = useRef<string | null>(null);
   const busy = state?.player.busy.type !== "idle";
