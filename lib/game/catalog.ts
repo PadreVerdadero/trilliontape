@@ -498,6 +498,31 @@ export const SEARCH_COOLDOWN_MS = 45_000;
 export const SEARCH_STRAIN_STEP = 0.5;
 export const SEARCH_STRAIN_CAP = 3;
 
+export const BANK_BASE_RATE = 0.5;
+export const BANK_DROP_PER_UNIT = 0.05;
+export const BANK_FLOOR_RATE = 0.1;
+export const BANK_COOLDOWN_MS = 60_000;
+
+export function bankRate(glut: number) {
+  return Math.max(BANK_FLOOR_RATE, BANK_BASE_RATE - BANK_DROP_PER_UNIT * Math.max(0, glut));
+}
+
+export function bankPayout(marketValue: number, glut: number, quantity: number) {
+  let total = 0;
+  let nextGlut = Math.max(0, glut);
+  for (let i = 0; i < quantity; i += 1) {
+    const rate = bankRate(nextGlut);
+    total += Math.max(1, Math.round(marketValue * rate));
+    nextGlut += 1;
+  }
+  return {
+    total,
+    startRate: bankRate(glut),
+    endRate: bankRate(nextGlut),
+    nextGlut,
+  };
+}
+
 export function materialsAt(locationId: string): Item[] {
   return items.filter((item) => item.mine?.locationId === locationId);
 }

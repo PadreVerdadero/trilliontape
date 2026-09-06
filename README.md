@@ -9,7 +9,7 @@ A traveler’s market of emoji goods. You walk between biomes, gather on real ti
 3. **Search** a biome for a random material. Commons show up more often. If several people search the same place, each pull takes longer until that area sits quiet for 45 seconds.
 4. Return to the plaza to craft, sell to the bank, or buy cosmetics.
 5. On the public board, post a **bid** or **ask**. Click someone else’s order to take it. If a bid sits above an ask, they match at the **lower (ask) price**.
-6. The bank always buys at the **average trade price** for that emoji.
+6. The **bank never posts bids or asks**. It only buys at **50% of MV**. Each unit they take of that emoji drops the cut; after 60s quiet it returns to 50%.
 7. Win by crafting the relic: 🗡️ blade + 💍 jewel + 🕯️ candle + 🍲 stew.
 
 You start with a little gold, wheat, wood, and flax so the first bread or basket is possible without a full circuit.

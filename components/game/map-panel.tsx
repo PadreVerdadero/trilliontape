@@ -1,5 +1,7 @@
 import { locations, materialsAt, travelSeconds } from "@/lib/game/catalog";
 import { formatDuration } from "@/lib/game/format";
+import { rarityClass, rarityLabel, rarityOf, rarityText } from "@/lib/game/rarity";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { AreaCrowd, PlayerState } from "@/lib/game/types";
@@ -102,11 +104,17 @@ export function MapPanel({
               {nodes.map((item) => (
                 <span
                   key={item.id}
-                  title={`${item.name} — rarer if it takes longer to find`}
-                  className="inline-flex items-center gap-1 rounded-full bg-background/50 px-2 py-1 text-xs ring-1 ring-foreground/10"
+                  title={rarityLabel[rarityOf(item.id)]}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full bg-background/50 px-2 py-1 text-xs ring-1",
+                    rarityClass(item.id)
+                  )}
                 >
                   <span className="text-sm">{item.emoji}</span>
                   {item.name}
+                  <span className={cn("text-[10px]", rarityText[rarityOf(item.id)])}>
+                    {rarityLabel[rarityOf(item.id)]}
+                  </span>
                 </span>
               ))}
             </div>

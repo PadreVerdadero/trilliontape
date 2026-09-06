@@ -1,4 +1,7 @@
 import {
+  BANK_COOLDOWN_MS,
+  bankPayout,
+  bankRate,
   cosmeticById,
   itemById,
   locationById,
@@ -13,6 +16,7 @@ import {
 import { getDb } from "@/lib/game/db";
 import type {
   AreaCrowd,
+  BankQuote,
   BusyState,
   Equipped,
   GameState,
@@ -325,12 +329,12 @@ function matchItem(itemId: string) {
   while (true) {
     const buy = db
       .prepare(
-        "SELECT id, user_id, price, remaining FROM orders WHERE item_id = ? AND side = 'buy' AND remaining > 0 ORDER BY price DESC, created_at ASC, id ASC"
+        "SELECT id, user_id, price, remaining FROM orders WHERE item_id = ? AND side = 'buy' AND remaining > 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker') ORDER BY price DESC, created_at ASC, id ASC"
       )
       .all(itemId) as { id: number; user_id: number; price: number; remaining: number }[];
     const sell = db
       .prepare(
-        "SELECT id, user_id, price, remaining FROM orders WHERE item_id = ? AND side = 'sell' AND remaining > 0 ORDER BY price ASC, created_at ASC, id ASC"
+        "SELECT id, user_id, price, remaining FROM orders WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker') ORDER BY price ASC, created_at ASC, id ASC"
       )
       .all(itemId) as { id: number; user_id: number; price: number; remaining: number }[];
 
@@ -549,6 +553,32 @@ export function cancelOrder(userId: number, orderId: number) {
   setEvent(userId, "Order pulled from the board.");
 }
 
+function readBankGlut(itemId: string) {
+  const row = getDb()
+    .prepare("SELECT units, cools_at FROM bank_intake WHERE item_id = ?")
+    .get(itemId) as { units: number; cools_at: number } | undefined;
+  if (!row || row.cools_at <= nowMs()) return 0;
+  return row.units;
+}
+
+function listBankQuotes(): BankQuote[] {
+  return Object.keys(itemById).map((itemId) => {
+    const glut = readBankGlut(itemId);
+    const mv = marketPrice(itemId);
+    const rate = bankRate(glut);
+    const row = getDb()
+      .prepare("SELECT cools_at FROM bank_intake WHERE item_id = ?")
+      .get(itemId) as { cools_at: number } | undefined;
+    return {
+      itemId,
+      rate,
+      payEach: Math.max(1, Math.round(mv * rate)),
+      glut,
+      cooldownMs: glut > 0 && row && row.cools_at > nowMs() ? row.cools_at - nowMs() : 0,
+    };
+  });
+}
+
 export function bankSell(userId: number, itemId: string, quantity: number) {
   requireTown(userId);
   const item = itemById[itemId];
@@ -557,26 +587,24 @@ export function bankSell(userId: number, itemId: string, quantity: number) {
   if (availableItem(userId, itemId) < quantity) {
     throw new Error("Not enough unbound stock to sell to the bank.");
   }
-  const price = marketPrice(itemId);
+  const mv = marketPrice(itemId);
+  const glut = readBankGlut(itemId);
+  const payout = bankPayout(mv, glut, quantity);
   removeItem(userId, itemId, quantity);
   getDb().prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?").run(
-    price * quantity,
+    payout.total,
     userId
   );
-  const banker = getDb()
-    .prepare("SELECT id FROM users WHERE username = ?")
-    .get("Banker") as { id: number } | undefined;
-  if (banker) {
-    addItem(banker.id, itemId, quantity);
-    getDb().prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(
-      price * quantity,
-      banker.id
-    );
-    recordTrade(itemId, price, quantity, banker.id, userId);
-  }
+  getDb()
+    .prepare(
+      `INSERT INTO bank_intake (item_id, units, cools_at) VALUES (?, ?, ?)
+       ON CONFLICT(item_id) DO UPDATE SET units = excluded.units, cools_at = excluded.cools_at`
+    )
+    .run(itemId, payout.nextGlut, nowMs() + BANK_COOLDOWN_MS);
+  const pct = Math.round(payout.startRate * 100);
   setEvent(
     userId,
-    `Bank bought ${item.emoji} ${item.name} ×${quantity} at the market average of ${price}🪙.`
+    `Bank bought ${item.emoji} ${item.name} ×${quantity} for ${payout.total}🪙 (${pct}% of MV). Dumping more drops the rate until the window cools.`
   );
 }
 
@@ -645,7 +673,7 @@ export function getOrderBook(itemId: string): OrderBook {
     .prepare(
       `SELECT o.id, o.user_id, u.username, o.item_id, o.side, o.price, o.remaining, o.created_at
        FROM orders o JOIN users u ON u.id = o.user_id
-       WHERE o.item_id = ? AND o.remaining > 0`
+       WHERE o.item_id = ? AND o.remaining > 0 AND u.username != 'Banker'`
     )
     .all(itemId) as {
     id: number;
@@ -688,12 +716,12 @@ function priceSheet(): MarketPrice[] {
       : undefined;
     const bid = db
       .prepare(
-        "SELECT MAX(price) AS p FROM orders WHERE item_id = ? AND side = 'buy' AND remaining > 0"
+        "SELECT MAX(price) AS p FROM orders WHERE item_id = ? AND side = 'buy' AND remaining > 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')"
       )
       .get(itemId) as { p: number | null };
     const ask = db
       .prepare(
-        "SELECT MIN(price) AS p FROM orders WHERE item_id = ? AND side = 'sell' AND remaining > 0"
+        "SELECT MIN(price) AS p FROM orders WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')"
       )
       .get(itemId) as { p: number | null };
     const vwap =
@@ -813,5 +841,6 @@ export function getGameState(userId: number): GameState {
     recentTrades,
     winners,
     areas: listAreas(),
+    bank: listBankQuotes(),
   };
 }

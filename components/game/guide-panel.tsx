@@ -36,6 +36,17 @@ export function GuidePanel() {
         ) : null}
       </section>
       <section className="space-y-2">
+        <h3 className="font-heading text-foreground">Rarity</h3>
+        <p>
+          Borders tell the story: <span className="text-white/80">white Common</span>,{" "}
+          <span className="text-emerald-300">green Uncommon</span>,{" "}
+          <span className="text-sky-300">blue Rare</span>,{" "}
+          <span className="text-violet-300">purple Unique</span>,{" "}
+          <span className="text-red-400">red Legendary</span>. Gems and jewels are the
+          long-shot pulls; wheat and wood are everyday.
+        </p>
+      </section>
+      <section className="space-y-2">
         <h3 className="font-heading text-foreground">The catalog</h3>
         <p>
           {items.filter((item) => item.kind === "material").length} gatherable materials,{" "}

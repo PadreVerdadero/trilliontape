@@ -151,7 +151,7 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
             <CardContent className="space-y-2">
               {state.recentTrades.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No trades yet. Take a Banker listing or post the first cross.
+                  No trades yet. Post a bid or ask, or wait for another traveler.
                 </p>
               ) : (
                 state.recentTrades.map((trade) => {

@@ -2,6 +2,7 @@ export type ItemKind = "material" | "good" | "relic";
 export type CosmeticSlot = "hat" | "outfit" | "accessory";
 export type BusyType = "idle" | "travel" | "search";
 export type OrderSide = "buy" | "sell";
+export type Rarity = "common" | "uncommon" | "rare" | "unique" | "legendary";
 
 export type Item = {
   id: string;
@@ -116,6 +117,14 @@ export type AreaCrowd = {
   nextSearchSeconds: number;
 };
 
+export type BankQuote = {
+  itemId: string;
+  rate: number;
+  payEach: number;
+  glut: number;
+  cooldownMs: number;
+};
+
 export type GameState = {
   now: number;
   player: PlayerState;
@@ -124,6 +133,7 @@ export type GameState = {
   recentTrades: TradeRow[];
   winners: { username: string; wonAt: number }[];
   areas: AreaCrowd[];
+  bank: BankQuote[];
 };
 
 export type OrderBook = {

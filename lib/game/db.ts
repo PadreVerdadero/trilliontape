@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
-import { items, STARTING_GOLD } from "@/lib/game/catalog";
+import { STARTING_GOLD } from "@/lib/game/catalog";
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: Database.Database;
@@ -77,80 +77,22 @@ function migrate(db: Database.Database) {
       cools_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS bank_intake (
+      item_id TEXT PRIMARY KEY,
+      units INTEGER NOT NULL,
+      cools_at INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_orders_book ON orders(item_id, side, price, created_at);
     CREATE INDEX IF NOT EXISTS idx_trades_item ON trades(item_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
   `);
 }
 
-function seedBanker(db: Database.Database) {
-  const existing = db
-    .prepare("SELECT id FROM users WHERE username = ?")
-    .get("Banker") as { id: number } | undefined;
-  if (existing) return;
-
-  const now = Date.now();
-  const passwordHash = bcrypt.hashSync(crypto.randomUUID(), 10);
-  const info = db
-    .prepare(
-      "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)"
-    )
-    .run("Banker", passwordHash, now);
-  const bankerId = Number(info.lastInsertRowid);
-
+function clearBankerBook(db: Database.Database) {
   db.prepare(
-    "INSERT INTO players (user_id, gold, location_id) VALUES (?, ?, ?)"
-  ).run(bankerId, 5000, "town");
-
-  const stock: Record<string, number> = {
-    wood: 24,
-    wheat: 24,
-    stone: 18,
-    fish: 14,
-    flax: 12,
-    herbs: 10,
-    salt: 10,
-    flower: 10,
-    shell: 8,
-    coal: 6,
-    iron: 4,
-  };
-
-  const insertInv = db.prepare(
-    "INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)"
-  );
-  const insertOrder = db.prepare(
-    "INSERT INTO orders (user_id, item_id, side, price, remaining, created_at) VALUES (?, ?, 'sell', ?, ?, ?)"
-  );
-
-  for (const [itemId, qty] of Object.entries(stock)) {
-    insertInv.run(bankerId, itemId, qty);
-    const item = items.find((entry) => entry.id === itemId);
-    if (!item) continue;
-    const lot = Math.min(4, qty);
-    insertOrder.run(
-      bankerId,
-      itemId,
-      Math.max(2, Math.round(item.basePrice * 1.25)),
-      lot,
-      now
-    );
-  }
-
-  const bids: { itemId: string; price: number; qty: number }[] = [
-    { itemId: "bread", price: 9, qty: 8 },
-    { itemId: "planks", price: 11, qty: 6 },
-    { itemId: "charm", price: 14, qty: 5 },
-    { itemId: "brick", price: 14, qty: 4 },
-    { itemId: "salve", price: 16, qty: 4 },
-    { itemId: "basket", price: 14, qty: 4 },
-  ];
-  const insertBid = db.prepare(
-    "INSERT INTO orders (user_id, item_id, side, price, remaining, created_at) VALUES (?, ?, 'buy', ?, ?, ?)"
-  );
-  for (const bid of bids) {
-    insertBid.run(bankerId, bid.itemId, bid.price, bid.qty, now);
-  }
+    "DELETE FROM orders WHERE user_id IN (SELECT id FROM users WHERE username = ?)"
+  ).run("Banker");
 }
 
 function seedGuest(db: Database.Database) {
@@ -192,11 +134,12 @@ export function getDb() {
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
     migrate(db);
-    seedBanker(db);
+    clearBankerBook(db);
     seedGuest(db);
     globalForDb.bazaarDb = db;
   } else {
     migrate(globalForDb.bazaarDb);
+    clearBankerBook(globalForDb.bazaarDb);
   }
   return globalForDb.bazaarDb;
 }

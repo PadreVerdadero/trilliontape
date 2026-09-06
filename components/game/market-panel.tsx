@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { itemById, items } from "@/lib/game/catalog";
 import { formatCoins } from "@/lib/game/format";
+import { rarityClass, rarityLabel, rarityOf, rarityText } from "@/lib/game/rarity";
+import { cn } from "@/lib/utils";
 import { useOrderBook } from "@/hooks/use-game";
 import { ItemChip } from "@/components/game/item-chip";
 import type { GameState, OrderSide } from "@/lib/game/types";
@@ -78,14 +80,17 @@ export function MarketPanel({
                 onSelectItem(item.id);
                 setPriceInput("");
               }}
-              className={`rounded-xl p-2 text-left ring-1 transition ${
-                active
-                  ? "bg-primary/15 ring-primary"
-                  : "bg-background/40 ring-foreground/10 hover:bg-background/70"
-              }`}
+              className={cn(
+                "rounded-xl bg-background/40 p-2 text-left ring-1 transition hover:bg-background/70",
+                active ? "bg-primary/15" : "",
+                rarityClass(item.id)
+              )}
             >
               <div className="text-xl">{item.emoji}</div>
               <div className="truncate text-xs font-medium">{item.name}</div>
+              <div className={cn("text-[10px] uppercase tracking-wide", rarityText[rarityOf(item.id)])}>
+                {rarityLabel[rarityOf(item.id)]}
+              </div>
               <div className="text-[11px] text-muted-foreground">
                 MV {quote?.vwap ?? item.basePrice}🪙
               </div>

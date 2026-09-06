@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { itemById } from "@/lib/game/catalog";
-import { formatCoins } from "@/lib/game/format";
+import { bankPayout, itemById } from "@/lib/game/catalog";
+import { formatCoins, formatDuration } from "@/lib/game/format";
+import { rarityClass, rarityLabel, rarityOf, rarityText } from "@/lib/game/rarity";
+import { cn } from "@/lib/utils";
 import type { GameState } from "@/lib/game/types";
 
 export function BankPanel({
@@ -22,8 +24,8 @@ export function BankPanel({
   if (state.player.inventory.length === 0) {
     return (
       <p className="text-sm leading-6 text-muted-foreground">
-        The teller shrugs. Bring something to sell — the window always pays the average trade
-        price for that emoji.
+        The teller only buys. Bring stock and they will pay a cut of MV — never a listing on the
+        public board.
       </p>
     );
   }
@@ -31,8 +33,9 @@ export function BankPanel({
   return (
     <div className="space-y-3">
       <p className="text-sm leading-6 text-muted-foreground">
-        Instant sale at the market average (every completed trade, including other players and
-        this window). If nobody has traded it yet, the bank uses the catalog base price.
+        The bank never posts bids or asks. It buys at <span className="text-foreground">50% of MV</span>
+        . Each unit they take of that emoji drops the cut by 5 points (floor 10%). After 60s with
+        no dumps of that item, the rate climbs back to 50%.
       </p>
       {!inTown ? (
         <p className="rounded-lg bg-amber-400/10 px-3 py-2 text-sm">
@@ -44,19 +47,39 @@ export function BankPanel({
         const reserved = state.player.reservedItems[row.itemId] ?? 0;
         const free = row.quantity - reserved;
         const quote = state.prices.find((price) => price.itemId === row.itemId);
-        const price = quote?.vwap ?? item.basePrice;
+        const mv = quote?.vwap ?? item.basePrice;
+        const bank = state.bank?.find((entry) => entry.itemId === row.itemId);
+        const glut = bank?.glut ?? 0;
+        const chosen = Number(qty[row.itemId] ?? Math.min(free, 1));
+        const saleQty = Number.isFinite(chosen) && chosen > 0 ? chosen : 1;
+        const payout = bankPayout(mv, glut, saleQty);
+        const rarity = rarityOf(row.itemId);
         return (
           <div
             key={row.itemId}
-            className="flex flex-col gap-2 rounded-xl bg-background/40 p-3 ring-1 ring-foreground/10 sm:flex-row sm:items-center sm:justify-between"
+            className={cn(
+              "flex flex-col gap-2 rounded-xl bg-background/40 p-3 ring-1 sm:flex-row sm:items-center sm:justify-between",
+              rarityClass(row.itemId)
+            )}
           >
             <div>
               <p className="font-medium">
-                {item.emoji} {item.name}
+                {item.emoji} {item.name}{" "}
+                <span className={cn("text-[10px] uppercase tracking-wide", rarityText[rarity])}>
+                  {rarityLabel[rarity]}
+                </span>
               </p>
               <p className="text-xs text-muted-foreground">
-                {free} free · bank pays {formatCoins(price)} each
+                {free} free · MV {formatCoins(mv)} · bank {Math.round(payout.startRate * 100)}% →{" "}
+                {formatCoins(payout.total)}
+                {saleQty > 1 ? ` for ${saleQty}` : " each"}
               </p>
+              {glut > 0 ? (
+                <p className="text-[11px] text-amber-100/80">
+                  Window is heavy ({glut} taken) · back to 50% in{" "}
+                  {formatDuration(bank?.cooldownMs ?? 0)}
+                </p>
+              ) : null}
             </div>
             <div className="flex items-center gap-2">
               <Input

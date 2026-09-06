@@ -20,7 +20,7 @@ const highlights = [
   {
     emoji: "🏦",
     title: "The bank window",
-    body: "Always dump stock at the market average — the volume-weighted price of every trade in that emoji.",
+    body: "The bank never lists on the board. It only buys at 50% of MV, and dumping the same emoji makes that cut worse until the window cools.",
   },
 ];
 

@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { itemById, recipes, WIN_ITEM_ID } from "@/lib/game/catalog";
 import { ItemChip } from "@/components/game/item-chip";
+import { rarityClass, rarityLabel, rarityOf, rarityText } from "@/lib/game/rarity";
+import { cn } from "@/lib/utils";
 import type { PlayerState } from "@/lib/game/types";
 
 export function WorkshopPanel({
@@ -36,14 +38,19 @@ export function WorkshopPanel({
         return (
           <div
             key={recipe.id}
-            className={`rounded-xl p-3 ring-1 ring-foreground/10 ${
-              recipe.outputId === WIN_ITEM_ID ? "bg-primary/10" : "bg-background/40"
-            }`}
+            className={cn(
+              "rounded-xl bg-background/40 p-3 ring-1",
+              rarityClass(recipe.outputId),
+              recipe.outputId === WIN_ITEM_ID && "bg-primary/10"
+            )}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-medium">
-                  {output.emoji} {output.name}
+                  {output.emoji} {output.name}{" "}
+                  <span className={cn("text-[10px] uppercase tracking-wide", rarityText[rarityOf(recipe.outputId)])}>
+                    {rarityLabel[rarityOf(recipe.outputId)]}
+                  </span>
                 </p>
                 <div className="mt-2 flex flex-wrap gap-1">
                   {recipe.inputs.map((input) => {
