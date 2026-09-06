@@ -121,7 +121,14 @@ function seedBanker(db: Database.Database) {
     insertInv.run(bankerId, itemId, qty);
     const item = items.find((entry) => entry.id === itemId);
     if (!item) continue;
-    insertOrder.run(bankerId, itemId, Math.max(2, Math.round(item.basePrice * 1.25)), qty, now);
+    const lot = Math.min(4, qty);
+    insertOrder.run(
+      bankerId,
+      itemId,
+      Math.max(2, Math.round(item.basePrice * 1.25)),
+      lot,
+      now
+    );
   }
 
   const bids: { itemId: string; price: number; qty: number }[] = [

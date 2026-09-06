@@ -17,7 +17,7 @@ type ActionBody =
   | { action: "mine"; itemId: string }
   | { action: "craft"; outputId: string }
   | { action: "order"; itemId: string; side: "buy" | "sell"; price: number; quantity: number }
-  | { action: "take"; orderId: number }
+  | { action: "take"; orderId: number; quantity?: number }
   | { action: "cancel"; orderId: number }
   | { action: "bank"; itemId: string; quantity: number }
   | { action: "buyCosmetic"; cosmeticId: string }
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
         placeOrder(userId, body.itemId, body.side, Number(body.price), Number(body.quantity));
         break;
       case "take":
-        takeOrder(userId, Number(body.orderId));
+        takeOrder(userId, Number(body.orderId), Number(body.quantity ?? 1));
         break;
       case "cancel":
         cancelOrder(userId, Number(body.orderId));

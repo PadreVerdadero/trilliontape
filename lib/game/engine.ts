@@ -394,7 +394,7 @@ export function placeOrder(
   );
 }
 
-export function takeOrder(userId: number, orderId: number) {
+export function takeOrder(userId: number, orderId: number, quantity = 1) {
   resolveBusy(userId);
   const db = getDb();
   const order = db
@@ -406,47 +406,48 @@ export function takeOrder(userId: number, orderId: number) {
     | undefined;
   if (!order) throw new Error("That order is gone.");
   if (order.user_id === userId) throw new Error("That is your own order.");
+  if (!Number.isInteger(quantity) || quantity < 1) {
+    throw new Error("Choose how many to take.");
+  }
+  const fillQty = Math.min(quantity, order.remaining);
 
   if (order.side === "sell") {
-    if (availableGold(userId) < order.price * order.remaining) {
-      throw new Error("Not enough coin to lift this whole ask.");
+    if (availableGold(userId) < order.price * fillQty) {
+      throw new Error("Not enough coin to take that ask.");
     }
     const info = db
       .prepare(
         "INSERT INTO orders (user_id, item_id, side, price, remaining, created_at) VALUES (?, ?, 'buy', ?, ?, ?)"
       )
-      .run(userId, order.item_id, order.price, order.remaining, nowMs());
+      .run(userId, order.item_id, order.price, fillQty, nowMs());
     const buyId = Number(info.lastInsertRowid);
     executeFill(
-      { id: buyId, user_id: userId, price: order.price, remaining: order.remaining },
+      { id: buyId, user_id: userId, price: order.price, remaining: fillQty },
       { id: order.id, user_id: order.user_id, price: order.price, remaining: order.remaining },
       order.item_id,
-      order.remaining,
+      fillQty,
       order.price
     );
   } else {
-    if (availableItem(userId, order.item_id) < order.remaining) {
-      throw new Error("Not enough stock to fill this whole bid.");
+    if (availableItem(userId, order.item_id) < fillQty) {
+      throw new Error("Not enough stock to fill that bid.");
     }
     const info = db
       .prepare(
         "INSERT INTO orders (user_id, item_id, side, price, remaining, created_at) VALUES (?, ?, 'sell', ?, ?, ?)"
       )
-      .run(userId, order.item_id, order.price, order.remaining, nowMs());
+      .run(userId, order.item_id, order.price, fillQty, nowMs());
     const sellId = Number(info.lastInsertRowid);
     executeFill(
       { id: order.id, user_id: order.user_id, price: order.price, remaining: order.remaining },
-      { id: sellId, user_id: userId, price: order.price, remaining: order.remaining },
+      { id: sellId, user_id: userId, price: order.price, remaining: fillQty },
       order.item_id,
-      order.remaining,
+      fillQty,
       order.price
     );
   }
   const item = itemById[order.item_id];
-  setEvent(
-    userId,
-    `Filled ${item.emoji} ${item.name} ×${order.remaining} at ${order.price}🪙.`
-  );
+  setEvent(userId, `Filled ${item.emoji} ${item.name} ×${fillQty} at ${order.price}🪙.`);
 }
 
 export function cancelOrder(userId: number, orderId: number) {

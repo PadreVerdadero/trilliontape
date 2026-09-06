@@ -57,7 +57,7 @@ export function MarketPanel({
   return (
     <div className="space-y-4">
       <p className="text-sm leading-6 text-muted-foreground">
-        Post a limit order at your price. Click a listing to take the whole size. If your bid is
+        Post a limit order at your price. Click a listing to take one unit. If your bid is
         higher than someone&apos;s ask, the trade clears at the ask — the lower price.
       </p>
       <div className="grid max-h-56 grid-cols-2 gap-2 overflow-auto pr-1 sm:grid-cols-3">
