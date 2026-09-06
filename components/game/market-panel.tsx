@@ -42,6 +42,12 @@ export function MarketPanel({
   const suggested = useMemo(() => {
     return String(price?.bestAsk ?? price?.vwap ?? selected?.basePrice ?? 5);
   }, [price, selected]);
+  const draftQty = Number(qtyInput);
+  const draftPrice = Number(priceInput || suggested);
+  const draftTotal =
+    Number.isFinite(draftQty) && draftQty > 1 && Number.isFinite(draftPrice) && draftPrice > 0
+      ? draftQty * draftPrice
+      : null;
 
   async function place() {
     if (!selected) return;
@@ -81,7 +87,7 @@ export function MarketPanel({
               <div className="text-xl">{item.emoji}</div>
               <div className="truncate text-xs font-medium">{item.name}</div>
               <div className="text-[11px] text-muted-foreground">
-                avg {quote?.vwap ?? item.basePrice}
+                MV {quote?.vwap ?? item.basePrice}🪙
               </div>
             </button>
           );
@@ -96,7 +102,7 @@ export function MarketPanel({
             </p>
             <p className="text-xs leading-5 text-muted-foreground">{selected.description}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Bank / VWAP {formatCoins(price?.vwap ?? selected.basePrice)}
+              MV {formatCoins(price?.vwap ?? selected.basePrice)}
               {price?.bestBid != null ? ` · bid ${price.bestBid}` : " · no bid"}
               {price?.bestAsk != null ? ` · ask ${price.bestAsk}` : " · no ask"}
             </p>
@@ -174,10 +180,15 @@ export function MarketPanel({
                 onChange={(event) => setQtyInput(event.target.value)}
               />
             </div>
-            <div className="flex items-end">
+            <div className="flex flex-col justify-end gap-1">
               <Button className="w-full" disabled={pending} onClick={() => void place()}>
                 Post {side === "buy" ? "bid" : "ask"}
               </Button>
+              {draftTotal != null ? (
+                <p className="text-center text-[11px] text-muted-foreground">
+                  {draftQty} × {draftPrice}🪙 = {draftTotal}🪙 total
+                </p>
+              ) : null}
             </div>
           </div>
         </div>
@@ -199,6 +210,12 @@ export function MarketPanel({
                 <span>
                   {order.side === "buy" ? "Bid" : "Ask"}{" "}
                   <ItemChip itemId={order.itemId} qty={order.remaining} /> @ {order.price}🪙
+                  {order.remaining > 1 ? (
+                    <span className="text-muted-foreground">
+                      {" "}
+                      · {order.remaining * order.price}🪙 total
+                    </span>
+                  ) : null}
                 </span>
                 <Button
                   size="xs"
@@ -245,6 +262,9 @@ function OrderList({
           >
             <span>
               {row.remaining} @ {row.price}🪙
+              {row.remaining > 1 ? (
+                <span className="text-muted-foreground"> · {row.remaining * row.price}🪙 total</span>
+              ) : null}
             </span>
             <span className="text-muted-foreground">
               {row.playerId === selfId ? "you" : row.username}
