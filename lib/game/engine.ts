@@ -467,7 +467,7 @@ export function consumeItem(userId: number, itemId: string) {
 }
 
 export function arriveAt(userId: number, locationId: string) {
-  requireIdle(userId);
+  resolveBusy(userId);
   const dest = locationById[locationId];
   if (!dest) throw new Error("Unknown place. That check-in code is not on the map.");
   const player = loadPlayerRow(userId);
@@ -475,11 +475,17 @@ export function arriveAt(userId: number, locationId: string) {
     setEvent(userId, `You are already at ${dest.emoji} ${dest.name}.`);
     return;
   }
+  const interrupted =
+    player.busy_type !== "idle" && Boolean(player.busy_until && player.busy_until > nowMs());
   getDb()
-    .prepare("UPDATE players SET location_id = ?, last_event = ? WHERE user_id = ?")
+    .prepare(
+      "UPDATE players SET location_id = ?, busy_type = 'idle', busy_until = NULL, busy_payload = NULL, last_event = ? WHERE user_id = ?"
+    )
     .run(
       locationId,
-      `Checked in at ${dest.emoji} ${dest.name}.`,
+      interrupted
+        ? `Left a search and checked in at ${dest.emoji} ${dest.name}.`
+        : `Checked in at ${dest.emoji} ${dest.name}.`,
       userId
     );
 }

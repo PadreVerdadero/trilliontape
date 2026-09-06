@@ -37,6 +37,7 @@ export function MapPanel({
       <p className="text-sm leading-6 text-muted-foreground">
         In real life, scan the QR at the stop. On this computer, tap{" "}
         <span className="text-foreground">I&apos;m here</span> to check in the same way.
+        Checking in leaves an unfinished search behind.
       </p>
       <div className="grid gap-3 md:grid-cols-3">
         {locations.map((location) => {
@@ -81,7 +82,7 @@ export function MapPanel({
                     size="lg"
                     variant="outline"
                     className="h-11 w-full md:h-8 md:w-auto"
-                    disabled={!idle || pending}
+                    disabled={pending}
                     onClick={() => onArrive(location.id)}
                   >
                     I&apos;m here
