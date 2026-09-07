@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { itemById } from "@/lib/game/catalog";
+import { formatNumber } from "@/lib/game/format";
 import { usableById } from "@/lib/game/consumables";
 import { rarityClass, rarityLabel, rarityOf, rarityText } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
@@ -52,8 +53,8 @@ export function InventoryPanel({
                 {rarityLabel[rarity]}
               </div>
               <div className="text-xs text-muted-foreground">
-                {free}
-                {reserved ? ` free · ${reserved} listed` : ""}
+                {formatNumber(free)}
+                {reserved ? ` free · ${formatNumber(reserved)} listed` : ""}
               </div>
               <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{item?.purpose}</p>
             </button>

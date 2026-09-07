@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { bankPayout, itemById } from "@/lib/game/catalog";
-import { formatCoins, formatDuration } from "@/lib/game/format";
+import { formatCoins, formatDuration, formatNumber } from "@/lib/game/format";
 import { rarityClass, rarityLabel, rarityOf, rarityText } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
 import type { GameState } from "@/lib/game/types";
@@ -70,13 +70,13 @@ export function BankPanel({
                 </span>
               </p>
               <p className="text-xs text-muted-foreground">
-                {free} free · MV {formatCoins(mv)} · bank {Math.round(payout.startRate * 100)}% →{" "}
-                {formatCoins(payout.total)}
-                {saleQty > 1 ? ` for ${saleQty}` : " each"}
+                {formatNumber(free)} free · MV {formatCoins(mv)} · bank{" "}
+                {Math.round(payout.startRate * 100)}% → {formatCoins(payout.total)}
+                {saleQty > 1 ? ` for ${formatNumber(saleQty)}` : " each"}
               </p>
               {glut > 0 ? (
                 <p className="text-[11px] text-amber-100/80">
-                  Window is heavy ({glut} taken) · back to 50% in{" "}
+                  Window is heavy ({formatNumber(glut)} taken) · back to 50% in{" "}
                   {formatDuration(bank?.cooldownMs ?? 0)}
                 </p>
               ) : null}

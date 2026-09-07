@@ -1,4 +1,5 @@
 import { itemById } from "@/lib/game/catalog";
+import { formatNumber } from "@/lib/game/format";
 import { rarityClass, rarityLabel, rarityOf, rarityText } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
 
@@ -30,7 +31,7 @@ export function ItemChip({
         {item.emoji}
       </span>
       <span className="font-medium">{item.name}</span>
-      {qty != null ? <span className="text-muted-foreground">×{qty}</span> : null}
+      {qty != null ? <span className="text-muted-foreground">×{formatNumber(qty)}</span> : null}
       <span className={cn("text-[10px] tracking-wide", rarityText[rarity])}>
         {rarityLabel[rarity]}
       </span>
