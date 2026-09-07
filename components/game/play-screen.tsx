@@ -228,18 +228,18 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
             </div>
           </div>
         ) : null}
-        <nav className="hidden border-t border-border/70 lg:block">
-          <div className="mx-auto grid w-full max-w-[90rem] grid-cols-4 gap-1 px-4 py-2">
+        <nav className="border-t border-border/70">
+          <div className="mx-auto grid w-full max-w-[90rem] grid-cols-4 gap-1 px-2 py-2 sm:px-4">
             {views.map((item) => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => setView(item.id)}
-                className={`flex h-11 items-center justify-center gap-2 rounded-xl text-sm font-medium ${
+                className={`flex h-12 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-medium sm:h-11 sm:flex-row sm:gap-2 sm:text-sm ${
                   view === item.id ? "bg-primary/20 text-foreground" : "text-muted-foreground hover:bg-muted"
                 }`}
               >
-                <span>{item.emoji}</span>
+                <span className="text-base sm:text-sm">{item.emoji}</span>
                 {item.label}
               </button>
             ))}
@@ -247,7 +247,7 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
         </nav>
       </header>
 
-      <main className="mx-auto w-full max-w-[90rem] flex-1 px-4 py-4 pb-24 lg:pb-6">
+      <main className="mx-auto w-full max-w-[90rem] flex-1 px-4 py-4">
         {view === "market" ? (
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
             <div>{market}</div>
@@ -258,24 +258,6 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
         {view === "pack" ? pack : null}
         {view === "plaza" ? plaza : null}
       </main>
-
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border/80 bg-background/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur lg:hidden">
-        <div className="mx-auto grid max-w-lg grid-cols-4 gap-1 px-2 pt-2">
-          {views.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setView(item.id)}
-              className={`flex h-12 flex-col items-center justify-center rounded-xl text-xs ${
-                view === item.id ? "bg-primary/15 text-foreground" : "text-muted-foreground"
-              }`}
-            >
-              <span className="text-base">{item.emoji}</span>
-              {item.label}
-            </button>
-          ))}
-        </div>
-      </nav>
     </div>
   );
 }
