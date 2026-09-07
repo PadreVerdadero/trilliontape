@@ -31,7 +31,6 @@ import { rarityOf } from "@/lib/game/rarity";
 import { getDb } from "@/lib/game/db";
 import {
   chalkboardItem,
-  CONTRACT_TEMPLATES,
   contractsForWeek,
   CRATE_COST,
   donationCost,
