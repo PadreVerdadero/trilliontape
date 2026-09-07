@@ -5,7 +5,7 @@ const highlights = [
   {
     emoji: "🏪",
     title: "Stalls keep real hours",
-    body: "Mira, Ket, Han, Nim, Lark, and the night broker buy at a markup only while their door is open. Hours follow your phone clock. Sunday market opens everyone.",
+    body: "Mira, Ket, Han, Nim, Lark, and the night broker buy at a markup only while their door is open. Hours are military time on your phone clock. Sunday 10:00–14:00 opens everyone.",
   },
   {
     emoji: "⛏️",
