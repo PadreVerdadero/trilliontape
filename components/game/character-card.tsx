@@ -25,6 +25,22 @@ export function CharacterCard({ player }: { player: PlayerState }) {
           {location?.emoji} {location?.name}
         </p>
       </div>
+      <div className="w-full space-y-1">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>Energy</span>
+          <span className="text-foreground">
+            {player.energy} / {player.energyMax}
+          </span>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-background/70 ring-1 ring-foreground/10">
+          <div
+            className="h-full bg-emerald-400/80 transition-all"
+            style={{
+              width: `${Math.max(0, Math.min(100, (player.energy / Math.max(1, player.energyMax)) * 100))}%`,
+            }}
+          />
+        </div>
+      </div>
       <div className="flex flex-wrap justify-center gap-2 text-sm">
         <span className="rounded-full bg-primary/15 px-3 py-1 font-medium text-primary">
           {formatCoins(player.availableGold)}

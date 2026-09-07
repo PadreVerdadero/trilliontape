@@ -17,23 +17,41 @@ export type Consumable = {
   blurb: string;
 };
 
-export const consumables: Consumable[] = [
+export type Food = {
+  itemId: string;
+  energy: number;
+  verb: string;
+  blurb: string;
+};
+
+export const foods: Food[] = [
   {
     itemId: "berries",
-    kind: "search_haste",
-    charges: 1,
-    power: 75,
+    energy: 4,
     verb: "Eat",
-    blurb: "Next search finishes in 75% of the time.",
+    blurb: "A handful. Enough energy for one quiet search.",
   },
   {
     itemId: "bread",
-    kind: "search_haste",
-    charges: 1,
-    power: 50,
+    energy: 10,
     verb: "Eat",
-    blurb: "Next search takes half as long. Stronger than a handful of berries.",
+    blurb: "A plaza loaf. Two or three searches, depending on the crowd.",
   },
+  {
+    itemId: "fish",
+    energy: 6,
+    verb: "Eat",
+    blurb: "Raw shore snack. Better in stew, but it fills you.",
+  },
+  {
+    itemId: "honey",
+    energy: 8,
+    verb: "Eat",
+    blurb: "A spoon of gold. Fast energy, or save it for a candle.",
+  },
+];
+
+export const consumables: Consumable[] = [
   {
     itemId: "planks",
     kind: "search_calm",
@@ -100,6 +118,7 @@ export const consumables: Consumable[] = [
   },
 ];
 
+export const foodById = Object.fromEntries(foods.map((entry) => [entry.itemId, entry]));
 export const consumableById = Object.fromEntries(
   consumables.map((entry) => [entry.itemId, entry])
 );
@@ -126,6 +145,14 @@ export function describeBuff(kind: BuffKind, charges: number, power: number) {
   return `${name} · ${extra}`;
 }
 
+export function usableById(itemId: string) {
+  const food = foodById[itemId];
+  if (food) return { verb: food.verb, blurb: food.blurb };
+  const consumable = consumableById[itemId];
+  if (consumable) return { verb: consumable.verb, blurb: consumable.blurb };
+  return null;
+}
+
 export function isConsumable(itemId: string) {
-  return Boolean(consumableById[itemId] && itemById[itemId]);
+  return Boolean(usableById(itemId) && itemById[itemId]);
 }

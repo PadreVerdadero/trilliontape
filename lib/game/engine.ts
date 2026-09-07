@@ -7,8 +7,9 @@ import {
   locationById,
   materialsAt,
   recipeByOutput,
+  ENERGY_MAX,
   SEARCH_COOLDOWN_MS,
-  searchDurationSeconds,
+  searchEnergyCost,
   searchWeight,
   travelSeconds,
   WIN_ITEM_ID,
@@ -17,6 +18,7 @@ import {
   buffLabel,
   consumableById,
   describeBuff,
+  foodById,
   type BuffKind,
 } from "@/lib/game/consumables";
 import { rarityOf } from "@/lib/game/rarity";
@@ -49,6 +51,8 @@ type PlayerRow = {
   has_won: number;
   won_at: number | null;
   last_event: string | null;
+  energy: number;
+  energy_max: number;
 };
 
 function nowMs() {
@@ -159,29 +163,14 @@ export function resolveBusy(userId: number) {
     }
   }
   if (player.busy_type === "mine" || player.busy_type === "search") {
-    const locationId = String(payload.locationId ?? player.location_id);
-    const luck = Number(payload.luck ?? 1);
-    const extraQty = Number(payload.extraQty ?? 0);
-    const double = Boolean(payload.double);
-    const rolls = double ? 2 : 1;
-    const finds: { itemId: string; qty: number }[] = [];
-    if (payload.itemId) {
-      finds.push({ itemId: String(payload.itemId), qty: Number(payload.qty ?? 0) });
-    } else {
-      for (let i = 0; i < rolls; i += 1) {
-        const loot = rollSearchLoot(locationId, luck);
-        if (loot.itemId) {
-          finds.push({ itemId: loot.itemId, qty: loot.qty + extraQty });
-        }
-      }
-    }
-    const bits: string[] = [];
-    for (const find of finds) {
-      const item = itemById[find.itemId];
-      if (!item || find.qty <= 0) continue;
-      addItem(userId, item.id, find.qty);
-      bits.push(`${item.emoji} ${item.name} ×${find.qty}`);
-    }
+    const bits = grantSearchLoot(userId, {
+      locationId: String(payload.locationId ?? player.location_id),
+      luck: Number(payload.luck ?? 1),
+      extraQty: Number(payload.extraQty ?? 0),
+      double: Boolean(payload.double),
+      itemId: payload.itemId ? String(payload.itemId) : undefined,
+      qty: payload.qty != null ? Number(payload.qty) : undefined,
+    });
     if (bits.length > 0) {
       setEvent(userId, `You pull ${bits.join(" and ")} from the search.`);
     }
@@ -221,6 +210,39 @@ function busyState(player: PlayerRow): BusyState {
     label: `Searching ${place?.emoji ?? ""} ${place?.name ?? "the wilds"}`,
     detail: "The find stays hidden until the timer ends. Safe to leave.",
   };
+}
+
+function grantSearchLoot(
+  userId: number,
+  payload: {
+    locationId: string;
+    luck: number;
+    extraQty: number;
+    double: boolean;
+    itemId?: string;
+    qty?: number;
+  }
+) {
+  const rolls = payload.double ? 2 : 1;
+  const finds: { itemId: string; qty: number }[] = [];
+  if (payload.itemId) {
+    finds.push({ itemId: payload.itemId, qty: Number(payload.qty ?? 0) });
+  } else {
+    for (let i = 0; i < rolls; i += 1) {
+      const loot = rollSearchLoot(payload.locationId, payload.luck);
+      if (loot.itemId) {
+        finds.push({ itemId: loot.itemId, qty: loot.qty + payload.extraQty });
+      }
+    }
+  }
+  const bits: string[] = [];
+  for (const find of finds) {
+    const item = itemById[find.itemId];
+    if (!item || find.qty <= 0) continue;
+    addItem(userId, item.id, find.qty);
+    bits.push(`${item.emoji} ${item.name} ×${find.qty}`);
+  }
+  return bits;
 }
 
 function rollSearchLoot(locationId: string, luck = 1) {
@@ -283,7 +305,7 @@ function countSearchers(locationId: string) {
 
 function listAreas(): AreaCrowd[] {
   return Object.values(locationById)
-    .filter((location) => location.searchSeconds)
+    .filter((location) => location.searchEnergy)
     .map((location) => {
       const strain = readStrain(location.id);
       const row = getDb()
@@ -296,7 +318,7 @@ function listAreas(): AreaCrowd[] {
         searchers: countSearchers(location.id),
         strain,
         cooldownMs,
-        nextSearchSeconds: searchDurationSeconds(location.id, strain),
+        nextSearchCost: searchEnergyCost(location.id, strain),
       };
     });
 }
@@ -452,6 +474,26 @@ function listBuffs(userId: number) {
 
 export function consumeItem(userId: number, itemId: string) {
   resolveBusy(userId);
+  const food = foodById[itemId];
+  if (food) {
+    if (availableItem(userId, itemId) < 1) {
+      throw new Error("You do not have a free one to eat.");
+    }
+    const player = loadPlayerRow(userId);
+    const max = player.energy_max ?? ENERGY_MAX;
+    if ((player.energy ?? 0) >= max) {
+      throw new Error("You are already full.");
+    }
+    removeItem(userId, itemId, 1);
+    const next = Math.min(max, (player.energy ?? 0) + food.energy);
+    getDb().prepare("UPDATE players SET energy = ? WHERE user_id = ?").run(next, userId);
+    const item = itemById[itemId];
+    setEvent(
+      userId,
+      `You eat ${item.emoji} ${item.name}. +${food.energy} energy (${next}/${max}).`
+    );
+    return;
+  }
   const consumable = consumableById[itemId];
   if (!consumable) throw new Error("That cannot be used.");
   if (availableItem(userId, itemId) < 1) {
@@ -520,48 +562,46 @@ export function startSearch(userId: number) {
   requireIdle(userId);
   const player = loadPlayerRow(userId);
   const location = locationById[player.location_id];
-  if (!location?.searchSeconds) {
+  if (!location?.searchEnergy) {
     throw new Error("There is nothing to search here. Check in at the woods, ridge, shore, or fields.");
   }
   const strain = bumpStrain(location.id);
   const calm = takeBuff(userId, "search_calm");
-  const haste = takeBuff(userId, "search_haste");
   const yieldBuff = takeBuff(userId, "search_yield");
   const luck = takeBuff(userId, "search_luck");
   const double = takeBuff(userId, "search_double");
-  let seconds = searchDurationSeconds(location.id, calm ? 0 : strain);
-  if (haste) {
-    seconds = Math.max(8, Math.round((seconds * haste.power) / 100));
+  const cost = searchEnergyCost(location.id, calm ? 0 : strain);
+  const energy = player.energy ?? 0;
+  const max = player.energy_max ?? ENERGY_MAX;
+  if (energy < cost) {
+    throw new Error(
+      `You are too tired (${energy} energy). Eat berries, bread, fish, or honey.`
+    );
   }
-  const ends = nowMs() + seconds * 1000;
+  const nextEnergy = energy - cost;
+  getDb()
+    .prepare("UPDATE players SET energy = ? WHERE user_id = ?")
+    .run(nextEnergy, userId);
+  const bits = grantSearchLoot(userId, {
+    locationId: location.id,
+    extraQty: yieldBuff ? 1 : 0,
+    luck: luck?.power ?? 1,
+    double: Boolean(double),
+  });
   const extras = [
     calm ? "steady ground" : null,
-    haste ? "quick hands" : null,
     yieldBuff ? "deep pockets" : null,
     luck ? "lucky pull" : null,
     double ? "second find" : null,
   ].filter(Boolean);
-  const crowdNote =
-    !calm && strain > 0
-      ? ` Crowded — ${seconds}s.`
-      : "";
-  getDb()
-    .prepare(
-      "UPDATE players SET busy_type = 'search', busy_until = ?, busy_payload = ?, last_event = ? WHERE user_id = ?"
-    )
-    .run(
-      ends,
-      JSON.stringify({
-        locationId: location.id,
-        extraQty: yieldBuff ? 1 : 0,
-        luck: luck?.power ?? 1,
-        double: Boolean(double),
-      }),
-      `You start searching ${location.emoji} ${location.name}.${crowdNote}${
-        extras.length ? ` (${extras.join(", ")})` : ""
-      }`,
-      userId
-    );
+  const crowdNote = !calm && strain > 0 ? ` Crowded — ${cost} energy.` : ` −${cost} energy.`;
+  const findNote = bits.length > 0 ? ` You pull ${bits.join(" and ")}.` : " Nothing this time.";
+  setEvent(
+    userId,
+    `Searched ${location.emoji} ${location.name}.${crowdNote}${findNote} ${nextEnergy}/${max} left.${
+      extras.length ? ` (${extras.join(", ")})` : ""
+    }`
+  );
 }
 
 export function startMine(userId: number) {
@@ -914,6 +954,8 @@ export function getGameState(userId: number): GameState {
     wonAt: player.won_at,
     busy: busyState(player),
     lastEvent: player.last_event,
+    energy: player.energy ?? ENERGY_MAX,
+    energyMax: player.energy_max ?? ENERGY_MAX,
     buffs: listBuffs(userId),
   };
 

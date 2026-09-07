@@ -25,7 +25,7 @@ export type Location = {
   name: string;
   blurb: string;
   region: string;
-  searchSeconds?: number;
+  searchEnergy?: number;
 };
 
 export type Recipe = {
@@ -98,6 +98,8 @@ export type PlayerState = {
   wonAt: number | null;
   busy: BusyState;
   lastEvent: string | null;
+  energy: number;
+  energyMax: number;
   buffs: { kind: string; charges: number; power: number; label: string }[];
 };
 
@@ -115,7 +117,7 @@ export type AreaCrowd = {
   searchers: number;
   strain: number;
   cooldownMs: number;
-  nextSearchSeconds: number;
+  nextSearchCost: number;
 };
 
 export type BankQuote = {

@@ -10,12 +10,12 @@ const highlights = [
   {
     emoji: "⛏️",
     title: "Search the wilds",
-    body: "You search a whole area and pull a random find. If too many travelers comb the same place, searches slow down until it goes quiet.",
+    body: "A search costs energy and pays out right away. Eat berries, bread, fish, or honey to fill back up. Crowds make the next pull cost more until the place goes quiet.",
   },
   {
     emoji: "📒",
     title: "A real order book",
-    body: "Post a bid or an ask at your price. Side goods sell because they are supplies: bread for the road, charms for luck, baskets for bigger pulls.",
+    body: "Post a bid or an ask at your price. Side goods sell because they are supplies: bread for energy, charms for luck, baskets for bigger pulls.",
   },
   {
     emoji: "🏦",
@@ -80,8 +80,8 @@ export function Landing({ error, next }: { error?: string; next?: string }) {
             <CardHeader>
               <CardTitle>Return to the plaza</CardTitle>
               <CardDescription>
-                Use the Guest stall or create your own. Pack, gold, and mid-search timers are
-                saved when you leave.
+                Use the Guest stall or create your own. Pack, gold, and energy are saved when
+                you leave.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">

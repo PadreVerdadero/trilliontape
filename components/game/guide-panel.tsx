@@ -11,8 +11,9 @@ export function GuidePanel() {
         <p>
           You are not clicking a win button. You are choosing a life: ridge miner, shore diver,
           field beekeeper, or plaza trader. Search an area and you pull a random find — gems and
-          coral are just unlucky (or lucky). If several people comb the same biome, each search
-          gets slower until that place sits quiet for 45 seconds.
+          coral are just unlucky (or lucky). Each search costs energy and pays out at once. If
+          several people comb the same biome, the next pull costs more until that place sits
+          quiet for 45 seconds.
         </p>
         <p>
           Arrival is a check-in, not a walk timer. In the real world, print the codes from
@@ -20,10 +21,10 @@ export function GuidePanel() {
           there. At a computer, tap I&apos;m here on the map — same check-in, no walk.
         </p>
         <p>
-          Side goods are supplies, not trash. Bread and berries speed a search. Planks, salve,
-          and brick ignore a crowded node. Mushrooms double a find. Flowers, shells, and charms
-          tilt luck toward rares. Baskets add +1 yield. Relic hunters buy this stuff so they
-          can race; foragers sell it.
+          Side goods are supplies, not trash. Berries, bread, fish, and honey restore energy.
+          Planks, salve, and brick ignore a crowded (costlier) node. Mushrooms double a find.
+          Flowers, shells, and charms tilt luck toward rares. Baskets add +1 yield. Relic
+          hunters buy this stuff so they can race; foragers sell it.
         </p>
       </section>
       <section className="space-y-2">

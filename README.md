@@ -1,6 +1,6 @@
 # Lantern Bazaar
 
-A traveler’s market of emoji goods. Check in at real-world stops (or tap **I'm here** at a desk), search biomes on timers, post your own buy and sell prices, and craft the **🌟 Celestial Relic** to win. Close the tab mid-search — the clock keeps running, and your pack is still there when you sign back in.
+A traveler’s market of emoji goods. Check in at real-world stops (or tap **I'm here** at a desk), search biomes for energy, post your own buy and sell prices, and craft the **🌟 Celestial Relic** to win. Eat food to refill. Your pack is still there when you sign back in.
 
 The UI is built for a phone in the pocket and a computer at the desk. Arrival is a **check-in**, not a travel timer.
 
@@ -8,7 +8,7 @@ The UI is built for a phone in the pocket and a computer at the desk. Arrival is
 
 1. Create a traveler name and password, or press **Play as Guest** (Guest / play).
 2. Arrive at a place by scanning that stop’s QR, or by tapping **I'm here** on the map while you test on a computer.
-3. **Search** a biome for a random material. Commons show up more often. If several people search the same place, each pull takes longer until that area sits quiet for 45 seconds.
+3. **Search** a biome for a random material. Each pull costs energy and happens instantly. Commons show up more often. If several people search the same place, the next pull costs more until that area sits quiet for 45 seconds. Eat berries, bread, fish, or honey to refill.
 4. Check in at the plaza to craft, sell to the bank, or buy cosmetics.
 5. On the public board, post a **bid** or **ask**. Click someone else’s order to take it. If a bid sits above an ask, they match at the **lower (ask) price**.
 6. The **bank never posts bids or asks**. It only buys at **50% of MV**. Each unit they take of that emoji drops the cut; after 60s quiet it returns to 50%.
@@ -45,8 +45,10 @@ Use the phone’s camera. No extra app. Codes printed from `127.0.0.1` only work
 
 Side goods are **supplies**. Use them from your pack:
 
-- 🍞 Bread — next search takes half as long
-- 🍓 Berries — next search is a bit faster
+- 🍞 Bread — +10 energy
+- 🍓 Berries — +4 energy (one quiet search)
+- 🐟 Fish — +6 energy
+- 🍯 Honey — +8 energy
 - 🍄 Mushrooms — next search finds two things
 - 🌸 Flower / 🐚 Shell / 📿 Charm — next search leans Rare+
 - 🩹 Salve / 🧱 Brick / 🪜 Planks — ignore crowd strain (planks cover two pulls)

@@ -31,19 +31,21 @@ export function MapPanel({
   const nodes = materialsAt(player.locationId);
   const crowd = areas.find((area) => area.locationId === player.locationId);
   const idle = player.busy.type === "idle";
+  const searchCost = crowd?.nextSearchCost ?? here?.searchEnergy ?? 0;
+  const canSearch = idle && !pending && player.energy >= searchCost && searchCost > 0;
 
   return (
     <div className="space-y-4">
       <p className="text-sm leading-6 text-muted-foreground">
         In real life, scan the QR at the stop. On this computer, tap{" "}
         <span className="text-foreground">I&apos;m here</span> to check in the same way.
-        Checking in leaves an unfinished search behind.
+        Searches spend energy — eat berries, bread, fish, or honey from your pack to refill.
       </p>
       <div className="grid gap-3 md:grid-cols-3">
         {locations.map((location) => {
           const current = location.id === player.locationId;
           const area = areas.find((entry) => entry.locationId === location.id);
-          const crowded = (area?.strain ?? 0) > 0 || (area?.searchers ?? 0) > 0;
+          const crowded = (area?.strain ?? 0) > 0;
           return (
             <Card
               key={location.id}
@@ -65,14 +67,14 @@ export function MapPanel({
               <CardContent className="space-y-2">
                 {crowded ? (
                   <p className="text-xs text-amber-100/90">
-                    Crowded · next search {area?.nextSearchSeconds}s
+                    Crowded · next search {area?.nextSearchCost} energy
                     {area && area.cooldownMs > 0
                       ? ` · quiet in ${formatDuration(area.cooldownMs)}`
                       : ""}
                   </p>
-                ) : location.searchSeconds ? (
+                ) : location.searchEnergy ? (
                   <p className="text-xs text-muted-foreground">
-                    Search {location.searchSeconds}s · random find
+                    Search {location.searchEnergy} energy · random find
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">{location.region}</p>
@@ -99,9 +101,9 @@ export function MapPanel({
           <CardHeader>
             <CardTitle>Search {here.name}</CardTitle>
             <CardDescription>
-              One pull, random loot from this biome. Commons show up more often. If other
-              travelers are pulling here too, the timer stretches until the area goes quiet
-              for 45s.
+              One pull, random loot from this biome. Commons show up more often. Each search
+              costs energy. If other travelers are pulling here too, the cost climbs until the
+              area goes quiet for 45s.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -125,17 +127,19 @@ export function MapPanel({
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-muted-foreground">
-                {crowd && crowd.strain > 0
-                  ? `Strain ${crowd.strain} · this search ${crowd.nextSearchSeconds}s · cools in ${formatDuration(crowd.cooldownMs)}`
-                  : `Quiet · this search ${crowd?.nextSearchSeconds ?? here.searchSeconds}s`}
+                {player.energy < searchCost
+                  ? `Tired · need ${searchCost} energy, you have ${player.energy}. Eat food.`
+                  : crowd && crowd.strain > 0
+                    ? `Strain ${crowd.strain} · this search ${searchCost} energy · cools in ${formatDuration(crowd.cooldownMs)}`
+                    : `Quiet · this search ${searchCost} energy · ${player.energy}/${player.energyMax} left`}
               </p>
               <Button
                 size="lg"
                 className="h-11 w-full sm:w-auto md:h-8"
-                disabled={!idle || pending}
+                disabled={!canSearch}
                 onClick={onSearch}
               >
-                Search
+                Search · {searchCost} energy
               </Button>
             </div>
           </CardContent>
@@ -147,8 +151,8 @@ export function MapPanel({
           <CardHeader>
             <CardTitle>Plaza work</CardTitle>
             <CardDescription>
-              Use Board, Craft, Bank, and Wardrobe below. The relic is crafted here from a blade,
-              jewel, candle, and stew.
+              Use Board, Craft, Bank, and Wardrobe below. Bake bread here when you are hungry.
+              The relic is crafted from a blade, jewel, candle, and stew.
             </CardDescription>
           </CardHeader>
         </Card>

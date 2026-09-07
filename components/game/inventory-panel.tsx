@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { itemById } from "@/lib/game/catalog";
-import { consumableById } from "@/lib/game/consumables";
+import { usableById } from "@/lib/game/consumables";
 import { rarityClass, rarityLabel, rarityOf, rarityText } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
 import type { PlayerState } from "@/lib/game/types";
@@ -32,7 +32,7 @@ export function InventoryPanel({
         const reserved = player.reservedItems[row.itemId] ?? 0;
         const free = row.quantity - reserved;
         const rarity = rarityOf(row.itemId);
-        const consumable = consumableById[row.itemId];
+        const usable = usableById(row.itemId);
         return (
           <div
             key={row.itemId}
@@ -56,16 +56,16 @@ export function InventoryPanel({
                 {reserved ? ` free · ${reserved} listed` : ""}
               </div>
             </button>
-            {consumable && free > 0 ? (
+            {usable && free > 0 ? (
               <Button
                 size="xs"
                 variant="secondary"
                 className="mt-2 h-11 w-full md:h-6"
                 disabled={pending}
-                title={consumable.blurb}
+                title={usable.blurb}
                 onClick={() => onUse?.(row.itemId)}
               >
-                {consumable.verb}
+                {usable.verb}
               </Button>
             ) : null}
           </div>

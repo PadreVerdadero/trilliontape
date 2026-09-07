@@ -18,7 +18,7 @@ export const locations: Location[] = [
     name: "Whispering Woods",
     region: "West Path",
     blurb: "Damp shade and old timber. Herbs and mushrooms hide under the roots.",
-    searchSeconds: 14,
+    searchEnergy: 4,
   },
   {
     id: "ridge",
@@ -26,7 +26,7 @@ export const locations: Location[] = [
     name: "Ironridge",
     region: "North Climb",
     blurb: "Pickaxe country. Stone is easy; gems make you wait.",
-    searchSeconds: 16,
+    searchEnergy: 5,
   },
   {
     id: "shore",
@@ -34,7 +34,7 @@ export const locations: Location[] = [
     name: "Sunshore",
     region: "South Tide",
     blurb: "Salt air and tide pools. Coral is slow, fish are not.",
-    searchSeconds: 15,
+    searchEnergy: 4,
   },
   {
     id: "fields",
@@ -42,7 +42,7 @@ export const locations: Location[] = [
     name: "Golden Fields",
     region: "East Road",
     blurb: "Wheat, flax, and stubborn bees. Bring patience for honey.",
-    searchSeconds: 14,
+    searchEnergy: 4,
   },
 ];
 
@@ -61,7 +61,7 @@ export const items: Item[] = [
     emoji: "🍓",
     name: "Berries",
     kind: "material",
-    description: "Sweet trail food. Not in the relic recipe, but traders snack and speculate.",
+    description: "Sweet trail food. Eat a handful to get one quiet search back.",
     basePrice: 4,
     mine: { locationId: "woods", seconds: 10, yieldMin: 2, yieldMax: 4 },
   },
@@ -124,7 +124,7 @@ export const items: Item[] = [
     emoji: "🐟",
     name: "Fish",
     kind: "material",
-    description: "Silver from the tide. The stew pot is waiting.",
+    description: "Silver from the tide. Eat it raw for a bit of energy, or save it for stew.",
     basePrice: 6,
     mine: { locationId: "shore", seconds: 14, yieldMin: 1, yieldMax: 3 },
   },
@@ -178,7 +178,7 @@ export const items: Item[] = [
     emoji: "🍯",
     name: "Honey",
     kind: "material",
-    description: "The bees do not hurry. Wax and sweetness for festival candles.",
+    description: "The bees do not hurry. Eat a spoon for energy, or save it for festival candles.",
     basePrice: 16,
     mine: { locationId: "fields", seconds: 36, yieldMin: 1, yieldMax: 1 },
   },
@@ -196,7 +196,7 @@ export const items: Item[] = [
     emoji: "🍞",
     name: "Bread",
     kind: "good",
-    description: "Baked in the plaza ovens. Easy craft, easy coin if the board is hungry.",
+    description: "Baked in the plaza ovens. Eat a loaf to fill most of your energy.",
     basePrice: 10,
   },
   {
@@ -212,7 +212,7 @@ export const items: Item[] = [
     emoji: "🩹",
     name: "Salve",
     kind: "good",
-    description: "Woods medicine. Traders who hate mushroom timers will pay up.",
+    description: "Woods medicine. Traders who hate a crowded, costly search will pay up.",
     basePrice: 18,
   },
   {
@@ -466,7 +466,7 @@ export const cosmetics: Cosmetic[] = [
     name: "Fair Wand",
     slot: "accessory",
     price: 175,
-    description: "Sparkles. Does not skip mining timers. Sorry.",
+    description: "Sparkles. Does not refill energy. Sorry.",
   },
 ];
 
@@ -532,11 +532,14 @@ export function searchWeight(item: Item): number {
   return Math.max(1, Math.round(4000 / (seconds * seconds)));
 }
 
-export function searchDurationSeconds(locationId: string, strain: number): number {
-  const base = locationById[locationId]?.searchSeconds ?? 0;
+export const ENERGY_MAX = 20;
+export const STARTING_ENERGY = 20;
+
+export function searchEnergyCost(locationId: string, strain: number): number {
+  const base = locationById[locationId]?.searchEnergy ?? 0;
   if (!base) return 0;
   const multiplier = Math.min(SEARCH_STRAIN_CAP, 1 + SEARCH_STRAIN_STEP * Math.max(0, strain));
-  return Math.round(base * multiplier);
+  return Math.max(1, Math.round(base * multiplier));
 }
 
 export function defaultBodyEmoji(): string {

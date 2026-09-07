@@ -216,7 +216,9 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
           <div className="min-w-0">
             <p className="font-heading text-lg">🏮 Lantern Bazaar</p>
             <p className="truncate text-xs text-muted-foreground">
-              {busy ? player.busy.label : "Scan a code or tap I'm here"}
+              {busy
+                ? player.busy.label
+                : `${player.energy}/${player.energyMax} energy · scan a code or tap I'm here`}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">

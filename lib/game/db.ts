@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
-import { STARTING_GOLD } from "@/lib/game/catalog";
+import { ENERGY_MAX, STARTING_ENERGY, STARTING_GOLD } from "@/lib/game/catalog";
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: Database.Database;
@@ -95,6 +95,15 @@ function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_trades_item ON trades(item_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
   `);
+  ensureColumn(db, "players", "energy", `INTEGER NOT NULL DEFAULT ${ENERGY_MAX}`);
+  ensureColumn(db, "players", "energy_max", `INTEGER NOT NULL DEFAULT ${ENERGY_MAX}`);
+}
+
+function ensureColumn(db: Database.Database, table: string, column: string, sql: string) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!cols.some((col) => col.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${sql}`);
+  }
 }
 
 function clearBankerBook(db: Database.Database) {
@@ -119,13 +128,15 @@ function seedGuest(db: Database.Database) {
 
 function createPlayerWithDb(db: Database.Database, userId: number) {
   db.prepare(
-    "INSERT INTO players (user_id, gold, location_id, last_event) VALUES (?, ?, 'town', ?)"
+    "INSERT INTO players (user_id, gold, location_id, energy, energy_max, last_event) VALUES (?, ?, 'town', ?, ?, ?)"
   ).run(
     userId,
     STARTING_GOLD,
+    STARTING_ENERGY,
+    ENERGY_MAX,
     "You arrive in Lantern Plaza with a light pack and a stall token."
   );
-  const starter: Record<string, number> = { wheat: 3, wood: 2, flax: 1 };
+  const starter: Record<string, number> = { wheat: 3, wood: 2, flax: 1, berries: 3 };
   const insert = db.prepare(
     "INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)"
   );
