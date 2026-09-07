@@ -19,7 +19,6 @@ export function BankPanel({
   onSell: (itemId: string, quantity: number) => void;
 }) {
   const [qty, setQty] = useState<Record<string, string>>({});
-  const inTown = state.player.locationId === "town" && state.player.busy.type === "idle";
 
   if (state.player.inventory.length === 0) {
     return (
@@ -35,13 +34,9 @@ export function BankPanel({
       <p className="text-sm leading-6 text-muted-foreground">
         The bank never posts bids or asks. It buys at <span className="text-foreground">50% of MV</span>
         . Each unit they take of that emoji drops the cut by 5 points (floor 10%). After 60s with
-        no dumps of that item, the rate climbs back to 50%.
+        no dumps of that item, the rate climbs back to 50%. Always open — the floor when every
+        stall is closed.
       </p>
-      {!inTown ? (
-        <p className="rounded-lg bg-amber-400/10 px-3 py-2 text-sm">
-          The bank window is in 🏮 Lantern Plaza.
-        </p>
-      ) : null}
       {state.player.inventory.map((row) => {
         const item = itemById[row.itemId];
         const reserved = state.player.reservedItems[row.itemId] ?? 0;
@@ -93,7 +88,7 @@ export function BankPanel({
               <Button
                 size="sm"
                 className="h-11 md:h-7"
-                disabled={!inTown || pending || free < 1}
+                disabled={pending || free < 1}
                 onClick={() =>
                   onSell(row.itemId, Number(qty[row.itemId] ?? Math.min(free, 1)))
                 }

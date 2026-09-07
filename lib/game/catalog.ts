@@ -562,10 +562,30 @@ export function searchWeight(item: Item): number {
 
 export const ENERGY_MAX = 20;
 export const STARTING_ENERGY = 20;
+export const FORAGE_ENERGY = 4;
+export const FORAGE_STRAIN_ID = "grounds";
+export const VP_TO_WIN = 20;
+export const FOOD_ITEM_IDS = ["berries", "fish", "honey", "bread", "stew"] as const;
+export const LEGENDARY_ITEM_IDS = [
+  "coral",
+  "gem",
+  "candle",
+  "blade",
+  "jewel",
+  WIN_ITEM_ID,
+] as const;
+
+export function isFoodItem(itemId: string) {
+  return (FOOD_ITEM_IDS as readonly string[]).includes(itemId);
+}
+
+export function isLegendaryItem(itemId: string) {
+  return (LEGENDARY_ITEM_IDS as readonly string[]).includes(itemId);
+}
 
 export function searchEnergyCost(locationId: string, strain: number): number {
-  const base = locationById[locationId]?.searchEnergy ?? 0;
-  if (!base) return 0;
+  const base =
+    locationId === FORAGE_STRAIN_ID ? FORAGE_ENERGY : (locationById[locationId]?.searchEnergy ?? FORAGE_ENERGY);
   const multiplier = Math.min(SEARCH_STRAIN_CAP, 1 + SEARCH_STRAIN_STEP * Math.max(0, strain));
   return Math.max(1, Math.round(base * multiplier));
 }

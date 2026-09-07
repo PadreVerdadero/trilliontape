@@ -102,6 +102,13 @@ export type PlayerState = {
   energy: number;
   energyMax: number;
   buffs: { kind: string; charges: number; power: number; label: string }[];
+  vp: number;
+  goldFromStalls: number;
+  foodDelivered: number;
+  legendaryTurnins: number;
+  boardFills: number;
+  goldDonated: number;
+  titles: string[];
 };
 
 export type MarketPrice = {
@@ -129,6 +136,76 @@ export type BankQuote = {
   cooldownMs: number;
 };
 
+export type StallQuote = {
+  itemId: string;
+  rate: number;
+  payEach: number;
+  special: boolean;
+};
+
+export type StallOffer = {
+  itemId: string;
+  price: number;
+};
+
+export type StallView = {
+  id: string;
+  emoji: string;
+  name: string;
+  role: string;
+  blurb: string;
+  hoursLabel: string;
+  open: boolean;
+  sundayMarket: boolean;
+  nextChangeMs: number;
+  nextOpens: boolean;
+  chalkboardItemId: string;
+  tomorrowItemId: string | null;
+  buys: StallQuote[];
+  sells: StallOffer[];
+  crateReservedBy: string | null;
+  crateYours: boolean;
+  crateUsed: boolean;
+  windowKey: string;
+};
+
+export type ContractView = {
+  id: string;
+  stallId: string;
+  stallName: string;
+  stallEmoji: string;
+  title: string;
+  detail: string;
+  itemId: string;
+  quantity: number;
+  vp: number;
+  gold: number;
+  expiresAt: number;
+  remainingMs: number;
+  done: boolean;
+};
+
+export type FestivalTitle = {
+  id: string;
+  label: string;
+  username: string | null;
+};
+
+export type FestivalState = {
+  timeZone: string;
+  clockLabel: string;
+  sundayMarket: boolean;
+  vpToWin: number;
+  rumorCost: number;
+  crateCost: number;
+  donationNextCost: number;
+  forage: AreaCrowd & { biasLocationId: string | null };
+  stalls: StallView[];
+  contracts: ContractView[];
+  titles: FestivalTitle[];
+  leaders: { username: string; vp: number }[];
+};
+
 export type GameState = {
   now: number;
   player: PlayerState;
@@ -138,6 +215,7 @@ export type GameState = {
   winners: { username: string; wonAt: number }[];
   areas: AreaCrowd[];
   bank: BankQuote[];
+  festival: FestivalState;
 };
 
 export type PricePoint = {

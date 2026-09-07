@@ -1,11 +1,12 @@
 import { items, recipes, WIN_ITEM_ID } from "@/lib/game/catalog";
+import { stalls } from "@/lib/game/stalls";
 import { ItemChip } from "@/components/game/item-chip";
 
 const places = [
-  { title: "🌲 Woods", ids: ["wood", "berries", "herbs", "mushrooms"] },
-  { title: "⛰️ Ridge", ids: ["stone", "iron", "coal", "gem"] },
-  { title: "🏖️ Shore", ids: ["fish", "shell", "salt", "coral"] },
-  { title: "🌾 Fields", ids: ["wheat", "flax", "honey", "flower"] },
+  { title: "🌲 Woods lean", ids: ["wood", "berries", "herbs", "mushrooms"] },
+  { title: "⛰️ Ridge lean", ids: ["stone", "iron", "coal", "gem"] },
+  { title: "🏖️ Shore lean", ids: ["fish", "shell", "salt", "coral"] },
+  { title: "🌾 Fields lean", ids: ["wheat", "flax", "honey", "flower"] },
   {
     title: "🏮 Crafted",
     ids: ["bread", "planks", "salve", "basket", "brick", "charm", "candle", "stew", "blade", "jewel"],
@@ -21,20 +22,33 @@ export function GuidePanel() {
       <section className="space-y-2">
         <h3 className="font-heading text-foreground">How the plaza works</h3>
         <p>
-          Check in at a stop (scan a QR, or tap I&apos;m here). Search costs energy and pays out
-          at once. Crowds make the next pull cost more until that place sits quiet for 45
-          seconds. Eat food to refill. Craft and trade in Lantern Plaza. Win by crafting the
-          Celestial Relic.
+          Forage the grounds for energy. Eat food to refill. Craft in Plaza. The player market is
+          open all day. Shop owners buy at a markup only while their door is open — hours follow
+          your phone clock. The bank is the 50% floor when nobody else is around.
         </p>
         <p>
-          Every emoji has one job: eat it, use it, or craft it into something. The bank only
-          buys, at 50% of market value. The board is a real order book — crossing trades clear
-          at the ask.
+          First to 20 victory points lights the festival. Contracts, chalkboard hours, wardrobe
+          slots, board trades, and lantern donations all score. The relic is 8 points when you
+          craft it — a fat contract, not the only path.
         </p>
       </section>
       <section className="space-y-2">
-        <h3 className="font-heading text-foreground">How to win</h3>
-        <p>{relicItem?.purpose}</p>
+        <h3 className="font-heading text-foreground">Stall hours</h3>
+        <ul className="space-y-1">
+          {stalls.map((stall) => (
+            <li key={stall.id}>
+              <span className="text-foreground">
+                {stall.emoji} {stall.name}
+              </span>
+              {" · "}
+              {stall.hoursLabel} Sunday market (10am–2pm) opens everyone.
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section className="space-y-2">
+        <h3 className="font-heading text-foreground">The relic contract</h3>
+        <p>{relicItem?.purpose} Worth 8 VP.</p>
         {relic ? (
           <div className="flex flex-wrap gap-1">
             {relic.inputs.map((input) => (

@@ -14,22 +14,16 @@ export function WorkshopPanel({
   pending: boolean;
   onCraft: (outputId: string) => void;
 }) {
-  const inTown = player.locationId === "town" && player.busy.type === "idle";
   const have = Object.fromEntries(player.inventory.map((row) => [row.itemId, row.quantity]));
   const reserved = player.reservedItems;
 
   return (
     <div className="space-y-3">
       <p className="text-sm leading-6 text-muted-foreground">
-        Crafting is instant and only happens in Lantern Plaza. Bake bread when you are hungry.
-        Other side crafts (planks, salve, baskets, bricks, charms) are supplies you or other
-        travelers can use from the pack.
+        Crafting is instant. Bake bread when you are hungry. The relic is worth 8 victory points
+        when it comes off the bench. Side crafts (planks, salve, baskets, bricks, charms) are
+        supplies you can use or sell to an open stall.
       </p>
-      {!inTown ? (
-        <p className="rounded-lg bg-amber-400/10 px-3 py-2 text-sm">
-          Check in at 🏮 Lantern Plaza to use the workshop.
-        </p>
-      ) : null}
       {recipes.map((recipe) => {
         const output = itemById[recipe.outputId];
         const ready = recipe.inputs.every((input) => {
@@ -71,7 +65,7 @@ export function WorkshopPanel({
               <Button
                 size="sm"
                 className="h-11 shrink-0 md:h-7"
-                disabled={!inTown || !ready || pending}
+                disabled={!ready || pending}
                 onClick={() => onCraft(recipe.outputId)}
               >
                 Craft

@@ -3,24 +3,24 @@ import { items } from "@/lib/game/catalog";
 
 const highlights = [
   {
-    emoji: "🗺️",
-    title: "Check in where you stand",
-    body: "Scan a real-world QR to arrive at a biome. On a computer, tap I'm here to test the same check-in.",
+    emoji: "🏪",
+    title: "Stalls keep real hours",
+    body: "Mira, Ket, Han, Nim, Lark, and the night broker buy at a markup only while their door is open. Hours follow your phone clock. Sunday market opens everyone.",
   },
   {
     emoji: "⛏️",
-    title: "Search the wilds",
-    body: "A search costs energy and pays out right away. Eat berries, bread, fish, or honey to fill back up. Crowds make the next pull cost more until the place goes quiet.",
+    title: "Forage the grounds",
+    body: "One energy pull, mixed loot. Eat to refill. Optional QR codes lean the next find toward woods, ridge, shore, or fields.",
   },
   {
     emoji: "📒",
     title: "A real order book",
-    body: "Post a bid or an ask at your price. Every emoji has a job — food, a search trick, a recipe, or the relic — so the board stays busy.",
+    body: "The player market never closes. Buy cheap there, sell to a stall when they open — or post your own bid and ask.",
   },
   {
-    emoji: "🏦",
-    title: "The bank window",
-    body: "The bank never lists on the board. It only buys at 50% of MV, and dumping the same emoji makes that cut worse until the window cools.",
+    emoji: "🏆",
+    title: "Victory points",
+    body: "First to 20 VP lights the festival. Contracts, chalkboard hours, looks, donations, and the relic (8 VP) all score. Titles track the baker, the purse, and the board ghost.",
   },
 ];
 
@@ -52,14 +52,14 @@ export function Landing({ error, next }: { error?: string; next?: string }) {
               Harvest of Lanterns
             </p>
             <h1 className="font-heading max-w-xl text-4xl leading-tight text-balance sm:text-6xl">
-              Gather the emojis. Set the prices. Light the relic.
+              Catch the open stall. Light the festival.
             </h1>
             <p className="max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
-              You are a traveling crafter in a night market that never sleeps. Materials live in
-              the woods, ridge, shore, and fields. Crafted goods and the winning{" "}
-              <span className="text-foreground">🌟 Celestial Relic</span> are made in town. Other
-              players post buy and sell orders like a tiny stock exchange — or you sell straight
-              to the bank at the going average.
+              You are a traveling crafter in a night market of shop owners with real hours. Forage
+              the grounds, craft what they want, and flip goods on the player board while they
+              sleep. First to{" "}
+              <span className="text-foreground">20 victory points</span> wins — contracts, chalkboard
+              hours, or the <span className="text-foreground">🌟 Celestial Relic</span>.
             </p>
             <div className="flex flex-wrap gap-2">
               {items

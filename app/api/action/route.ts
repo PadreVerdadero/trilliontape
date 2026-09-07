@@ -2,12 +2,18 @@ import { asJson, handleError, requireUser } from "@/lib/game/api";
 import {
   bankSell,
   buyCosmetic,
+  buyFromStall,
+  buyRumor,
   cancelOrder,
+  completeContract,
   craftItem,
+  donateLanterns,
   equipCosmetic,
   getGameState,
   placeOrder,
   arriveAt,
+  rentCrate,
+  sellToStall,
   startMine,
   startSearch,
   startTravel,
@@ -15,7 +21,9 @@ import {
   consumeItem,
 } from "@/lib/game/engine";
 
-type ActionBody =
+type ActionBody = {
+  timeZone?: string;
+} & (
   | { action: "travel"; locationId: string }
   | { action: "arrive"; locationId: string }
   | { action: "search" }
@@ -27,12 +35,20 @@ type ActionBody =
   | { action: "bank"; itemId: string; quantity: number }
   | { action: "buyCosmetic"; cosmeticId: string }
   | { action: "equip"; cosmeticId: string | null; slot: string }
-  | { action: "use"; itemId: string };
+  | { action: "use"; itemId: string }
+  | { action: "stallSell"; stallId: string; itemId: string; quantity: number }
+  | { action: "stallBuy"; stallId: string; itemId: string; quantity: number }
+  | { action: "rumor"; stallId: string }
+  | { action: "crate"; stallId: string }
+  | { action: "contract"; contractId: string }
+  | { action: "donate" }
+);
 
 export async function POST(request: Request) {
   try {
     const userId = await requireUser();
     const body = (await request.json()) as ActionBody;
+    const tz = body.timeZone;
     switch (body.action) {
       case "travel":
         startTravel(userId, body.locationId);
@@ -70,10 +86,28 @@ export async function POST(request: Request) {
       case "use":
         consumeItem(userId, body.itemId);
         break;
+      case "stallSell":
+        sellToStall(userId, body.stallId, body.itemId, Number(body.quantity), tz);
+        break;
+      case "stallBuy":
+        buyFromStall(userId, body.stallId, body.itemId, Number(body.quantity), tz);
+        break;
+      case "rumor":
+        buyRumor(userId, body.stallId, tz);
+        break;
+      case "crate":
+        rentCrate(userId, body.stallId, tz);
+        break;
+      case "contract":
+        completeContract(userId, body.contractId, tz);
+        break;
+      case "donate":
+        donateLanterns(userId);
+        break;
       default:
         throw new Error("Unknown action.");
     }
-    return asJson(getGameState(userId));
+    return asJson(getGameState(userId, tz));
   } catch (error) {
     return handleError(error);
   }

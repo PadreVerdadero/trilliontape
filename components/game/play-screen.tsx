@@ -9,18 +9,18 @@ import { BankPanel } from "@/components/game/bank-panel";
 import { CharacterCard } from "@/components/game/character-card";
 import { GuidePanel } from "@/components/game/guide-panel";
 import { InventoryPanel } from "@/components/game/inventory-panel";
-import { MapPanel } from "@/components/game/map-panel";
 import { MarketPanel } from "@/components/game/market-panel";
+import { StallsPanel } from "@/components/game/stalls-panel";
 import { WardrobePanel } from "@/components/game/wardrobe-panel";
 import { WorkshopPanel } from "@/components/game/workshop-panel";
 import { useGame } from "@/hooks/use-game";
 import { locationById } from "@/lib/game/catalog";
-import { formatCoins, formatDuration } from "@/lib/game/format";
+import { formatCoins, formatDuration, formatNumber } from "@/lib/game/format";
 import type { GameState } from "@/lib/game/types";
 
 const views = [
   { id: "market", label: "Market", emoji: "📒" },
-  { id: "map", label: "Map", emoji: "🗺️" },
+  { id: "stalls", label: "Stalls", emoji: "🏪" },
   { id: "pack", label: "Pack", emoji: "🎒" },
   { id: "plaza", label: "Plaza", emoji: "🏮" },
 ] as const;
@@ -88,7 +88,10 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
     </Card>
   );
 
-  const map = (
+  const biasPlace = locationById[player.locationId];
+  const forageBias = biasPlace?.searchEnergy ? biasPlace : null;
+
+  const stalls = (
     <>
       {player.hasWon ? (
         <Card className="mb-4 bg-primary/15">
@@ -96,17 +99,26 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
             <CardTitle>The great lantern is lit</CardTitle>
           </CardHeader>
           <CardContent className="text-sm leading-6">
-            You crafted the 🌟 Celestial Relic. Keep trading, dress the part, or help the next
-            traveler with a fair ask.
+            You reached the festival score
+            {player.titles.length ? ` · ${player.titles.join(" · ")}` : ""}. Keep trading, dress
+            the part, or help the next traveler with a fair ask.
           </CardContent>
         </Card>
       ) : null}
-      <MapPanel
-        player={player}
+      <StallsPanel
+        state={state}
         pending={pending}
-        areas={state.areas ?? []}
-        onArrive={(locationId) => void run({ action: "arrive", locationId })}
-        onSearch={() => void run({ action: "search" })}
+        onForage={() => void run({ action: "search" })}
+        onSell={(stallId, sellId, quantity) =>
+          void run({ action: "stallSell", stallId, itemId: sellId, quantity })
+        }
+        onBuy={(stallId, buyId, quantity) =>
+          void run({ action: "stallBuy", stallId, itemId: buyId, quantity })
+        }
+        onRumor={(stallId) => void run({ action: "rumor", stallId })}
+        onCrate={(stallId) => void run({ action: "crate", stallId })}
+        onContract={(contractId) => void run({ action: "contract", contractId })}
+        onDonate={() => void run({ action: "donate" })}
       />
     </>
   );
@@ -195,8 +207,13 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
             <span className="rounded-full bg-emerald-400/15 px-3 py-1">
               {player.energy}/{player.energyMax} energy
             </span>
+            <span className="rounded-full bg-amber-400/15 px-3 py-1">
+              {formatNumber(player.vp ?? 0)}/{state.festival?.vpToWin ?? 20} VP
+            </span>
             <span className="rounded-full bg-card px-3 py-1 ring-1 ring-foreground/10">
-              {here?.emoji} {here?.name}
+              {forageBias
+                ? `${forageBias.emoji} ${forageBias.name} lean`
+                : `${here?.emoji ?? "🏮"} Plaza grounds`}
             </span>
             <span className="hidden truncate text-muted-foreground md:inline">
               {player.username}
@@ -254,7 +271,7 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
             <div className="hidden xl:block">{pack}</div>
           </div>
         ) : null}
-        {view === "map" ? map : null}
+        {view === "stalls" ? stalls : null}
         {view === "pack" ? pack : null}
         {view === "plaza" ? plaza : null}
       </main>

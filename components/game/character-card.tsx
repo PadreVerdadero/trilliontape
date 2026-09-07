@@ -1,5 +1,5 @@
 import { cosmeticById, defaultBodyEmoji, locationById } from "@/lib/game/catalog";
-import { formatCoins } from "@/lib/game/format";
+import { formatCoins, formatNumber } from "@/lib/game/format";
 import type { PlayerState } from "@/lib/game/types";
 
 export function CharacterCard({ player }: { player: PlayerState }) {
@@ -22,7 +22,13 @@ export function CharacterCard({ player }: { player: PlayerState }) {
       <div>
         <p className="font-heading text-xl">{player.username}</p>
         <p className="text-sm text-muted-foreground">
-          {location?.emoji} {location?.name}
+          {formatNumber(player.vp ?? 0)} VP
+          {player.titles?.length ? ` · ${player.titles.join(" · ")}` : ""}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {location?.searchEnergy
+            ? `${location.emoji} ${location.name} forage lean`
+            : `${location?.emoji ?? "🏮"} Plaza grounds`}
         </p>
       </div>
       <div className="w-full space-y-1">
@@ -52,7 +58,7 @@ export function CharacterCard({ player }: { player: PlayerState }) {
         </span>
         {player.hasWon ? (
           <span className="rounded-full bg-amber-400/20 px-3 py-1 text-amber-100">
-            🌟 Festival champion
+            🌟 Lantern lit
           </span>
         ) : null}
       </div>

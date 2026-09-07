@@ -6,6 +6,18 @@ export function formatDuration(ms: number) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+export function formatEta(ms: number) {
+  if (ms <= 0) return "now";
+  const mins = Math.max(1, Math.ceil(ms / 60_000));
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const rem = mins % 60;
+  if (hours < 48) return rem ? `${hours}h ${rem}m` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  const leftover = hours % 24;
+  return leftover ? `${days}d ${leftover}h` : `${days}d`;
+}
+
 export function formatNumber(amount: number) {
   if (!Number.isFinite(amount)) return "0";
   return Math.round(amount).toLocaleString("en-US");

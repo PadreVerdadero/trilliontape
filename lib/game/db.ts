@@ -94,9 +94,60 @@ function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_orders_book ON orders(item_id, side, price, created_at);
     CREATE INDEX IF NOT EXISTS idx_trades_item ON trades(item_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+    CREATE TABLE IF NOT EXISTS festival_contracts (
+      id TEXT PRIMARY KEY,
+      week_id TEXT NOT NULL,
+      stall_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      detail TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      vp INTEGER NOT NULL,
+      gold INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS contract_completions (
+      contract_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      completed_at INTEGER NOT NULL,
+      PRIMARY KEY (contract_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS player_rumors (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      stall_id TEXT NOT NULL,
+      for_date TEXT NOT NULL,
+      PRIMARY KEY (user_id, stall_id, for_date)
+    );
+
+    CREATE TABLE IF NOT EXISTS stall_crates (
+      stall_id TEXT NOT NULL,
+      window_key TEXT NOT NULL,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      used INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (stall_id, window_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS player_daily (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      day_key TEXT NOT NULL,
+      first_trade INTEGER NOT NULL DEFAULT 0,
+      special_sold TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY (user_id, day_key)
+    );
   `);
   ensureColumn(db, "players", "energy", `INTEGER NOT NULL DEFAULT ${ENERGY_MAX}`);
   ensureColumn(db, "players", "energy_max", `INTEGER NOT NULL DEFAULT ${ENERGY_MAX}`);
+  ensureColumn(db, "players", "vp", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "players", "gold_from_stalls", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "players", "food_delivered", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "players", "legendary_turnins", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "players", "board_fills", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "players", "gold_donated", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "players", "donate_count", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "players", "wardrobe_vp", "INTEGER NOT NULL DEFAULT 0");
 }
 
 function ensureColumn(db: Database.Database, table: string, column: string, sql: string) {

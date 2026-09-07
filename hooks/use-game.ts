@@ -6,6 +6,14 @@ import type { GameState, OrderBook } from "@/lib/game/types";
 
 type ActionBody = Record<string, unknown> & { action: string };
 
+function clientTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
 export function useGame(initialState?: GameState | null) {
   const router = useRouter();
   const [state, setState] = useState<GameState | null>(initialState ?? null);
@@ -16,7 +24,9 @@ export function useGame(initialState?: GameState | null) {
   const busy = state?.player.busy.type !== "idle";
 
   const refresh = useCallback(async () => {
-    const response = await fetch("/api/state", { cache: "no-store" });
+    const response = await fetch(`/api/state?tz=${encodeURIComponent(clientTimeZone())}`, {
+      cache: "no-store",
+    });
     if (response.status === 401) {
       router.replace("/");
       return;
@@ -53,7 +63,7 @@ export function useGame(initialState?: GameState | null) {
       const response = await fetch("/api/action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, timeZone: clientTimeZone() }),
       });
       const data = (await response.json()) as GameState & { error?: string };
       if (!response.ok) {

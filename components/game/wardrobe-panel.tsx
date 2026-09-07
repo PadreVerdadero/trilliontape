@@ -14,19 +14,14 @@ export function WardrobePanel({
   onBuy: (cosmeticId: string) => void;
   onEquip: (cosmeticId: string | null, slot: string) => void;
 }) {
-  const inTown = player.locationId === "town" && player.busy.type === "idle";
   const slots = ["hat", "outfit", "accessory"] as const;
 
   return (
     <div className="space-y-4">
       <p className="text-sm leading-6 text-muted-foreground">
-        Cosmetics do not help you mine faster. They tell the plaza you have coin, taste, or both.
+        Cosmetics do not help you forage. The first look you equip in each slot is +1 VP. They
+        tell the plaza you have coin, taste, or both.
       </p>
-      {!inTown ? (
-        <p className="rounded-lg bg-amber-400/10 px-3 py-2 text-sm">
-          The wardrobe stall is in 🏮 Lantern Plaza.
-        </p>
-      ) : null}
       {slots.map((slot) => (
         <div key={slot} className="space-y-2">
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
@@ -63,7 +58,7 @@ export function WardrobePanel({
                       <Button
                         size="sm"
                         className="h-11 shrink-0 md:h-7"
-                        disabled={!inTown || pending || player.availableGold < item.price}
+                        disabled={pending || player.availableGold < item.price}
                         onClick={() => onBuy(item.id)}
                       >
                         {formatCoins(item.price)}

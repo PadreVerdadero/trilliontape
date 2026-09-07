@@ -3,6 +3,10 @@ import {
   bankPayout,
   bankRate,
   cosmeticById,
+  FOOD_ITEM_IDS,
+  FORAGE_STRAIN_ID,
+  isFoodItem,
+  isLegendaryItem,
   itemById,
   locationById,
   materialsAt,
@@ -12,6 +16,7 @@ import {
   searchEnergyCost,
   searchWeight,
   travelSeconds,
+  VP_TO_WIN,
   WIN_ITEM_ID,
 } from "@/lib/game/catalog";
 import { formatCoins, formatNumber } from "@/lib/game/format";
@@ -24,11 +29,34 @@ import {
 } from "@/lib/game/consumables";
 import { rarityOf } from "@/lib/game/rarity";
 import { getDb } from "@/lib/game/db";
+import {
+  chalkboardItem,
+  CONTRACT_TEMPLATES,
+  contractsForWeek,
+  CRATE_COST,
+  donationCost,
+  festivalClock,
+  nextStallChange,
+  RUMOR_COST,
+  shiftDateKey,
+  stallBuyRate,
+  stallById,
+  stallOpen,
+  stalls,
+  stallSellPrice,
+  sundayMarketOpen,
+  weekId,
+  windowKey,
+  type FestivalClock,
+} from "@/lib/game/stalls";
 import type {
   AreaCrowd,
   BankQuote,
   BusyState,
+  ContractView,
   Equipped,
+  FestivalState,
+  FestivalTitle,
   GameState,
   InventoryRow,
   MarketPrice,
@@ -36,6 +64,7 @@ import type {
   OrderRow,
   PlayerState,
   PricePoint,
+  StallView,
   TradeRow,
 } from "@/lib/game/types";
 
@@ -55,6 +84,14 @@ type PlayerRow = {
   last_event: string | null;
   energy: number;
   energy_max: number;
+  vp: number;
+  gold_from_stalls: number;
+  food_delivered: number;
+  legendary_turnins: number;
+  board_fills: number;
+  gold_donated: number;
+  donate_count: number;
+  wardrobe_vp: number;
 };
 
 function nowMs() {
@@ -188,7 +225,7 @@ function busyState(player: PlayerRow): BusyState {
       endsAt: null,
       remainingMs: 0,
       label: "Ready",
-      detail: "You can travel or gather.",
+      detail: "You can forage, trade, or visit a stall.",
     };
   }
   const payload = player.busy_payload ? JSON.parse(player.busy_payload) : {};
@@ -310,24 +347,26 @@ function countSearchers(locationId: string) {
   return row.n;
 }
 
-function listAreas(): AreaCrowd[] {
-  return Object.values(locationById)
-    .filter((location) => location.searchEnergy)
-    .map((location) => {
-      const strain = readStrain(location.id);
-      const row = getDb()
-        .prepare("SELECT cools_at FROM area_strain WHERE location_id = ?")
-        .get(location.id) as { cools_at: number } | undefined;
-      const cooldownMs =
-        strain > 0 && row && row.cools_at > nowMs() ? row.cools_at - nowMs() : 0;
-      return {
-        locationId: location.id,
-        searchers: countSearchers(location.id),
-        strain,
-        cooldownMs,
-        nextSearchCost: searchEnergyCost(location.id, strain),
-      };
-    });
+function listForage(playerLocationId: string): AreaCrowd & { biasLocationId: string | null } {
+  const strain = readStrain(FORAGE_STRAIN_ID);
+  const row = getDb()
+    .prepare("SELECT cools_at FROM area_strain WHERE location_id = ?")
+    .get(FORAGE_STRAIN_ID) as { cools_at: number } | undefined;
+  const cooldownMs = strain > 0 && row && row.cools_at > nowMs() ? row.cools_at - nowMs() : 0;
+  const bias = locationById[playerLocationId]?.searchEnergy ? playerLocationId : null;
+  return {
+    locationId: FORAGE_STRAIN_ID,
+    searchers: countSearchers(FORAGE_STRAIN_ID),
+    strain,
+    cooldownMs,
+    nextSearchCost: searchEnergyCost(FORAGE_STRAIN_ID, strain),
+    biasLocationId: bias,
+  };
+}
+
+function listAreas(playerLocationId = "town"): AreaCrowd[] {
+  const forage = listForage(playerLocationId);
+  return [forage];
 }
 
 function marketPrice(itemId: string): number {
@@ -381,6 +420,13 @@ function executeFill(
   if (sellLeft <= 0) db.prepare("DELETE FROM orders WHERE id = ?").run(sell.id);
   else db.prepare("UPDATE orders SET remaining = ? WHERE id = ?").run(sellLeft, sell.id);
   recordTrade(itemId, price, quantity, buy.user_id, sell.user_id);
+  if (buy.user_id !== sell.user_id) {
+    awardFirstTradeVp(buy.user_id);
+    awardFirstTradeVp(sell.user_id);
+    getDb()
+      .prepare("UPDATE players SET board_fills = COALESCE(board_fills, 0) + 1 WHERE user_id = ?")
+      .run(sell.user_id);
+  }
 }
 
 function matchItem(itemId: string) {
@@ -423,13 +469,67 @@ function requireIdle(userId: number) {
 }
 
 function requireTown(userId: number) {
-  resolveBusy(userId);
-  const player = loadPlayerRow(userId);
-  if (player.location_id !== "town") {
-    throw new Error("Return to Lantern Plaza for the workshop, bank, and wardrobe.");
+  requireIdle(userId);
+}
+
+function utcDayKey(now = nowMs()) {
+  return new Date(now).toISOString().slice(0, 10);
+}
+
+function touchDaily(userId: number, dayKey: string) {
+  getDb()
+    .prepare(
+      `INSERT INTO player_daily (user_id, day_key, first_trade, special_sold)
+       VALUES (?, ?, 0, '')
+       ON CONFLICT(user_id, day_key) DO NOTHING`
+    )
+    .run(userId, dayKey);
+}
+
+function awardVp(userId: number, amount: number) {
+  if (amount <= 0) return;
+  const db = getDb();
+  db.prepare("UPDATE players SET vp = COALESCE(vp, 0) + ? WHERE user_id = ?").run(amount, userId);
+  const row = loadPlayerRow(userId);
+  if ((row.vp ?? 0) >= VP_TO_WIN && !row.has_won) {
+    db.prepare("UPDATE players SET has_won = 1, won_at = ? WHERE user_id = ?").run(nowMs(), userId);
   }
-  if (player.busy_type !== "idle" && player.busy_until && player.busy_until > nowMs()) {
-    throw new Error("You are still on the road.");
+}
+
+function awardFirstTradeVp(userId: number) {
+  const day = utcDayKey();
+  touchDaily(userId, day);
+  const row = getDb()
+    .prepare("SELECT first_trade FROM player_daily WHERE user_id = ? AND day_key = ?")
+    .get(userId, day) as { first_trade: number } | undefined;
+  if (!row || row.first_trade) return;
+  getDb()
+    .prepare("UPDATE player_daily SET first_trade = 1 WHERE user_id = ? AND day_key = ?")
+    .run(userId, day);
+  awardVp(userId, 1);
+}
+
+function awardWardrobeVp(userId: number, slot: string) {
+  const bit = slot === "hat" ? 1 : slot === "outfit" ? 2 : 4;
+  const player = loadPlayerRow(userId);
+  const mask = player.wardrobe_vp ?? 0;
+  if (mask & bit) return;
+  getDb().prepare("UPDATE players SET wardrobe_vp = ? WHERE user_id = ?").run(mask | bit, userId);
+  awardVp(userId, 1);
+}
+
+function markRelicContract(userId: number) {
+  const rows = getDb()
+    .prepare("SELECT id FROM festival_contracts WHERE item_id = ? AND expires_at > ?")
+    .all(WIN_ITEM_ID, nowMs()) as { id: string }[];
+  for (const row of rows) {
+    getDb()
+      .prepare(
+        `INSERT INTO contract_completions (contract_id, user_id, completed_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(contract_id, user_id) DO NOTHING`
+      )
+      .run(row.id, userId, nowMs());
   }
 }
 
@@ -574,21 +674,26 @@ export function startTravel(userId: number, locationId: string) {
     );
 }
 
+const FORAGE_BIOMES = ["woods", "ridge", "shore", "fields"] as const;
+
+function pickForageBiome(biasLocationId: string | null) {
+  if (biasLocationId && FORAGE_BIOMES.includes(biasLocationId as (typeof FORAGE_BIOMES)[number])) {
+    if (Math.random() < 0.7) return biasLocationId;
+  }
+  return FORAGE_BIOMES[Math.floor(Math.random() * FORAGE_BIOMES.length)];
+}
+
 export function startSearch(userId: number) {
   requireIdle(userId);
   const player = loadPlayerRow(userId);
-  const location = locationById[player.location_id];
-  if (!location?.searchEnergy) {
-    throw new Error("There is nothing to search here. Check in at the woods, ridge, shore, or fields.");
-  }
-  const strain = bumpStrain(location.id);
+  const strain = bumpStrain(FORAGE_STRAIN_ID);
   const calm = takeBuff(userId, "search_calm");
   const cheap = takeBuff(userId, "search_cheap");
   const yieldBuff = takeBuff(userId, "search_yield");
   const luck = takeBuff(userId, "search_luck");
   const double = takeBuff(userId, "search_double");
   const skipCommon = takeBuff(userId, "search_skip_common");
-  const cost = cheap ? 1 : searchEnergyCost(location.id, calm ? 0 : strain);
+  const cost = cheap ? 1 : searchEnergyCost(FORAGE_STRAIN_ID, calm ? 0 : strain);
   const energy = player.energy ?? 0;
   const max = player.energy_max ?? ENERGY_MAX;
   if (energy < cost) {
@@ -600,8 +705,11 @@ export function startSearch(userId: number) {
   getDb()
     .prepare("UPDATE players SET energy = ? WHERE user_id = ?")
     .run(nextEnergy, userId);
+  const bias = locationById[player.location_id]?.searchEnergy ? player.location_id : null;
+  const biome = pickForageBiome(bias);
+  const place = locationById[biome];
   const bits = grantSearchLoot(userId, {
-    locationId: location.id,
+    locationId: biome,
     extraQty: yieldBuff ? 1 : 0,
     luck: luck?.power ?? 1,
     double: Boolean(double),
@@ -614,12 +722,13 @@ export function startSearch(userId: number) {
     luck ? "lucky pull" : null,
     double ? "second find" : null,
     skipCommon ? "no commons" : null,
+    bias ? `${place?.emoji ?? ""} lean` : null,
   ].filter(Boolean);
   const crowdNote = !calm && strain > 0 ? ` Crowded — ${cost} energy.` : ` −${cost} energy.`;
   const findNote = bits.length > 0 ? ` You pull ${bits.join(" and ")}.` : " Nothing this time.";
   setEvent(
     userId,
-    `Searched ${location.emoji} ${location.name}.${crowdNote}${findNote} ${nextEnergy}/${max} left.${
+    `Searched the grounds (${place?.emoji ?? ""} ${place?.name ?? "wilds"}).${crowdNote}${findNote} ${nextEnergy}/${max} left.${
       extras.length ? ` (${extras.join(", ")})` : ""
     }`
   );
@@ -650,7 +759,12 @@ export function craftItem(userId: number, outputId: string) {
         .prepare("UPDATE players SET has_won = 1, won_at = ? WHERE user_id = ?")
         .run(nowMs(), userId);
     }
-    setEvent(userId, "The plaza lanterns flare. You crafted the 🌟 Celestial Relic. You win!");
+    awardVp(userId, 8);
+    markRelicContract(userId);
+    setEvent(
+      userId,
+      "The plaza lanterns flare. You crafted the 🌟 Celestial Relic. +8 victory points."
+    );
     return;
   }
   setEvent(userId, `Crafted ${output.emoji} ${output.name} ×${formatNumber(recipe.outputQty)}.`);
@@ -831,6 +945,7 @@ export function buyCosmetic(userId: number, cosmeticId: string) {
     .run(userId, cosmeticId);
   const slot = cosmetic.slot === "hat" ? "hat" : cosmetic.slot === "outfit" ? "outfit" : "accessory";
   getDb().prepare(`UPDATE players SET ${slot} = ? WHERE user_id = ?`).run(cosmeticId, userId);
+  awardWardrobeVp(userId, slot);
   setEvent(userId, `Bought and equipped ${cosmetic.emoji} ${cosmetic.name}.`);
 }
 
@@ -848,6 +963,7 @@ export function equipCosmetic(userId: number, cosmeticId: string | null, slot: s
     throw new Error("Unknown slot.");
   }
   getDb().prepare(`UPDATE players SET ${slot} = ? WHERE user_id = ?`).run(cosmeticId, userId);
+  if (cosmeticId) awardWardrobeVp(userId, slot);
   setEvent(userId, cosmeticId ? "Look updated." : "You tucked that piece away.");
 }
 
@@ -871,6 +987,450 @@ function mapOrder(row: {
     remaining: row.remaining,
     createdAt: row.created_at,
   };
+}
+
+function requireOpenStall(stallId: string, clock: FestivalClock) {
+  const stall = stallById[stallId];
+  if (!stall) throw new Error("That stall is not on the plaza.");
+  if (!stallOpen(stall, clock)) {
+    throw new Error(`${stall.name} is closed. Come back during ${stall.hoursLabel.toLowerCase()}`);
+  }
+  return stall;
+}
+
+function ensureContracts(clock: FestivalClock) {
+  const week = weekId(clock.dateKey);
+  const db = getDb();
+  for (const template of contractsForWeek(week)) {
+    const id = `${week}:${template.id}`;
+    const existing = db.prepare("SELECT id FROM festival_contracts WHERE id = ?").get(id);
+    if (existing) continue;
+    db.prepare(
+      `INSERT INTO festival_contracts
+        (id, week_id, stall_id, title, detail, item_id, quantity, vp, gold, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      id,
+      week,
+      template.stallId,
+      template.title,
+      template.detail,
+      template.itemId,
+      template.quantity,
+      template.vp,
+      template.gold,
+      nowMs() + template.hours * 3_600_000
+    );
+  }
+}
+
+function crateRow(stallId: string, key: string) {
+  return getDb()
+    .prepare("SELECT user_id, used FROM stall_crates WHERE stall_id = ? AND window_key = ?")
+    .get(stallId, key) as { user_id: number; used: number } | undefined;
+}
+
+function usernameOf(userId: number) {
+  const row = getDb().prepare("SELECT username FROM users WHERE id = ?").get(userId) as
+    | { username: string }
+    | undefined;
+  return row?.username ?? "Someone";
+}
+
+function applySpecialHourVp(userId: number, stallId: string) {
+  const day = utcDayKey();
+  touchDaily(userId, day);
+  const row = getDb()
+    .prepare("SELECT special_sold FROM player_daily WHERE user_id = ? AND day_key = ?")
+    .get(userId, day) as { special_sold: string } | undefined;
+  const seen = new Set((row?.special_sold ?? "").split(",").filter(Boolean));
+  if (seen.has(stallId)) return false;
+  seen.add(stallId);
+  getDb()
+    .prepare("UPDATE player_daily SET special_sold = ? WHERE user_id = ? AND day_key = ?")
+    .run([...seen].join(","), userId, day);
+  awardVp(userId, 1);
+  return true;
+}
+
+export function sellToStall(
+  userId: number,
+  stallId: string,
+  itemId: string,
+  quantity: number,
+  timeZone?: string
+) {
+  requireIdle(userId);
+  const clock = festivalClock(timeZone);
+  const stall = requireOpenStall(stallId, clock);
+  const item = itemById[itemId];
+  if (!item) throw new Error("Unknown item.");
+  if (!Number.isInteger(quantity) || quantity < 1) throw new Error("Choose a quantity.");
+  if (!stall.buyIds.includes(itemId)) {
+    throw new Error(`${stall.name} is not buying ${item.name} today.`);
+  }
+  if (availableItem(userId, itemId) < quantity) {
+    throw new Error("Not enough unbound stock.");
+  }
+  const chalk = chalkboardItem(stall.id, clock.dateKey);
+  let rate = stallBuyRate(stall, itemId, clock, chalk);
+  const key = windowKey(stall.id, clock);
+  const crate = crateRow(stall.id, key);
+  const crateBonus = crate && crate.user_id === userId && !crate.used;
+  if (crateBonus) rate += 0.1;
+  const mv = marketPrice(itemId);
+  const payEach = Math.max(1, Math.round(mv * rate));
+  const total = payEach * quantity;
+  removeItem(userId, itemId, quantity);
+  getDb()
+    .prepare(
+      `UPDATE players
+       SET gold = gold + ?,
+           gold_from_stalls = COALESCE(gold_from_stalls, 0) + ?,
+           food_delivered = COALESCE(food_delivered, 0) + ?,
+           legendary_turnins = COALESCE(legendary_turnins, 0) + ?
+       WHERE user_id = ?`
+    )
+    .run(
+      total,
+      total,
+      isFoodItem(itemId) ? quantity : 0,
+      isLegendaryItem(itemId) ? quantity : 0,
+      userId
+    );
+  if (crateBonus) {
+    getDb()
+      .prepare("UPDATE stall_crates SET used = 1 WHERE stall_id = ? AND window_key = ?")
+      .run(stall.id, key);
+  }
+  const special = itemId === chalk;
+  const specialVp = special ? applySpecialHourVp(userId, stall.id) : false;
+  setEvent(
+    userId,
+    `${stall.emoji} ${stall.name} bought ${item.emoji} ${item.name} ×${formatNumber(quantity)} for ${formatCoins(total)} (${Math.round(rate * 100)}% of MV).${
+      crateBonus ? " Crate bonus applied." : ""
+    }${specialVp ? " +1 VP for the chalkboard hour." : ""}`
+  );
+}
+
+export function buyFromStall(
+  userId: number,
+  stallId: string,
+  itemId: string,
+  quantity: number,
+  timeZone?: string
+) {
+  requireIdle(userId);
+  const clock = festivalClock(timeZone);
+  const stall = requireOpenStall(stallId, clock);
+  const item = itemById[itemId];
+  if (!item) throw new Error("Unknown item.");
+  if (!stall.sellIds.includes(itemId)) {
+    throw new Error(`${stall.name} is not selling ${item.name}.`);
+  }
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
+    throw new Error("Choose a quantity from 1 to 20.");
+  }
+  const price = stallSellPrice(itemId, marketPrice(itemId));
+  const total = price * quantity;
+  if (availableGold(userId) < total) throw new Error("Not enough free coin.");
+  getDb().prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(total, userId);
+  addItem(userId, itemId, quantity);
+  setEvent(
+    userId,
+    `Bought ${item.emoji} ${item.name} ×${formatNumber(quantity)} from ${stall.name} for ${formatCoins(total)}.`
+  );
+}
+
+export function buyRumor(userId: number, stallId: string, timeZone?: string) {
+  requireIdle(userId);
+  const stall = stallById[stallId];
+  if (!stall) throw new Error("That stall is not on the plaza.");
+  const clock = festivalClock(timeZone);
+  const tomorrow = shiftDateKey(clock.dateKey, 1);
+  const already = getDb()
+    .prepare("SELECT 1 FROM player_rumors WHERE user_id = ? AND stall_id = ? AND for_date = ?")
+    .get(userId, stallId, tomorrow);
+  if (already) throw new Error("You already paid for tomorrow's chalkboard.");
+  if (availableGold(userId) < RUMOR_COST) throw new Error("Not enough free coin for a rumor.");
+  getDb().prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(RUMOR_COST, userId);
+  getDb()
+    .prepare("INSERT INTO player_rumors (user_id, stall_id, for_date) VALUES (?, ?, ?)")
+    .run(userId, stallId, tomorrow);
+  const item = itemById[chalkboardItem(stallId, tomorrow)];
+  setEvent(
+    userId,
+    `${stall.name} leans in: tomorrow the chalkboard is ${item?.emoji ?? ""} ${item?.name ?? "something odd"}.`
+  );
+}
+
+export function rentCrate(userId: number, stallId: string, timeZone?: string) {
+  requireIdle(userId);
+  const stall = stallById[stallId];
+  if (!stall) throw new Error("That stall is not on the plaza.");
+  const clock = festivalClock(timeZone);
+  const key = windowKey(stallId, clock);
+  const existing = crateRow(stallId, key);
+  if (existing) {
+    throw new Error(
+      existing.user_id === userId
+        ? "You already rented that crate."
+        : `${usernameOf(existing.user_id)} already reserved this window.`
+    );
+  }
+  if (availableGold(userId) < CRATE_COST) throw new Error("Not enough free coin to rent a crate.");
+  getDb().prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(CRATE_COST, userId);
+  getDb()
+    .prepare("INSERT INTO stall_crates (stall_id, window_key, user_id, used) VALUES (?, ?, ?, 0)")
+    .run(stallId, key, userId);
+  setEvent(
+    userId,
+    `You rented a crate at ${stall.name}'s next window. Your stack sells with a 10% bump.`
+  );
+}
+
+function contractNeed(itemId: string, userId: number) {
+  if (itemId === "*food") {
+    return FOOD_ITEM_IDS.reduce((sum, id) => sum + availableItem(userId, id), 0);
+  }
+  return availableItem(userId, itemId);
+}
+
+function takeContractItems(userId: number, itemId: string, quantity: number) {
+  if (itemId !== "*food") {
+    removeItem(userId, itemId, quantity);
+    return;
+  }
+  let left = quantity;
+  for (const foodId of FOOD_ITEM_IDS) {
+    if (left <= 0) break;
+    const have = availableItem(userId, foodId);
+    const take = Math.min(have, left);
+    if (take > 0) {
+      removeItem(userId, foodId, take);
+      left -= take;
+    }
+  }
+  if (left > 0) throw new Error("Not enough food for that contract.");
+}
+
+export function completeContract(userId: number, contractId: string, timeZone?: string) {
+  requireIdle(userId);
+  const clock = festivalClock(timeZone);
+  const row = getDb()
+    .prepare(
+      `SELECT id, stall_id, title, item_id, quantity, vp, gold, expires_at
+       FROM festival_contracts WHERE id = ?`
+    )
+    .get(contractId) as
+    | {
+        id: string;
+        stall_id: string;
+        title: string;
+        item_id: string;
+        quantity: number;
+        vp: number;
+        gold: number;
+        expires_at: number;
+      }
+    | undefined;
+  if (!row) throw new Error("That contract is gone.");
+  if (row.expires_at <= nowMs()) throw new Error("That contract expired.");
+  const done = getDb()
+    .prepare("SELECT 1 FROM contract_completions WHERE contract_id = ? AND user_id = ?")
+    .get(contractId, userId);
+  if (done) throw new Error("You already finished that job.");
+  if (row.item_id === WIN_ITEM_ID) {
+    throw new Error("Craft the relic at the workshop. The lanterns score it when it is made.");
+  }
+  const stall = requireOpenStall(row.stall_id, clock);
+  if (contractNeed(row.item_id, userId) < row.quantity) {
+    throw new Error("You do not have enough for that job yet.");
+  }
+  takeContractItems(userId, row.item_id, row.quantity);
+  if (row.gold > 0) {
+    getDb()
+      .prepare("UPDATE players SET gold = gold + ?, gold_from_stalls = COALESCE(gold_from_stalls, 0) + ? WHERE user_id = ?")
+      .run(row.gold, row.gold, userId);
+  }
+  if (isFoodItem(row.item_id) || row.item_id === "*food") {
+    getDb()
+      .prepare("UPDATE players SET food_delivered = COALESCE(food_delivered, 0) + ? WHERE user_id = ?")
+      .run(row.quantity, userId);
+  }
+  if (isLegendaryItem(row.item_id)) {
+    getDb()
+      .prepare("UPDATE players SET legendary_turnins = COALESCE(legendary_turnins, 0) + ? WHERE user_id = ?")
+      .run(row.quantity, userId);
+  }
+  getDb()
+    .prepare("INSERT INTO contract_completions (contract_id, user_id, completed_at) VALUES (?, ?, ?)")
+    .run(contractId, userId, nowMs());
+  awardVp(userId, row.vp);
+  setEvent(
+    userId,
+    `${stall.emoji} ${stall.name} stamps "${row.title}". +${row.vp} VP${
+      row.gold > 0 ? ` and ${formatCoins(row.gold)}` : ""
+    }.`
+  );
+}
+
+export function donateLanterns(userId: number) {
+  requireIdle(userId);
+  const player = loadPlayerRow(userId);
+  const cost = donationCost(player.donate_count ?? 0);
+  if (availableGold(userId) < cost) {
+    throw new Error(`The festival desk wants ${formatCoins(cost)} for the next lantern.`);
+  }
+  getDb()
+    .prepare(
+      `UPDATE players
+       SET gold = gold - ?, gold_donated = COALESCE(gold_donated, 0) + ?, donate_count = COALESCE(donate_count, 0) + 1
+       WHERE user_id = ?`
+    )
+    .run(cost, cost, userId);
+  awardVp(userId, 1);
+  setEvent(userId, `You sponsor a plaza lantern for ${formatCoins(cost)}. +1 VP.`);
+}
+
+function listContracts(userId: number, clock: FestivalClock): ContractView[] {
+  ensureContracts(clock);
+  const rows = getDb()
+    .prepare(
+      `SELECT id, stall_id, title, detail, item_id, quantity, vp, gold, expires_at
+       FROM festival_contracts
+       WHERE expires_at > ?
+       ORDER BY vp DESC, expires_at ASC`
+    )
+    .all(nowMs()) as {
+    id: string;
+    stall_id: string;
+    title: string;
+    detail: string;
+    item_id: string;
+    quantity: number;
+    vp: number;
+    gold: number;
+    expires_at: number;
+  }[];
+  const doneIds = new Set(
+    (
+      getDb()
+        .prepare("SELECT contract_id FROM contract_completions WHERE user_id = ?")
+        .all(userId) as { contract_id: string }[]
+    ).map((row) => row.contract_id)
+  );
+  return rows.map((row) => {
+    const stall = stallById[row.stall_id];
+    return {
+      id: row.id,
+      stallId: row.stall_id,
+      stallName: stall?.name ?? row.stall_id,
+      stallEmoji: stall?.emoji ?? "🏮",
+      title: row.title,
+      detail: row.detail,
+      itemId: row.item_id,
+      quantity: row.quantity,
+      vp: row.vp,
+      gold: row.gold,
+      expiresAt: row.expires_at,
+      remainingMs: Math.max(0, row.expires_at - nowMs()),
+      done: doneIds.has(row.id),
+    };
+  });
+}
+
+function listStallViews(userId: number, clock: FestivalClock, prices: MarketPrice[]): StallView[] {
+  const rumors = new Set(
+    (
+      getDb()
+        .prepare("SELECT stall_id FROM player_rumors WHERE user_id = ? AND for_date = ?")
+        .all(userId, shiftDateKey(clock.dateKey, 1)) as { stall_id: string }[]
+    ).map((row) => row.stall_id)
+  );
+  return stalls.map((stall) => {
+    const open = stallOpen(stall, clock);
+    const change = nextStallChange(stall, clock);
+    const chalk = chalkboardItem(stall.id, clock.dateKey);
+    const tomorrow = chalkboardItem(stall.id, shiftDateKey(clock.dateKey, 1));
+    const key = windowKey(stall.id, clock);
+    const crate = crateRow(stall.id, key);
+    const mvOf = (itemId: string) =>
+      prices.find((row) => row.itemId === itemId)?.vwap ?? itemById[itemId]?.basePrice ?? 1;
+    return {
+      id: stall.id,
+      emoji: stall.emoji,
+      name: stall.name,
+      role: stall.role,
+      blurb: stall.blurb,
+      hoursLabel: stall.hoursLabel,
+      open,
+      sundayMarket: sundayMarketOpen(clock) && open,
+      nextChangeMs: Math.max(0, change.at - clock.now),
+      nextOpens: change.opens,
+      chalkboardItemId: chalk,
+      tomorrowItemId: rumors.has(stall.id) ? tomorrow : null,
+      buys: stall.buyIds.map((itemId) => {
+        const rate = stallBuyRate(stall, itemId, clock, chalk);
+        const mv = mvOf(itemId);
+        return {
+          itemId,
+          rate,
+          payEach: Math.max(1, Math.round(mv * rate)),
+          special: itemId === chalk || rate > stall.baseBuyRate + 0.001,
+        };
+      }),
+      sells: stall.sellIds.map((itemId) => ({
+        itemId,
+        price: stallSellPrice(itemId, mvOf(itemId)),
+      })),
+      crateReservedBy: crate ? usernameOf(crate.user_id) : null,
+      crateYours: crate?.user_id === userId,
+      crateUsed: Boolean(crate?.used),
+      windowKey: key,
+    };
+  });
+}
+
+function listTitles(): FestivalTitle[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT u.username, p.vp, p.gold_from_stalls, p.gold_donated, p.food_delivered,
+              p.legendary_turnins, p.board_fills
+       FROM players p JOIN users u ON u.id = p.user_id`
+    )
+    .all() as {
+    username: string;
+    vp: number;
+    gold_from_stalls: number;
+    gold_donated: number;
+    food_delivered: number;
+    legendary_turnins: number;
+    board_fills: number;
+  }[];
+  const pick = (score: (row: (typeof rows)[number]) => number) => {
+    let best: (typeof rows)[number] | null = null;
+    for (const row of rows) {
+      const value = score(row) || 0;
+      if (!best || value > score(best)) best = row;
+    }
+    return best && score(best) > 0 ? best.username : null;
+  };
+  return [
+    { id: "champion", label: "Champion", username: pick((row) => row.vp ?? 0) },
+    {
+      id: "purse",
+      label: "Purse",
+      username: pick((row) => (row.gold_from_stalls ?? 0) + (row.gold_donated ?? 0)),
+    },
+    { id: "baker", label: "Baker’s friend", username: pick((row) => row.food_delivered ?? 0) },
+    { id: "broker", label: "Night broker", username: pick((row) => row.legendary_turnins ?? 0) },
+    { id: "ghost", label: "Board ghost", username: pick((row) => row.board_fills ?? 0) },
+  ];
+}
+
+function playerTitles(username: string, titles: FestivalTitle[]) {
+  return titles.filter((title) => title.username === username).map((title) => title.label);
 }
 
 export function getOrderBook(itemId: string): OrderBook {
@@ -965,8 +1525,9 @@ function priceSheet(): MarketPrice[] {
   });
 }
 
-export function getGameState(userId: number): GameState {
+export function getGameState(userId: number, timeZone?: string): GameState {
   resolveBusy(userId);
+  const clock = festivalClock(timeZone);
   const player = loadPlayerRow(userId);
   const inv = inventoryMap(userId);
   const reserved = reservedItems(userId);
@@ -999,6 +1560,13 @@ export function getGameState(userId: number): GameState {
     energy: player.energy ?? ENERGY_MAX,
     energyMax: player.energy_max ?? ENERGY_MAX,
     buffs: listBuffs(userId),
+    vp: player.vp ?? 0,
+    goldFromStalls: player.gold_from_stalls ?? 0,
+    foodDelivered: player.food_delivered ?? 0,
+    legendaryTurnins: player.legendary_turnins ?? 0,
+    boardFills: player.board_fills ?? 0,
+    goldDonated: player.gold_donated ?? 0,
+    titles: [],
   };
 
   const myOrders = (
@@ -1062,14 +1630,42 @@ export function getGameState(userId: number): GameState {
     )
     .all() as { username: string; wonAt: number }[];
 
+  const prices = priceSheet();
+  const titles = listTitles();
+  playerState.titles = playerTitles(player.username, titles);
+  const festival: FestivalState = {
+    timeZone: clock.timeZone,
+    clockLabel: clock.label,
+    sundayMarket: sundayMarketOpen(clock),
+    vpToWin: VP_TO_WIN,
+    rumorCost: RUMOR_COST,
+    crateCost: CRATE_COST,
+    donationNextCost: donationCost(player.donate_count ?? 0),
+    forage: listForage(player.location_id),
+    stalls: listStallViews(userId, clock, prices),
+    contracts: listContracts(userId, clock),
+    titles,
+    leaders: (
+      getDb()
+        .prepare(
+          `SELECT u.username, COALESCE(p.vp, 0) AS vp
+           FROM players p JOIN users u ON u.id = p.user_id
+           ORDER BY p.vp DESC, p.won_at ASC, u.username ASC
+           LIMIT 8`
+        )
+        .all() as { username: string; vp: number }[]
+    ).filter((row) => row.vp > 0),
+  };
+
   return {
     now: nowMs(),
     player: playerState,
-    prices: priceSheet(),
+    prices,
     myOrders,
     recentTrades,
     winners,
-    areas: listAreas(),
+    areas: listAreas(player.location_id),
     bank: listBankQuotes(),
+    festival,
   };
 }

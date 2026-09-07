@@ -1,0 +1,364 @@
+import { itemById } from "@/lib/game/catalog";
+
+export const RUMOR_COST = 15;
+export const CRATE_COST = 25;
+export const STALL_SELL_MARKUP = 1.1;
+
+export type FestivalClock = {
+  timeZone: string;
+  now: number;
+  weekday: number;
+  hour: number;
+  minute: number;
+  dateKey: string;
+  label: string;
+};
+
+export type HourWindow = {
+  days: number[];
+  startHour: number;
+  endHour: number;
+};
+
+export type StallDef = {
+  id: string;
+  emoji: string;
+  name: string;
+  role: string;
+  blurb: string;
+  hoursLabel: string;
+  windows: HourWindow[];
+  buyIds: string[];
+  sellIds: string[];
+  baseBuyRate: number;
+  chalkRate: number;
+};
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+export const stalls: StallDef[] = [
+  {
+    id: "mira",
+    emoji: "🍞",
+    name: "Mira",
+    role: "Baker",
+    blurb: "Buys wheat and honey. Sells bread. Wheat pays extra before breakfast on weekends.",
+    hoursLabel: "Every morning 7–10. Weekends until noon.",
+    windows: [
+      { days: [1, 2, 3, 4, 5], startHour: 7, endHour: 10 },
+      { days: [0, 6], startHour: 7, endHour: 12 },
+    ],
+    buyIds: ["wheat", "honey"],
+    sellIds: ["bread"],
+    baseBuyRate: 0.8,
+    chalkRate: 1.3,
+  },
+  {
+    id: "ket",
+    emoji: "⚒️",
+    name: "Old Ket",
+    role: "Smith",
+    blurb: "Buys iron, coal, and stone. Sells bricks. Coal pays better on forge weekdays.",
+    hoursLabel: "Weekdays 1–5pm.",
+    windows: [{ days: [1, 2, 3, 4, 5], startHour: 13, endHour: 17 }],
+    buyIds: ["iron", "coal", "stone"],
+    sellIds: ["brick"],
+    baseBuyRate: 0.8,
+    chalkRate: 1.3,
+  },
+  {
+    id: "han",
+    emoji: "🐟",
+    name: "Tide Han",
+    role: "Fishmonger",
+    blurb: "Buys fish, salt, and shells. Coral only when the chalkboard says so — then he overpays.",
+    hoursLabel: "Dawn 5–8 daily. Saturday until noon.",
+    windows: [
+      { days: [0, 1, 2, 3, 4, 5], startHour: 5, endHour: 8 },
+      { days: [6], startHour: 5, endHour: 12 },
+    ],
+    buyIds: ["fish", "salt", "shell", "coral"],
+    sellIds: [],
+    baseBuyRate: 0.8,
+    chalkRate: 1.6,
+  },
+  {
+    id: "nim",
+    emoji: "🌿",
+    name: "Nim",
+    role: "Herbalist",
+    blurb: "Buys herbs, mushrooms, and berries. Sells salve when the fever story is running.",
+    hoursLabel: "Mon, Wed, Fri 5–9pm.",
+    windows: [{ days: [1, 3, 5], startHour: 17, endHour: 21 }],
+    buyIds: ["herbs", "mushrooms", "berries"],
+    sellIds: ["salve"],
+    baseBuyRate: 0.8,
+    chalkRate: 1.3,
+  },
+  {
+    id: "lark",
+    emoji: "🌸",
+    name: "Lark",
+    role: "Florist",
+    blurb: "Buys flowers and flax. Sells charms for the evening lanterns.",
+    hoursLabel: "Festival evenings 6–11pm, every night this week.",
+    windows: [{ days: [0, 1, 2, 3, 4, 5, 6], startHour: 18, endHour: 23 }],
+    buyIds: ["flower", "flax"],
+    sellIds: ["charm"],
+    baseBuyRate: 0.8,
+    chalkRate: 1.3,
+  },
+  {
+    id: "broker",
+    emoji: "🌙",
+    name: "The Night Broker",
+    role: "Night desk",
+    blurb: "Friday after dark. Buys gems, coral, blades, and jewels. Thin book, fat prices.",
+    hoursLabel: "Friday 6–9pm.",
+    windows: [{ days: [5], startHour: 18, endHour: 21 }],
+    buyIds: ["gem", "coral", "blade", "jewel"],
+    sellIds: [],
+    baseBuyRate: 1.4,
+    chalkRate: 1.8,
+  },
+];
+
+export const stallById = Object.fromEntries(stalls.map((stall) => [stall.id, stall]));
+
+export function safeTimeZone(timeZone: string | null | undefined) {
+  const tz = String(timeZone ?? "UTC").trim() || "UTC";
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: tz }).format(new Date());
+    return tz;
+  } catch {
+    return "UTC";
+  }
+}
+
+export function festivalClock(timeZone: string | null | undefined, now = Date.now()): FestivalClock {
+  const tz = safeTimeZone(timeZone);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(now));
+  const read = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  const weekdayName = read("weekday");
+  const weekday = Math.max(0, WEEKDAYS.indexOf(weekdayName as (typeof WEEKDAYS)[number]));
+  const hour = Number(read("hour"));
+  const minute = Number(read("minute"));
+  const dateKey = `${read("year")}-${read("month")}-${read("day")}`;
+  const label = `${weekdayName} ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} (${tz})`;
+  return { timeZone: tz, now, weekday, hour, minute, dateKey, label };
+}
+
+export function shiftDateKey(dateKey: string, days: number) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const utc = Date.UTC(year, month - 1, day + days);
+  const next = new Date(utc);
+  const y = next.getUTCFullYear();
+  const m = String(next.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(next.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+export function weekId(dateKey: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  const shift = new Date(Date.UTC(year, 0, 1));
+  const diff = Math.floor((utc.getTime() - shift.getTime()) / 86_400_000);
+  return `${year}-W${Math.floor(diff / 7) + 1}`;
+}
+
+function inWindow(window: HourWindow, weekday: number, hour: number) {
+  return window.days.includes(weekday) && hour >= window.startHour && hour < window.endHour;
+}
+
+export function sundayMarketOpen(clock: FestivalClock) {
+  return clock.weekday === 0 && clock.hour >= 10 && clock.hour < 14;
+}
+
+export function stallOpen(stall: StallDef, clock: FestivalClock) {
+  if (sundayMarketOpen(clock)) return true;
+  return stall.windows.some((window) => inWindow(window, clock.weekday, clock.hour));
+}
+
+function hashString(value: string) {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash);
+}
+
+export function chalkboardItem(stallId: string, dateKey: string) {
+  const stall = stallById[stallId];
+  if (!stall || stall.buyIds.length === 0) return "";
+  return stall.buyIds[hashString(`${dateKey}:${stallId}`) % stall.buyIds.length];
+}
+
+export function stallBuyRate(stall: StallDef, itemId: string, clock: FestivalClock, chalkId: string) {
+  if (!stall.buyIds.includes(itemId)) return 0;
+  let rate = stall.baseBuyRate;
+  if (itemId === chalkId) rate = Math.max(rate, stall.chalkRate);
+  if (
+    stall.id === "mira" &&
+    itemId === "wheat" &&
+    (clock.weekday === 0 || clock.weekday === 6) &&
+    clock.hour < 10
+  ) {
+    rate = Math.max(rate, 1.5);
+  }
+  if (stall.id === "ket" && itemId === "coal" && clock.weekday >= 1 && clock.weekday <= 5) {
+    rate = Math.max(rate, 1.2);
+  }
+  return rate;
+}
+
+export function stallSellPrice(itemId: string, marketValue: number) {
+  const base = itemById[itemId]?.basePrice ?? marketValue;
+  return Math.max(1, Math.round(Math.max(marketValue, base) * STALL_SELL_MARKUP));
+}
+
+function clockAtHour(timeZone: string, now: number, addHours: number): FestivalClock {
+  return festivalClock(timeZone, now + addHours * 3_600_000);
+}
+
+export function nextStallChange(stall: StallDef, clock: FestivalClock) {
+  const openNow = stallOpen(stall, clock);
+  for (let hour = 0; hour <= 24 * 8; hour += 1) {
+    const probe = clockAtHour(clock.timeZone, clock.now, hour);
+    if (stallOpen(stall, probe) !== openNow) {
+      const at = clock.now + hour * 3_600_000 - clock.minute * 60_000;
+      return {
+        at: Math.max(clock.now, at),
+        opens: !openNow,
+      };
+    }
+  }
+  return { at: clock.now + 86_400_000, opens: !openNow };
+}
+
+export function windowKey(stallId: string, clock: FestivalClock) {
+  const stall = stallById[stallId];
+  if (!stall) return `${clock.dateKey}:${stallId}:none`;
+  if (stallOpen(stall, clock)) {
+    if (sundayMarketOpen(clock)) return `${clock.dateKey}:${stallId}:sunday`;
+    const current = stall.windows.find((window) => inWindow(window, clock.weekday, clock.hour));
+    return `${clock.dateKey}:${stallId}:${current?.startHour ?? clock.hour}`;
+  }
+  const next = nextStallChange(stall, clock);
+  const nextClock = festivalClock(clock.timeZone, next.at + 60_000);
+  if (sundayMarketOpen(nextClock)) return `${nextClock.dateKey}:${stallId}:sunday`;
+  const current = stall.windows.find((window) => inWindow(window, nextClock.weekday, nextClock.hour));
+  return `${nextClock.dateKey}:${stallId}:${current?.startHour ?? nextClock.hour}`;
+}
+
+export const CONTRACT_TEMPLATES = [
+  {
+    id: "bread-run",
+    stallId: "mira",
+    itemId: "bread",
+    quantity: 6,
+    vp: 2,
+    gold: 40,
+    hours: 48,
+    title: "Breakfast rush",
+    detail: "Mira needs six loaves before the morning window closes for good.",
+  },
+  {
+    id: "blade-order",
+    stallId: "ket",
+    itemId: "blade",
+    quantity: 1,
+    vp: 4,
+    gold: 80,
+    hours: 72,
+    title: "Forge commission",
+    detail: "Old Ket promised a blade by Thursday. Bring the finished steel.",
+  },
+  {
+    id: "sick-week",
+    stallId: "nim",
+    itemId: "salve",
+    quantity: 3,
+    vp: 3,
+    gold: 50,
+    hours: 48,
+    title: "Fever going around",
+    detail: "Nim will take three finished salves while the story lasts.",
+  },
+  {
+    id: "night-jewel",
+    stallId: "broker",
+    itemId: "jewel",
+    quantity: 1,
+    vp: 4,
+    gold: 90,
+    hours: 72,
+    title: "Friday case",
+    detail: "The night broker wants a jewel on the desk.",
+  },
+  {
+    id: "feed-night",
+    stallId: "mira",
+    itemId: "*food",
+    quantity: 10,
+    vp: 2,
+    gold: 35,
+    hours: 48,
+    title: "Feed the night market",
+    detail: "Any mix of berries, fish, honey, bread, or stew — ten bites total.",
+  },
+  {
+    id: "han-fish",
+    stallId: "han",
+    itemId: "fish",
+    quantity: 8,
+    vp: 2,
+    gold: 40,
+    hours: 72,
+    title: "Standing: fish for the tide",
+    detail: "Han’s standing order. Eight fish before the slip expires.",
+  },
+  {
+    id: "lark-bloom",
+    stallId: "lark",
+    itemId: "flower",
+    quantity: 4,
+    vp: 1,
+    gold: 20,
+    hours: 24,
+    title: "Lantern garlands",
+    detail: "Lark is short four flowers for the evening strings.",
+  },
+  {
+    id: "relic",
+    stallId: "broker",
+    itemId: "celestial-relic",
+    quantity: 1,
+    vp: 8,
+    gold: 0,
+    hours: 168,
+    title: "Light the relic",
+    detail: "Craft the Celestial Relic. Eight points, and the lanterns remember you.",
+  },
+] as const;
+
+export function contractsForWeek(week: string) {
+  const rotating = CONTRACT_TEMPLATES.filter((row) => row.id !== "relic");
+  const offset = hashString(week) % rotating.length;
+  const picked = Array.from({ length: 5 }, (_, index) => rotating[(offset + index) % rotating.length]);
+  const relic = CONTRACT_TEMPLATES.find((row) => row.id === "relic")!;
+  return [relic, ...picked];
+}
+
+export function donationCost(donateCount: number) {
+  return 50 * 2 ** Math.max(0, donateCount);
+}
