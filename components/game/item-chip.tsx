@@ -24,7 +24,7 @@ export function ItemChip({
         muted && "opacity-60",
         className
       )}
-      title={rarityLabel[rarity]}
+      title={`${item.purpose} · ${rarityLabel[rarity]}`}
     >
       <span aria-hidden className="text-sm">
         {item.emoji}

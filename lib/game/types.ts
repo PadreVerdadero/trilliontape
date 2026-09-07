@@ -10,6 +10,7 @@ export type Item = {
   name: string;
   kind: ItemKind;
   description: string;
+  purpose: string;
   basePrice: number;
   mine?: {
     locationId: string;

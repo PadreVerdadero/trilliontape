@@ -1,45 +1,76 @@
 import { items, recipes, WIN_ITEM_ID } from "@/lib/game/catalog";
 import { ItemChip } from "@/components/game/item-chip";
 
+const places = [
+  { title: "🌲 Woods", ids: ["wood", "berries", "herbs", "mushrooms"] },
+  { title: "⛰️ Ridge", ids: ["stone", "iron", "coal", "gem"] },
+  { title: "🏖️ Shore", ids: ["fish", "shell", "salt", "coral"] },
+  { title: "🌾 Fields", ids: ["wheat", "flax", "honey", "flower"] },
+  {
+    title: "🏮 Crafted",
+    ids: ["bread", "planks", "salve", "basket", "brick", "charm", "candle", "stew", "blade", "jewel"],
+  },
+] as const;
+
 export function GuidePanel() {
   const relic = recipes.find((recipe) => recipe.outputId === WIN_ITEM_ID);
+  const relicItem = items.find((item) => item.id === WIN_ITEM_ID);
 
   return (
     <div className="space-y-5 text-sm leading-6 text-muted-foreground">
       <section className="space-y-2">
-        <h3 className="font-heading text-foreground">Why this is fun</h3>
+        <h3 className="font-heading text-foreground">How the plaza works</h3>
         <p>
-          You are not clicking a win button. You are choosing a life: ridge miner, shore diver,
-          field beekeeper, or plaza trader. Search an area and you pull a random find — gems and
-          coral are just unlucky (or lucky). Each search costs energy and pays out at once. If
-          several people comb the same biome, the next pull costs more until that place sits
-          quiet for 45 seconds.
+          Check in at a stop (scan a QR, or tap I&apos;m here). Search costs energy and pays out
+          at once. Crowds make the next pull cost more until that place sits quiet for 45
+          seconds. Eat food to refill. Craft and trade in Lantern Plaza. Win by crafting the
+          Celestial Relic.
         </p>
         <p>
-          Arrival is a check-in, not a walk timer. In the real world, print the codes from
-          Check-in codes and tape them at each stop. Scanning one (while signed in) puts you
-          there. At a computer, tap I&apos;m here on the map — same check-in, no walk.
-        </p>
-        <p>
-          Side goods are supplies, not trash. Berries, bread, fish, and honey restore energy.
-          Planks, salve, and brick ignore a crowded (costlier) node. Mushrooms double a find.
-          Flowers, shells, and charms tilt luck toward rares. Baskets add +1 yield. Relic
-          hunters buy this stuff so they can race; foragers sell it.
+          Every emoji has one job: eat it, use it, or craft it into something. The bank only
+          buys, at 50% of market value. The board is a real order book — crossing trades clear
+          at the ask.
         </p>
       </section>
       <section className="space-y-2">
         <h3 className="font-heading text-foreground">How to win</h3>
-        <p>
-          Craft the 🌟 Celestial Relic in Lantern Plaza. It wants a blade, a jewel, a candle, and
-          a stew — which means iron country, a long gem, coral, honey, flax, fish, herbs, and
-          salt… or someone else&apos;s listings.
-        </p>
+        <p>{relicItem?.purpose}</p>
         {relic ? (
           <div className="flex flex-wrap gap-1">
             {relic.inputs.map((input) => (
               <ItemChip key={input.itemId} itemId={input.itemId} qty={input.qty} />
             ))}
           </div>
+        ) : null}
+      </section>
+      <section className="space-y-3">
+        <h3 className="font-heading text-foreground">What each item does</h3>
+        {places.map((place) => (
+          <div key={place.title} className="space-y-1.5">
+            <p className="text-xs font-medium tracking-wide text-foreground uppercase">
+              {place.title}
+            </p>
+            <ul className="space-y-1">
+              {place.ids.map((id) => {
+                const item = items.find((entry) => entry.id === id);
+                if (!item) return null;
+                return (
+                  <li key={id} className="flex gap-2 text-xs leading-5">
+                    <span className="w-5 shrink-0 text-sm">{item.emoji}</span>
+                    <span>
+                      <span className="text-foreground">{item.name}.</span> {item.purpose}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+        {relicItem ? (
+          <p className="text-xs leading-5">
+            <span className="text-sm">{relicItem.emoji}</span>{" "}
+            <span className="text-foreground">{relicItem.name}.</span> {relicItem.purpose}
+          </p>
         ) : null}
       </section>
       <section className="space-y-2">
@@ -49,28 +80,8 @@ export function GuidePanel() {
           <span className="text-emerald-300">green Uncommon</span>,{" "}
           <span className="text-sky-300">blue Rare</span>,{" "}
           <span className="text-violet-300">purple Unique</span>,{" "}
-          <span className="text-red-400">red Legendary</span>. Gems and jewels are the
-          long-shot pulls; wheat and wood are everyday.
+          <span className="text-red-400">red Legendary</span>.
         </p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-heading text-foreground">The catalog</h3>
-        <p>
-          {items.filter((item) => item.kind === "material").length} gatherable materials,{" "}
-          {items.filter((item) => item.kind === "good").length} crafted goods, and 1 relic. Side
-          crafts (bread, planks, salve, baskets, bricks, charms) exist so the board has volume
-          that is not the relic race.
-        </p>
-      </section>
-      <section className="space-y-2">
-        <h3 className="font-heading text-foreground">Ideas worth growing into</h3>
-        <ul className="list-disc space-y-1 pl-5">
-          <li>A second win path: first to 1,000🪙 without the relic, for pure merchants.</li>
-          <li>Night-only nodes (owls, moon salt) so log-in time of day matters.</li>
-          <li>Player stallfronts — your cosmetics become the shop sign.</li>
-          <li>Caravan contracts: lock a travel timer to deliver someone else&apos;s crate.</li>
-          <li>Seasonal festival skins that retire when the lanterns change.</li>
-        </ul>
       </section>
     </div>
   );

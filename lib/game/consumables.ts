@@ -6,7 +6,9 @@ export type BuffKind =
   | "search_yield"
   | "search_luck"
   | "search_calm"
-  | "search_double";
+  | "search_double"
+  | "search_skip_common"
+  | "search_cheap";
 
 export type Consumable = {
   itemId: string;
@@ -15,6 +17,7 @@ export type Consumable = {
   power: number;
   verb: string;
   blurb: string;
+  energy?: number;
 };
 
 export type Food = {
@@ -29,25 +32,31 @@ export const foods: Food[] = [
     itemId: "berries",
     energy: 4,
     verb: "Eat",
-    blurb: "A handful. Enough energy for one quiet search.",
+    blurb: "A handful. +4 energy — one quiet search.",
   },
   {
     itemId: "bread",
     energy: 10,
     verb: "Eat",
-    blurb: "A plaza loaf. Two or three searches, depending on the crowd.",
+    blurb: "A plaza loaf. +10 energy.",
   },
   {
     itemId: "fish",
     energy: 6,
     verb: "Eat",
-    blurb: "Raw shore snack. Better in stew, but it fills you.",
+    blurb: "Raw shore snack. +6 energy, or save it for stew.",
   },
   {
     itemId: "honey",
     energy: 8,
     verb: "Eat",
-    blurb: "A spoon of gold. Fast energy, or save it for a candle.",
+    blurb: "A spoon of gold. +8 energy, or save it for a candle.",
+  },
+  {
+    itemId: "stew",
+    energy: 20,
+    verb: "Eat",
+    blurb: "A full pot. Refills all 20 energy. Then it cannot go on the relic.",
   },
 ];
 
@@ -58,7 +67,7 @@ export const consumables: Consumable[] = [
     charges: 2,
     power: 1,
     verb: "Lay",
-    blurb: "Boardwalk through two crowded searches. You still add strain for everyone else.",
+    blurb: "Boardwalk: the next 2 searches ignore crowd cost.",
   },
   {
     itemId: "mushrooms",
@@ -78,11 +87,11 @@ export const consumables: Consumable[] = [
   },
   {
     itemId: "shell",
-    kind: "search_luck",
+    kind: "search_skip_common",
     charges: 1,
-    power: 2,
+    power: 1,
     verb: "Listen",
-    blurb: "Next search: Rare and higher show up more often.",
+    blurb: "Next search skips Commons — only Uncommon and rarer.",
   },
   {
     itemId: "charm",
@@ -90,23 +99,24 @@ export const consumables: Consumable[] = [
     charges: 1,
     power: 3,
     verb: "Wear",
-    blurb: "Strong luck. Unique and Legendary weights jump. Better than a raw flower or shell.",
+    blurb: "Strong luck. Unique and Legendary weights jump.",
   },
   {
     itemId: "salve",
     kind: "search_calm",
     charges: 1,
     power: 1,
+    energy: 8,
     verb: "Rub",
-    blurb: "Next search ignores crowd strain. You still add strain for everyone else.",
+    blurb: "Heals 8 energy. Next search ignores crowd cost.",
   },
   {
     itemId: "brick",
-    kind: "search_calm",
+    kind: "search_cheap",
     charges: 1,
     power: 1,
     verb: "Brace",
-    blurb: "Same as salve: one calm search. Stone's reason to exist.",
+    blurb: "Next search costs only 1 energy, even on a crowded node.",
   },
   {
     itemId: "basket",
@@ -114,7 +124,7 @@ export const consumables: Consumable[] = [
     charges: 1,
     power: 1,
     verb: "Carry",
-    blurb: "Next find comes with +1 extra. Wood plus flax, then flip to gem hunters.",
+    blurb: "Next find comes with +1 extra.",
   },
 ];
 
@@ -130,6 +140,8 @@ export const buffLabel: Record<BuffKind, string> = {
   search_luck: "Lucky pull",
   search_calm: "Steady ground",
   search_double: "Second find",
+  search_skip_common: "No commons",
+  search_cheap: "Easy pull",
 };
 
 export function describeBuff(kind: BuffKind, charges: number, power: number) {
@@ -141,7 +153,11 @@ export function describeBuff(kind: BuffKind, charges: number, power: number) {
         ? `${power}% search time ×${charges}`
         : kind === "search_luck"
           ? `luck ×${power} · ${charges} search${charges === 1 ? "" : "es"}`
-          : `×${charges}`;
+          : kind === "search_skip_common"
+            ? `skip Commons ×${charges}`
+            : kind === "search_cheap"
+              ? `1 energy ×${charges}`
+              : `×${charges}`;
   return `${name} · ${extra}`;
 }
 

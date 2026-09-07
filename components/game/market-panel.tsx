@@ -105,6 +105,7 @@ export function MarketPanel({
             <p className="font-heading text-lg">
               {selected.emoji} {selected.name}
             </p>
+            <p className="text-xs leading-5 text-foreground">{selected.purpose}</p>
             <p className="text-xs leading-5 text-muted-foreground">{selected.description}</p>
             <p className="mt-1 text-xs text-muted-foreground">
               MV {formatCoins(price?.vwap ?? selected.basePrice)}

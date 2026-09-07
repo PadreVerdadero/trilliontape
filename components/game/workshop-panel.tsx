@@ -53,6 +53,7 @@ export function WorkshopPanel({
                     {rarityLabel[rarityOf(recipe.outputId)]}
                   </span>
                 </p>
+                <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{output.purpose}</p>
                 <div className="mt-2 flex flex-wrap gap-1">
                   {recipe.inputs.map((input) => {
                     const free = (have[input.itemId] ?? 0) - (reserved[input.itemId] ?? 0);

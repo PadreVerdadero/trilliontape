@@ -55,6 +55,7 @@ export function InventoryPanel({
                 {free}
                 {reserved ? ` free · ${reserved} listed` : ""}
               </div>
+              <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{item?.purpose}</p>
             </button>
             {usable && free > 0 ? (
               <Button

@@ -219,6 +219,7 @@ function grantSearchLoot(
     luck: number;
     extraQty: number;
     double: boolean;
+    skipCommon?: boolean;
     itemId?: string;
     qty?: number;
   }
@@ -229,7 +230,7 @@ function grantSearchLoot(
     finds.push({ itemId: payload.itemId, qty: Number(payload.qty ?? 0) });
   } else {
     for (let i = 0; i < rolls; i += 1) {
-      const loot = rollSearchLoot(payload.locationId, payload.luck);
+      const loot = rollSearchLoot(payload.locationId, payload.luck, payload.skipCommon);
       if (loot.itemId) {
         finds.push({ itemId: loot.itemId, qty: loot.qty + payload.extraQty });
       }
@@ -245,8 +246,12 @@ function grantSearchLoot(
   return bits;
 }
 
-function rollSearchLoot(locationId: string, luck = 1) {
-  const pool = materialsAt(locationId);
+function rollSearchLoot(locationId: string, luck = 1, skipCommon = false) {
+  let pool = materialsAt(locationId);
+  if (skipCommon) {
+    const filtered = pool.filter((item) => rarityOf(item.id) !== "common");
+    if (filtered.length > 0) pool = filtered;
+  }
   if (pool.length === 0) return { itemId: "", qty: 0 };
   const weights = pool.map((item) => {
     let weight = searchWeight(item);
@@ -500,11 +505,20 @@ export function consumeItem(userId: number, itemId: string) {
     throw new Error("You do not have a free one to use.");
   }
   removeItem(userId, itemId, 1);
+  const player = loadPlayerRow(userId);
+  const max = player.energy_max ?? ENERGY_MAX;
+  let healed = 0;
+  if (consumable.energy) {
+    const next = Math.min(max, (player.energy ?? 0) + consumable.energy);
+    healed = next - (player.energy ?? 0);
+    getDb().prepare("UPDATE players SET energy = ? WHERE user_id = ?").run(next, userId);
+  }
   addBuff(userId, consumable.kind, consumable.charges, consumable.power);
   const item = itemById[itemId];
+  const healNote = healed > 0 ? ` +${healed} energy.` : "";
   setEvent(
     userId,
-    `${consumable.verb} ${item.emoji} ${item.name}. ${buffLabel[consumable.kind]} is ready.`
+    `${consumable.verb} ${item.emoji} ${item.name}.${healNote} ${buffLabel[consumable.kind]} is ready.`
   );
 }
 
@@ -567,15 +581,17 @@ export function startSearch(userId: number) {
   }
   const strain = bumpStrain(location.id);
   const calm = takeBuff(userId, "search_calm");
+  const cheap = takeBuff(userId, "search_cheap");
   const yieldBuff = takeBuff(userId, "search_yield");
   const luck = takeBuff(userId, "search_luck");
   const double = takeBuff(userId, "search_double");
-  const cost = searchEnergyCost(location.id, calm ? 0 : strain);
+  const skipCommon = takeBuff(userId, "search_skip_common");
+  const cost = cheap ? 1 : searchEnergyCost(location.id, calm ? 0 : strain);
   const energy = player.energy ?? 0;
   const max = player.energy_max ?? ENERGY_MAX;
   if (energy < cost) {
     throw new Error(
-      `You are too tired (${energy} energy). Eat berries, bread, fish, or honey.`
+      `You are too tired (${energy} energy). Eat berries, bread, fish, honey, or stew.`
     );
   }
   const nextEnergy = energy - cost;
@@ -587,12 +603,15 @@ export function startSearch(userId: number) {
     extraQty: yieldBuff ? 1 : 0,
     luck: luck?.power ?? 1,
     double: Boolean(double),
+    skipCommon: Boolean(skipCommon),
   });
   const extras = [
+    cheap ? "easy pull" : null,
     calm ? "steady ground" : null,
     yieldBuff ? "deep pockets" : null,
     luck ? "lucky pull" : null,
     double ? "second find" : null,
+    skipCommon ? "no commons" : null,
   ].filter(Boolean);
   const crowdNote = !calm && strain > 0 ? ` Crowded — ${cost} energy.` : ` −${cost} energy.`;
   const findNote = bits.length > 0 ? ` You pull ${bits.join(" and ")}.` : " Nothing this time.";

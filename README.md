@@ -43,18 +43,35 @@ Use the phone’s camera. No extra app. Codes printed from `127.0.0.1` only work
 | 🏖️ Sunshore | 🐟 fish, 🐚 shell, 🧂 salt, 🪸 coral |
 | 🌾 Golden Fields | 🌾 wheat, 🧵 flax, 🍯 honey, 🌸 flower |
 
-Side goods are **supplies**. Use them from your pack:
+Every item has one job:
 
-- 🍞 Bread — +10 energy
-- 🍓 Berries — +4 energy (one quiet search)
-- 🐟 Fish — +6 energy
-- 🍯 Honey — +8 energy
-- 🍄 Mushrooms — next search finds two things
-- 🌸 Flower / 🐚 Shell / 📿 Charm — next search leans Rare+
-- 🩹 Salve / 🧱 Brick / 🪜 Planks — ignore crowd strain (planks cover two pulls)
-- 🧺 Basket — next find +1
-
-That is why wheat, wood, stone, berries, flowers, shells, and mushrooms still trade.
+| Item | Purpose |
+| --- | --- |
+| 🪵 Wood | Craft planks or a basket |
+| 🍓 Berries | Eat +4 energy |
+| 🌿 Herbs | Craft salve or stew |
+| 🍄 Mushrooms | Eat: next search finds two things (also salve) |
+| 🪨 Stone | Craft a brick |
+| ⛓️ Iron | Craft a blade |
+| 🔥 Coal | Fire a blade or a brick |
+| 💎 Gem | Craft a jewel |
+| 🐟 Fish | Eat +6 energy, or stew |
+| 🐚 Shell | Next search skips Commons (also charm) |
+| 🧂 Salt | Craft stew |
+| 🪸 Coral | Craft a jewel |
+| 🌾 Wheat | Craft bread |
+| 🧵 Flax | Craft a basket or a candle |
+| 🍯 Honey | Eat +8 energy, or a candle |
+| 🌸 Flower | Next search leans Rare+ (also charm) |
+| 🍞 Bread | Eat +10 energy |
+| 🪜 Planks | Next 2 searches ignore crowd cost |
+| 🩹 Salve | +8 energy and next search ignores crowd |
+| 🧺 Basket | Next find +1 |
+| 🧱 Brick | Next search costs 1 energy |
+| 📿 Charm | Strong luck (Unique / Legendary) |
+| 🕯️ Candle / 🗡️ Blade / 💍 Jewel | Relic pieces |
+| 🍲 Stew | Eat: refill 20 energy, **or** relic piece |
+| 🌟 Celestial Relic | Craft to win |
 
 ## Run locally
 
