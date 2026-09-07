@@ -41,7 +41,7 @@ export function GuidePanel() {
                 {stall.emoji} {stall.name}
               </span>
               {" · "}
-              {stall.hoursLabel} Sunday market (10am–2pm) opens everyone.
+              {stall.hoursLabel} Sunday market (10:00–14:00) opens everyone.
             </li>
           ))}
         </ul>

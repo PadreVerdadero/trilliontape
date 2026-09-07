@@ -1,4 +1,5 @@
 import { itemById } from "@/lib/game/catalog";
+import { formatMilitary, formatMilitaryRange } from "@/lib/game/format";
 
 export const RUMOR_COST = 15;
 export const CRATE_COST = 25;
@@ -43,7 +44,7 @@ export const stalls: StallDef[] = [
     name: "Mira",
     role: "Baker",
     blurb: "Buys wheat and honey. Sells bread. Wheat pays extra before breakfast on weekends.",
-    hoursLabel: "Every morning 7–10. Weekends until noon.",
+    hoursLabel: `Daily ${formatMilitaryRange(7, 10)}. Weekends until ${formatMilitary(12)}.`,
     windows: [
       { days: [1, 2, 3, 4, 5], startHour: 7, endHour: 10 },
       { days: [0, 6], startHour: 7, endHour: 12 },
@@ -59,7 +60,7 @@ export const stalls: StallDef[] = [
     name: "Old Ket",
     role: "Smith",
     blurb: "Buys iron, coal, and stone. Sells bricks. Coal pays better on forge weekdays.",
-    hoursLabel: "Weekdays 1–5pm.",
+    hoursLabel: `Weekdays ${formatMilitaryRange(13, 17)}.`,
     windows: [{ days: [1, 2, 3, 4, 5], startHour: 13, endHour: 17 }],
     buyIds: ["iron", "coal", "stone"],
     sellIds: ["brick"],
@@ -72,7 +73,7 @@ export const stalls: StallDef[] = [
     name: "Tide Han",
     role: "Fishmonger",
     blurb: "Buys fish, salt, and shells. Coral only when the chalkboard says so — then he overpays.",
-    hoursLabel: "Dawn 5–8 daily. Saturday until noon.",
+    hoursLabel: `Daily ${formatMilitaryRange(5, 8)}. Saturday until ${formatMilitary(12)}.`,
     windows: [
       { days: [0, 1, 2, 3, 4, 5], startHour: 5, endHour: 8 },
       { days: [6], startHour: 5, endHour: 12 },
@@ -88,7 +89,7 @@ export const stalls: StallDef[] = [
     name: "Nim",
     role: "Herbalist",
     blurb: "Buys herbs, mushrooms, and berries. Sells salve when the fever story is running.",
-    hoursLabel: "Mon, Wed, Fri 5–9pm.",
+    hoursLabel: `Mon, Wed, Fri ${formatMilitaryRange(17, 21)}.`,
     windows: [{ days: [1, 3, 5], startHour: 17, endHour: 21 }],
     buyIds: ["herbs", "mushrooms", "berries"],
     sellIds: ["salve"],
@@ -101,7 +102,7 @@ export const stalls: StallDef[] = [
     name: "Lark",
     role: "Florist",
     blurb: "Buys flowers and flax. Sells charms for the evening lanterns.",
-    hoursLabel: "Festival evenings 6–11pm, every night this week.",
+    hoursLabel: `Nightly ${formatMilitaryRange(18, 23)}.`,
     windows: [{ days: [0, 1, 2, 3, 4, 5, 6], startHour: 18, endHour: 23 }],
     buyIds: ["flower", "flax"],
     sellIds: ["charm"],
@@ -114,7 +115,7 @@ export const stalls: StallDef[] = [
     name: "The Night Broker",
     role: "Night desk",
     blurb: "Friday after dark. Buys gems, coral, blades, and jewels. Thin book, fat prices.",
-    hoursLabel: "Friday 6–9pm.",
+    hoursLabel: `Friday ${formatMilitaryRange(18, 21)}.`,
     windows: [{ days: [5], startHour: 18, endHour: 21 }],
     buyIds: ["gem", "coral", "blade", "jewel"],
     sellIds: [],
@@ -137,11 +138,12 @@ export function safeTimeZone(timeZone: string | null | undefined) {
 
 export function festivalClock(timeZone: string | null | undefined, now = Date.now()): FestivalClock {
   const tz = safeTimeZone(timeZone);
-  const parts = new Intl.DateTimeFormat("en-US", {
+  const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: tz,
     weekday: "short",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
     hourCycle: "h23",
     year: "numeric",
     month: "2-digit",
@@ -150,10 +152,13 @@ export function festivalClock(timeZone: string | null | undefined, now = Date.no
   const read = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
   const weekdayName = read("weekday");
   const weekday = Math.max(0, WEEKDAYS.indexOf(weekdayName as (typeof WEEKDAYS)[number]));
-  const hour = Number(read("hour"));
+  let hour = Number(read("hour"));
   const minute = Number(read("minute"));
+  const period = read("dayPeriod").toLowerCase();
+  if (period.startsWith("p") && hour < 12) hour += 12;
+  if ((period.startsWith("a") && hour === 12) || hour === 24) hour = 0;
   const dateKey = `${read("year")}-${read("month")}-${read("day")}`;
-  const label = `${weekdayName} ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} (${tz})`;
+  const label = `${weekdayName} ${formatMilitary(hour, minute)} (${tz})`;
   return { timeZone: tz, now, weekday, hour, minute, dateKey, label };
 }
 

@@ -9,7 +9,7 @@ The UI is built for a phone in the pocket and a computer at the desk.
 1. Create a traveler name and password, or press **Play as Guest** (Guest / play).
 2. **Forage** the grounds. Each pull costs energy and happens instantly. Eat berries, bread, fish, honey, or stew to refill. Crowds on the grounds raise the next cost until the area sits quiet for 45 seconds.
 3. Optional: scan a QR at a real stop (or open `/codes`) so the next forage leans woods, ridge, shore, or fields.
-4. On **Stalls**, sell to whoever is open. Hours follow your phone’s clock. The chalkboard item pays more. Sunday 10am–2pm opens everyone.
+4. On **Stalls**, sell to whoever is open. Hours follow your phone’s clock in military time. The chalkboard item pays more. Sunday 10:00–14:00 opens everyone.
 5. The **player market** never closes. Post a bid or ask. Crossing trades clear at the ask.
 6. The **bank** always buys at **50% of MV** — the dump window when stalls are shut.
 7. Score VP from contracts, chalkboard hours, first daily board trade, wardrobe slots, lantern donations, and the relic.
@@ -20,14 +20,14 @@ You start with a little gold, wheat, wood, flax, and berries.
 
 | Owner | Hours (your local clock) | Buys | Sells |
 | --- | --- | --- | --- |
-| 🍞 Mira the baker | Mornings 7–10, weekends until noon | Wheat, honey | Bread |
-| ⚒️ Old Ket the smith | Weekdays 1–5pm | Iron, coal, stone | Bricks |
-| 🐟 Tide Han | Dawn 5–8, Saturday until noon | Fish, salt, shells, coral | — |
-| 🌿 Nim the herbalist | Mon / Wed / Fri 5–9pm | Herbs, mushrooms, berries | Salve |
-| 🌸 Lark the florist | Evenings 6–11pm | Flowers, flax | Charms |
-| 🌙 Night broker | Friday 6–9pm | Gems, coral, blades, jewels | — |
+| 🍞 Mira the baker | Daily 07:00–10:00, weekends until 12:00 | Wheat, honey | Bread |
+| ⚒️ Old Ket the smith | Weekdays 13:00–17:00 | Iron, coal, stone | Bricks |
+| 🐟 Tide Han | Daily 05:00–08:00, Saturday until 12:00 | Fish, salt, shells, coral | — |
+| 🌿 Nim the herbalist | Mon / Wed / Fri 17:00–21:00 | Herbs, mushrooms, berries | Salve |
+| 🌸 Lark the florist | Nightly 18:00–23:00 | Flowers, flax | Charms |
+| 🌙 Night broker | Friday 18:00–21:00 | Gems, coral, blades, jewels | — |
 
-Sunday market (10am–2pm) opens every stall. Pay 15🪙 for tomorrow’s chalkboard rumor. Rent a 25🪙 crate to bump your payout 10% for that window.
+Sunday market (10:00–14:00) opens every stall. Pay 15🪙 for tomorrow’s chalkboard rumor. Rent a 25🪙 crate to bump your payout 10% for that window.
 
 ## Victory
 

@@ -56,7 +56,7 @@ export function StallsPanel({
 
       {festival.sundayMarket ? (
         <p className="rounded-xl bg-amber-400/15 px-3 py-2 text-sm">
-          Sunday market is on. Every stall is open until 2pm.
+          Sunday market is on. Every stall is open until 14:00.
         </p>
       ) : null}
 
@@ -182,7 +182,7 @@ export function StallsPanel({
             The bank in Plaza still buys anything at 50% of MV, any hour.
           </p>
         </div>
-        <div className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           {festival.stalls.map((stall) => (
             <StallCard
               key={stall.id}
