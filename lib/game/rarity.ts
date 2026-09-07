@@ -51,8 +51,24 @@ const RARITY_BY_ID: Record<string, Rarity> = {
   "celestial-relic": "legendary",
 };
 
+export const rarityRank: Record<Rarity, number> = {
+  common: 0,
+  uncommon: 1,
+  rare: 2,
+  legendary: 3,
+};
+
 export function rarityOf(itemId: string): Rarity {
   return RARITY_BY_ID[itemId] ?? "common";
+}
+
+export function compareByCommonness(
+  a: { id: string; name?: string },
+  b: { id: string; name?: string }
+) {
+  const rank = rarityRank[rarityOf(a.id)] - rarityRank[rarityOf(b.id)];
+  if (rank !== 0) return rank;
+  return (a.name ?? a.id).localeCompare(b.name ?? b.id);
 }
 
 export function rarityClass(itemId: string) {

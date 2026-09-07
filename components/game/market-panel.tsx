@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { itemById, items } from "@/lib/game/catalog";
+import { itemById, itemsByCommonness } from "@/lib/game/catalog";
 import { formatCoins, formatNumber } from "@/lib/game/format";
 import { rarityClass, rarityLabel, rarityOf, rarityText } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
@@ -90,7 +90,7 @@ export function MarketPanel({
       </div>
 
       <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
-        {items.map((item) => (
+        {itemsByCommonness.map((item) => (
           <button
             key={item.id}
             type="button"
@@ -233,7 +233,7 @@ export function MarketPanel({
           <span className="text-sky-200/90">MV</span>
         </div>
         <div className="max-h-[min(40vh,22rem)] overflow-auto">
-          {items.map((item) => {
+          {itemsByCommonness.map((item) => {
             const quote = state.prices.find((row) => row.itemId === item.id);
             const active = item.id === selectedItemId;
             return (
