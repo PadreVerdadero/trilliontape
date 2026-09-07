@@ -119,7 +119,7 @@ export function MarketPanel({
             <div className="grid grid-cols-3 gap-2 sm:min-w-[20rem]">
               <Stat label="Best bid" value={price?.bestBid != null ? `${price.bestBid}🪙` : "none"} tone="bid" />
               <Stat label="Best ask" value={price?.bestAsk != null ? `${price.bestAsk}🪙` : "none"} tone="ask" />
-              <Stat label="MV" value={formatCoins(price?.vwap ?? selected.basePrice)} />
+              <Stat label="MV" value={formatCoins(price?.vwap ?? selected.basePrice)} tone="mv" />
             </div>
           </div>
 
@@ -221,7 +221,7 @@ export function MarketPanel({
           <span>Item</span>
           <span className="text-emerald-200/90">Best bid</span>
           <span className="text-rose-200/90">Best ask</span>
-          <span>MV</span>
+          <span className="text-sky-200/90">MV</span>
         </div>
         <div className="max-h-[min(40vh,22rem)] overflow-auto">
           {items.map((item) => {
@@ -252,7 +252,7 @@ export function MarketPanel({
                 <span className="font-medium text-rose-200">
                   {quote?.bestAsk != null ? `${quote.bestAsk}🪙` : "—"}
                 </span>
-                <span className="text-muted-foreground">{quote?.vwap ?? item.basePrice}🪙</span>
+                <span className="font-medium text-sky-200">{quote?.vwap ?? item.basePrice}🪙</span>
               </button>
             );
           })}
@@ -331,18 +331,28 @@ function Stat({
 }: {
   label: string;
   value: string;
-  tone?: "bid" | "ask";
+  tone?: "bid" | "ask" | "mv";
 }) {
   return (
     <div
       className={cn(
         "rounded-xl px-3 py-2 ring-1 ring-foreground/10",
         tone === "bid" && "bg-emerald-950/30",
-        tone === "ask" && "bg-rose-950/25"
+        tone === "ask" && "bg-rose-950/25",
+        tone === "mv" && "bg-sky-950/30"
       )}
     >
       <p className="text-[11px] tracking-wide text-muted-foreground uppercase">{label}</p>
-      <p className="font-heading text-lg">{value}</p>
+      <p
+        className={cn(
+          "font-heading text-lg",
+          tone === "bid" && "text-emerald-200",
+          tone === "ask" && "text-rose-200",
+          tone === "mv" && "text-sky-200"
+        )}
+      >
+        {value}
+      </p>
     </div>
   );
 }
