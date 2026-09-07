@@ -21,7 +21,6 @@ import type { GameState } from "@/lib/game/types";
 const views = [
   { id: "market", label: "Market", emoji: "📒" },
   { id: "stalls", label: "Stalls", emoji: "🏪" },
-  { id: "pack", label: "Pack", emoji: "🎒" },
   { id: "plaza", label: "Plaza", emoji: "🏮" },
 ] as const;
 
@@ -70,12 +69,16 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
   );
 
   const pack = (
-    <Card>
-      <CardHeader>
-        <CardTitle>Your pack</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center justify-between gap-2 px-3 py-3">
+        <p className="font-heading text-lg">🎒 Pack</p>
+        <span className="text-xs text-muted-foreground">
+          {player.inventory.length} kind{player.inventory.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
         <InventoryPanel
+          layout="rail"
           player={player}
           pending={pending}
           onSelect={(id) => {
@@ -84,8 +87,8 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
           }}
           onUse={(id) => void run({ action: "use", itemId: id })}
         />
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 
   const biasPlace = locationById[player.locationId];
@@ -178,8 +181,8 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
   );
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-20 border-b border-border/80 bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur">
+    <div className="flex h-dvh flex-col overflow-hidden">
+      <header className="z-20 shrink-0 border-b border-border/80 bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur">
         <div className="mx-auto flex w-full max-w-[90rem] flex-col gap-2 px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <p className="font-heading text-lg">🏮 Lantern Bazaar</p>
@@ -246,7 +249,7 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
           </div>
         ) : null}
         <nav className="border-t border-border/70">
-          <div className="mx-auto grid w-full max-w-[90rem] grid-cols-4 gap-1 px-2 py-2 sm:px-4">
+          <div className="mx-auto grid w-full max-w-[90rem] grid-cols-3 gap-1 px-2 py-2 sm:px-4">
             {views.map((item) => (
               <button
                 key={item.id}
@@ -264,17 +267,16 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
         </nav>
       </header>
 
-      <main className="mx-auto w-full max-w-[90rem] flex-1 px-4 py-4">
-        {view === "market" ? (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
-            <div>{market}</div>
-            <div className="hidden xl:block">{pack}</div>
-          </div>
-        ) : null}
-        {view === "stalls" ? stalls : null}
-        {view === "pack" ? pack : null}
-        {view === "plaza" ? plaza : null}
-      </main>
+      <div className="mx-auto flex min-h-0 w-full max-w-[90rem] flex-1 overflow-hidden">
+        <aside className="flex w-[10.5rem] shrink-0 flex-col overflow-hidden border-r border-border/70 bg-card/40 sm:w-[16rem] lg:w-[18rem]">
+          {pack}
+        </aside>
+        <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 sm:px-4">
+          {view === "market" ? market : null}
+          {view === "stalls" ? stalls : null}
+          {view === "plaza" ? plaza : null}
+        </main>
+      </div>
     </div>
   );
 }
