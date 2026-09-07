@@ -47,7 +47,7 @@ export function MarketPanel({
   const draftQty = Number(qtyInput);
   const draftPrice = Number(priceInput || suggested);
   const draftTotal =
-    Number.isFinite(draftQty) && draftQty > 1 && Number.isFinite(draftPrice) && draftPrice > 0
+    Number.isFinite(draftQty) && draftQty > 0 && Number.isFinite(draftPrice) && draftPrice > 0
       ? draftQty * draftPrice
       : null;
 
@@ -63,82 +63,113 @@ export function MarketPanel({
   }
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm leading-6 text-muted-foreground">
-        Post a limit order at your price. Click a listing to take one unit. If your bid is
-        higher than someone&apos;s ask, the trade clears at the ask — the lower price.
-      </p>
-      <div className="grid max-h-56 grid-cols-2 gap-2 overflow-auto pr-1 sm:grid-cols-3">
-        {items.map((item) => {
-          const quote = state.prices.find((row) => row.itemId === item.id);
-          const active = item.id === selectedItemId;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => {
-                onSelectItem(item.id);
-                setPriceInput("");
-              }}
-              className={cn(
-                "rounded-xl bg-background/40 p-2 text-left ring-1 transition hover:bg-background/70",
-                active ? "bg-primary/15" : "",
-                rarityClass(item.id)
-              )}
-            >
-              <div className="text-xl">{item.emoji}</div>
-              <div className="truncate text-xs font-medium">{item.name}</div>
-              <div className={cn("text-[10px] uppercase tracking-wide", rarityText[rarityOf(item.id)])}>
-                {rarityLabel[rarityOf(item.id)]}
-              </div>
-              <div className="text-[11px] text-muted-foreground">
-                MV {quote?.vwap ?? item.basePrice}🪙
-              </div>
-            </button>
-          );
-        })}
+    <div className="space-y-5">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="font-heading text-2xl sm:text-3xl">Player market</p>
+          <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+            Live buy and sell orders from other travelers. Tap a Bid to sell one to them, or an
+            Ask to buy one. Crossing trades clear at the ask — the lower price.
+          </p>
+        </div>
+        {state.recentTrades[0] ? (
+          <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm">
+            Last tape: {itemById[state.recentTrades[0].itemId]?.emoji}{" "}
+            {state.recentTrades[0].quantity} @ {state.recentTrades[0].price}🪙
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">No trades yet. Post the first order.</p>
+        )}
+      </div>
+
+      <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
+        <div className="grid grid-cols-[minmax(0,1.4fr)_1fr_1fr_1fr] gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase sm:px-4">
+          <span>Item</span>
+          <span className="text-emerald-200/90">Best bid</span>
+          <span className="text-rose-200/90">Best ask</span>
+          <span>MV</span>
+        </div>
+        <div className="max-h-[min(40vh,22rem)] overflow-auto">
+          {items.map((item) => {
+            const quote = state.prices.find((row) => row.itemId === item.id);
+            const active = item.id === selectedItemId;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  onSelectItem(item.id);
+                  setPriceInput("");
+                }}
+                className={cn(
+                  "grid w-full grid-cols-[minmax(0,1.4fr)_1fr_1fr_1fr] items-center gap-2 border-b border-border/40 px-3 py-2.5 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4 sm:py-3",
+                  active && "bg-primary/15"
+                )}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className={cn("text-xl", rarityClass(item.id))}>{item.emoji}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{item.name}</span>
+                    <span className={cn("text-[10px] uppercase tracking-wide", rarityText[rarityOf(item.id)])}>
+                      {rarityLabel[rarityOf(item.id)]}
+                    </span>
+                  </span>
+                </span>
+                <span className="font-medium text-emerald-200">
+                  {quote?.bestBid != null ? `${quote.bestBid}🪙` : "—"}
+                </span>
+                <span className="font-medium text-rose-200">
+                  {quote?.bestAsk != null ? `${quote.bestAsk}🪙` : "—"}
+                </span>
+                <span className="text-muted-foreground">{quote?.vwap ?? item.basePrice}🪙</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {selected ? (
-        <div className="space-y-3 rounded-xl bg-background/30 p-3 ring-1 ring-foreground/10">
-          <div>
-            <p className="font-heading text-lg">
-              {selected.emoji} {selected.name}
-            </p>
-            <p className="text-xs leading-5 text-foreground">{selected.purpose}</p>
-            <p className="text-xs leading-5 text-muted-foreground">{selected.description}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              MV {formatCoins(price?.vwap ?? selected.basePrice)}
-              {price?.bestBid != null ? ` · bid ${price.bestBid}` : " · no bid"}
-              {price?.bestAsk != null ? ` · ask ${price.bestAsk}` : " · no ask"}
-            </p>
+        <div className="space-y-4 rounded-2xl bg-card p-4 ring-1 ring-foreground/10 sm:p-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <p className="font-heading text-2xl">
+                {selected.emoji} {selected.name}
+              </p>
+              <p className="text-sm text-foreground">{selected.purpose}</p>
+              <p className="text-sm text-muted-foreground">{selected.description}</p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 sm:min-w-[20rem]">
+              <Stat label="Best bid" value={price?.bestBid != null ? `${price.bestBid}🪙` : "none"} tone="bid" />
+              <Stat label="Best ask" value={price?.bestAsk != null ? `${price.bestAsk}🪙` : "none"} tone="ask" />
+              <Stat label="MV" value={formatCoins(price?.vwap ?? selected.basePrice)} />
+            </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-emerald-200/80">
-                Bids
-              </p>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
+              <p className="mb-2 font-heading text-lg text-emerald-100">People buying</p>
+              <p className="mb-3 text-xs text-muted-foreground">Tap a row to sell them 1.</p>
               <OrderList
-                empty="No bids. Someone wants this cheap — or nobody wants it yet."
+                empty="No bids. Post one below if you want this."
                 rows={book?.bids ?? []}
                 selfId={state.player.id}
                 pending={pending}
+                actionLabel="Sell 1"
                 onTake={async (id) => {
                   await onTake(id);
                   await reloadBook();
                 }}
               />
             </div>
-            <div>
-              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-rose-200/80">
-                Asks
-              </p>
+            <div className="rounded-xl bg-rose-950/20 p-3 ring-1 ring-rose-400/20">
+              <p className="mb-2 font-heading text-lg text-rose-100">People selling</p>
+              <p className="mb-3 text-xs text-muted-foreground">Tap a row to buy 1 from them.</p>
               <OrderList
-                empty="No asks. Gather it, craft it, or wait for a seller."
+                empty="No asks. Gather it, craft it, or post your own."
                 rows={book?.asks ?? []}
                 selfId={state.player.id}
                 pending={pending}
+                actionLabel="Buy 1"
                 onTake={async (id) => {
                   await onTake(id);
                   await reloadBook();
@@ -147,76 +178,79 @@ export function MarketPanel({
             </div>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-4">
-            <div className="space-y-1">
-              <Label>Side</Label>
-              <div className="flex gap-1">
-                <Button
-                  size="sm"
-                  className="h-11 flex-1 md:h-7"
-                  variant={side === "buy" ? "default" : "outline"}
-                  onClick={() => setSide("buy")}
-                >
-                  Bid
-                </Button>
-                <Button
-                  size="sm"
-                  className="h-11 flex-1 md:h-7"
-                  variant={side === "sell" ? "default" : "outline"}
-                  onClick={() => setSide("sell")}
-                >
-                  Ask
-                </Button>
+          <div className="rounded-xl bg-background/40 p-3 ring-1 ring-foreground/10">
+            <p className="mb-3 font-heading text-lg">Post your own order</p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[auto_1fr_1fr_auto]">
+              <div className="space-y-1">
+                <Label>I want to</Label>
+                <div className="flex gap-1">
+                  <Button
+                    size="sm"
+                    className="h-11 flex-1 md:h-10"
+                    variant={side === "buy" ? "default" : "outline"}
+                    onClick={() => setSide("buy")}
+                  >
+                    Buy
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="h-11 flex-1 md:h-10"
+                    variant={side === "sell" ? "default" : "outline"}
+                    onClick={() => setSide("sell")}
+                  >
+                    Sell
+                  </Button>
+                </div>
               </div>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="px">Price</Label>
-              <Input
-                id="px"
-                inputMode="numeric"
-                value={priceInput}
-                placeholder={suggested}
-                onChange={(event) => setPriceInput(event.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="qty">Qty</Label>
-              <Input
-                id="qty"
-                inputMode="numeric"
-                value={qtyInput}
-                onChange={(event) => setQtyInput(event.target.value)}
-              />
-            </div>
-            <div className="flex flex-col justify-end gap-1">
-              <Button className="h-11 w-full md:h-8" disabled={pending} onClick={() => void place()}>
-                Post {side === "buy" ? "bid" : "ask"}
-              </Button>
-              {draftTotal != null ? (
-                <p className="text-center text-[11px] text-muted-foreground">
-                  {draftQty} × {draftPrice}🪙 = {draftTotal}🪙 total
-                </p>
-              ) : null}
+              <div className="space-y-1">
+                <Label htmlFor="px">Price each</Label>
+                <Input
+                  id="px"
+                  inputMode="numeric"
+                  value={priceInput}
+                  placeholder={suggested}
+                  onChange={(event) => setPriceInput(event.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="qty">How many</Label>
+                <Input
+                  id="qty"
+                  inputMode="numeric"
+                  value={qtyInput}
+                  onChange={(event) => setQtyInput(event.target.value)}
+                />
+              </div>
+              <div className="flex flex-col justify-end gap-1">
+                <Button className="h-11 w-full lg:min-w-40" disabled={pending} onClick={() => void place()}>
+                  Post {side === "buy" ? "bid" : "ask"}
+                </Button>
+                {draftTotal != null ? (
+                  <p className="text-center text-xs text-muted-foreground">
+                    {draftQty} × {draftPrice}🪙 = {draftTotal}🪙
+                  </p>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
       ) : null}
 
-      <div>
-        <p className="mb-2 text-sm font-medium">Your open orders</p>
+      <div className="rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
+        <p className="mb-3 font-heading text-lg">Your open orders</p>
         {state.myOrders.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Nothing resting on the board. Post a bid or ask above.
+            Nothing resting on the board. Post a buy or sell above.
           </p>
         ) : (
           <ul className="space-y-2">
             {state.myOrders.map((order) => (
               <li
                 key={order.id}
-                className="flex items-center justify-between gap-2 rounded-lg bg-background/40 px-2 py-1.5 text-sm"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-background/40 px-3 py-2 text-sm"
               >
                 <span>
-                  {order.side === "buy" ? "Bid" : "Ask"}{" "}
+                  {order.side === "buy" ? "Buying" : "Selling"}{" "}
                   <ItemChip itemId={order.itemId} qty={order.remaining} /> @ {order.price}🪙
                   {order.remaining > 1 ? (
                     <span className="text-muted-foreground">
@@ -226,7 +260,8 @@ export function MarketPanel({
                   ) : null}
                 </span>
                 <Button
-                  size="xs"
+                  size="sm"
+                  className="h-10 md:h-8"
                   variant="ghost"
                   disabled={pending}
                   onClick={() => void onCancel(order.id)}
@@ -238,6 +273,53 @@ export function MarketPanel({
           </ul>
         )}
       </div>
+
+      <div className="rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
+        <p className="mb-3 font-heading text-lg">Recent trades</p>
+        {state.recentTrades.length === 0 ? (
+          <p className="text-sm text-muted-foreground">The tape is empty.</p>
+        ) : (
+          <ul className="space-y-2">
+            {state.recentTrades.map((trade) => {
+              const item = itemById[trade.itemId];
+              return (
+                <li key={trade.id} className="text-sm">
+                  {item?.emoji} {item?.name} · {trade.quantity} @ {trade.price}🪙 ·{" "}
+                  {trade.buyUsername} bought from {trade.sellUsername}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {state.winners.length > 0 ? (
+          <p className="pt-3 text-xs text-muted-foreground">
+            Champions: {state.winners.map((row) => row.username).join(", ")}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "bid" | "ask";
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl px-3 py-2 ring-1 ring-foreground/10",
+        tone === "bid" && "bg-emerald-950/30",
+        tone === "ask" && "bg-rose-950/25"
+      )}
+    >
+      <p className="text-[11px] tracking-wide text-muted-foreground uppercase">{label}</p>
+      <p className="font-heading text-lg">{value}</p>
     </div>
   );
 }
@@ -247,39 +329,47 @@ function OrderList({
   empty,
   selfId,
   pending,
+  actionLabel,
   onTake,
 }: {
   rows: { id: number; username: string; price: number; remaining: number; playerId: number }[];
   empty: string;
   selfId: number;
   pending: boolean;
+  actionLabel: string;
   onTake: (id: number) => void;
 }) {
   if (rows.length === 0) {
-    return <p className="text-xs leading-5 text-muted-foreground">{empty}</p>;
+    return <p className="text-sm leading-6 text-muted-foreground">{empty}</p>;
   }
   return (
-    <ul className="space-y-1">
-      {rows.map((row) => (
-        <li key={row.id}>
-          <button
-            type="button"
-            disabled={pending || row.playerId === selfId}
-            onClick={() => onTake(row.id)}
-            className="flex min-h-11 w-full items-center justify-between rounded-lg bg-background/50 px-2 py-2.5 text-left text-xs ring-1 ring-foreground/10 hover:bg-background disabled:opacity-60 md:min-h-0 md:py-1.5"
-          >
-            <span>
-              {row.remaining} @ {row.price}🪙
-              {row.remaining > 1 ? (
-                <span className="text-muted-foreground"> · {row.remaining * row.price}🪙 total</span>
-              ) : null}
-            </span>
-            <span className="text-muted-foreground">
-              {row.playerId === selfId ? "you" : row.username}
-            </span>
-          </button>
-        </li>
-      ))}
+    <ul className="space-y-2">
+      {rows.map((row) => {
+        const yours = row.playerId === selfId;
+        return (
+          <li key={row.id}>
+            <button
+              type="button"
+              disabled={pending || yours}
+              onClick={() => onTake(row.id)}
+              className="flex min-h-12 w-full items-center justify-between gap-3 rounded-xl bg-background/60 px-3 py-3 text-left ring-1 ring-foreground/10 hover:bg-background disabled:opacity-60"
+            >
+              <span>
+                <span className="block text-base font-medium">
+                  {row.remaining} @ {row.price}🪙
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {yours ? "your order" : row.username}
+                  {row.remaining > 1 ? ` · ${row.remaining * row.price}🪙 total` : ""}
+                </span>
+              </span>
+              <span className="shrink-0 text-sm font-medium text-primary">
+                {yours ? "resting" : actionLabel}
+              </span>
+            </button>
+          </li>
+        );
+      })}
     </ul>
   );
 }
