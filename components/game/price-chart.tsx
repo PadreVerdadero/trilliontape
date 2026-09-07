@@ -1,3 +1,4 @@
+import { formatCoins } from "@/lib/game/format";
 import type { PricePoint } from "@/lib/game/types";
 
 export function PriceChart({
@@ -48,7 +49,7 @@ export function PriceChart({
           </p>
         </div>
         <p className={up ? "text-sm text-emerald-200" : "text-sm text-rose-200"}>
-          {lastPrice}🪙 {traded ? (up ? "▲" : "▼") : ""}
+          {formatCoins(lastPrice)} {traded ? (up ? "▲" : "▼") : ""}
         </p>
       </div>
       <svg viewBox={`0 0 ${width} ${height}`} className="h-44 w-full" role="img" aria-label="Price over time">
@@ -71,10 +72,10 @@ export function PriceChart({
           />
         ))}
         <text x="4" y={pad.top + 4} fill="currentColor" className="text-[11px] text-muted-foreground">
-          {max}🪙
+          {formatCoins(max)}
         </text>
         <text x="4" y={pad.top + innerH} fill="currentColor" className="text-[11px] text-muted-foreground">
-          {min}🪙
+          {formatCoins(min)}
         </text>
       </svg>
     </div>

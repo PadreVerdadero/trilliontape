@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { itemById, items } from "@/lib/game/catalog";
-import { formatCoins } from "@/lib/game/format";
+import { formatCoins, formatNumber } from "@/lib/game/format";
 import { rarityClass, rarityLabel, rarityOf, rarityText } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
 import { useOrderBook } from "@/hooks/use-game";
@@ -81,7 +81,8 @@ export function MarketPanel({
         {state.recentTrades[0] ? (
           <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm">
             Last tape: {itemById[state.recentTrades[0].itemId]?.emoji}{" "}
-            {state.recentTrades[0].quantity} @ {state.recentTrades[0].price}🪙
+            {formatNumber(state.recentTrades[0].quantity)} @{" "}
+            {formatCoins(state.recentTrades[0].price)}
           </p>
         ) : (
           <p className="text-sm text-muted-foreground">No trades yet. Post the first order.</p>
@@ -117,8 +118,16 @@ export function MarketPanel({
               <p className="text-sm text-muted-foreground">{selected.description}</p>
             </div>
             <div className="grid grid-cols-3 gap-2 sm:min-w-[20rem]">
-              <Stat label="Best bid" value={price?.bestBid != null ? `${price.bestBid}🪙` : "none"} tone="bid" />
-              <Stat label="Best ask" value={price?.bestAsk != null ? `${price.bestAsk}🪙` : "none"} tone="ask" />
+              <Stat
+                label="Best bid"
+                value={price?.bestBid != null ? formatCoins(price.bestBid) : "none"}
+                tone="bid"
+              />
+              <Stat
+                label="Best ask"
+                value={price?.bestAsk != null ? formatCoins(price.bestAsk) : "none"}
+                tone="ask"
+              />
               <Stat label="MV" value={formatCoins(price?.vwap ?? selected.basePrice)} tone="mv" />
             </div>
           </div>
@@ -172,7 +181,7 @@ export function MarketPanel({
                 </Button>
                 {draftTotal != null ? (
                   <p className="text-center text-xs text-muted-foreground">
-                    {draftQty} × {draftPrice}🪙 = {draftTotal}🪙
+                    {formatNumber(draftQty)} × {formatCoins(draftPrice)} = {formatCoins(draftTotal)}
                   </p>
                 ) : null}
               </div>
@@ -247,12 +256,14 @@ export function MarketPanel({
                   </span>
                 </span>
                 <span className="font-medium text-emerald-200">
-                  {quote?.bestBid != null ? `${quote.bestBid}🪙` : "—"}
+                  {quote?.bestBid != null ? formatCoins(quote.bestBid) : "—"}
                 </span>
                 <span className="font-medium text-rose-200">
-                  {quote?.bestAsk != null ? `${quote.bestAsk}🪙` : "—"}
+                  {quote?.bestAsk != null ? formatCoins(quote.bestAsk) : "—"}
                 </span>
-                <span className="font-medium text-sky-200">{quote?.vwap ?? item.basePrice}🪙</span>
+                <span className="font-medium text-sky-200">
+                  {formatCoins(quote?.vwap ?? item.basePrice)}
+                </span>
               </button>
             );
           })}
@@ -274,11 +285,11 @@ export function MarketPanel({
               >
                 <span>
                   {order.side === "buy" ? "Buying" : "Selling"}{" "}
-                  <ItemChip itemId={order.itemId} qty={order.remaining} /> @ {order.price}🪙
+                  <ItemChip itemId={order.itemId} qty={order.remaining} /> @ {formatCoins(order.price)}
                   {order.remaining > 1 ? (
                     <span className="text-muted-foreground">
                       {" "}
-                      · {order.remaining * order.price}🪙 total
+                      · {formatCoins(order.remaining * order.price)} total
                     </span>
                   ) : null}
                 </span>
@@ -307,7 +318,8 @@ export function MarketPanel({
               const item = itemById[trade.itemId];
               return (
                 <li key={trade.id} className="text-sm">
-                  {item?.emoji} {item?.name} · {trade.quantity} @ {trade.price}🪙 ·{" "}
+                  {item?.emoji} {item?.name} · {formatNumber(trade.quantity)} @ {formatCoins(trade.price)}{" "}
+                  ·{" "}
                   {trade.buyUsername} bought from {trade.sellUsername}
                 </li>
               );
@@ -389,11 +401,11 @@ function OrderList({
             >
               <span>
                 <span className="block text-base font-medium">
-                  {row.remaining} @ {row.price}🪙
+                  {formatNumber(row.remaining)} @ {formatCoins(row.price)}
                 </span>
                 <span className="text-xs text-muted-foreground">
                   {yours ? "your order" : row.username}
-                  {row.remaining > 1 ? ` · ${row.remaining * row.price}🪙 total` : ""}
+                  {row.remaining > 1 ? ` · ${formatCoins(row.remaining * row.price)} total` : ""}
                 </span>
               </span>
               <span className="shrink-0 text-sm font-medium text-primary">

@@ -6,6 +6,11 @@ export function formatDuration(ms: number) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+export function formatNumber(amount: number) {
+  if (!Number.isFinite(amount)) return "0";
+  return Math.round(amount).toLocaleString("en-US");
+}
+
 export function formatCoins(amount: number) {
-  return `${amount.toLocaleString()}🪙`;
+  return `${formatNumber(amount)}🪙`;
 }

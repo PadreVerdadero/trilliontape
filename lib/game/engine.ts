@@ -14,6 +14,7 @@ import {
   travelSeconds,
   WIN_ITEM_ID,
 } from "@/lib/game/catalog";
+import { formatCoins, formatNumber } from "@/lib/game/format";
 import {
   buffLabel,
   consumableById,
@@ -242,7 +243,7 @@ function grantSearchLoot(
     const item = itemById[find.itemId];
     if (!item || find.qty <= 0) continue;
     addItem(userId, item.id, find.qty);
-    bits.push(`${item.emoji} ${item.name} ×${find.qty}`);
+    bits.push(`${item.emoji} ${item.name} ×${formatNumber(find.qty)}`);
   }
   return bits;
 }
@@ -652,7 +653,7 @@ export function craftItem(userId: number, outputId: string) {
     setEvent(userId, "The plaza lanterns flare. You crafted the 🌟 Celestial Relic. You win!");
     return;
   }
-  setEvent(userId, `Crafted ${output.emoji} ${output.name} ×${recipe.outputQty}.`);
+  setEvent(userId, `Crafted ${output.emoji} ${output.name} ×${formatNumber(recipe.outputQty)}.`);
 }
 
 export function placeOrder(
@@ -686,8 +687,8 @@ export function placeOrder(
   setEvent(
     userId,
     side === "buy"
-      ? `Bid posted: ${item.emoji} ${item.name} ×${quantity} at ${price}🪙.`
-      : `Ask posted: ${item.emoji} ${item.name} ×${quantity} at ${price}🪙.`
+      ? `Bid posted: ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(price)}.`
+      : `Ask posted: ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(price)}.`
   );
 }
 
@@ -744,7 +745,7 @@ export function takeOrder(userId: number, orderId: number, quantity = 1) {
     );
   }
   const item = itemById[order.item_id];
-  setEvent(userId, `Filled ${item.emoji} ${item.name} ×${fillQty} at ${order.price}🪙.`);
+  setEvent(userId, `Filled ${item.emoji} ${item.name} ×${formatNumber(fillQty)} at ${formatCoins(order.price)}.`);
 }
 
 export function cancelOrder(userId: number, orderId: number) {
@@ -808,7 +809,7 @@ export function bankSell(userId: number, itemId: string, quantity: number) {
   const pct = Math.round(payout.startRate * 100);
   setEvent(
     userId,
-    `Bank bought ${item.emoji} ${item.name} ×${quantity} for ${payout.total}🪙 (${pct}% of MV). Dumping more drops the rate until the window cools.`
+    `Bank bought ${item.emoji} ${item.name} ×${formatNumber(quantity)} for ${formatCoins(payout.total)} (${pct}% of MV). Dumping more drops the rate until the window cools.`
   );
 }
 
