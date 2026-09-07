@@ -1184,7 +1184,9 @@ export function rentCrate(userId: number, stallId: string, timeZone?: string) {
     .run(stallId, key, userId);
   setEvent(
     userId,
-    `You rented a crate at ${stall.name}'s next window. Your stack sells with a 10% bump.`
+    stallOpen(stall, clock)
+      ? `You rented a crate at ${stall.name} for this window. Your next sale here gets a 10% bump.`
+      : `You reserved a crate at ${stall.name}'s next window. Your stack sells with a 10% bump.`
   );
 }
 
