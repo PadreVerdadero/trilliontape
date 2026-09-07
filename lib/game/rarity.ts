@@ -4,7 +4,6 @@ export const rarityLabel: Record<Rarity, string> = {
   common: "Common",
   uncommon: "Uncommon",
   rare: "Rare",
-  unique: "Unique",
   legendary: "Legendary",
 };
 
@@ -12,7 +11,6 @@ export const rarityRing: Record<Rarity, string> = {
   common: "ring-white/80",
   uncommon: "ring-emerald-400",
   rare: "ring-sky-400",
-  unique: "ring-violet-400",
   legendary: "ring-red-500",
 };
 
@@ -20,7 +18,6 @@ export const rarityText: Record<Rarity, string> = {
   common: "text-white/80",
   uncommon: "text-emerald-300",
   rare: "text-sky-300",
-  unique: "text-violet-300",
   legendary: "text-red-400",
 };
 
@@ -38,8 +35,8 @@ const RARITY_BY_ID: Record<string, Rarity> = {
   coal: "uncommon",
   mushrooms: "rare",
   iron: "rare",
-  honey: "unique",
-  coral: "unique",
+  honey: "rare",
+  coral: "legendary",
   gem: "legendary",
   bread: "common",
   planks: "common",
@@ -48,8 +45,8 @@ const RARITY_BY_ID: Record<string, Rarity> = {
   charm: "uncommon",
   salve: "rare",
   stew: "rare",
-  candle: "unique",
-  blade: "unique",
+  candle: "legendary",
+  blade: "legendary",
   jewel: "legendary",
   "celestial-relic": "legendary",
 };

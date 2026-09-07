@@ -99,7 +99,7 @@ export const consumables: Consumable[] = [
     charges: 1,
     power: 3,
     verb: "Wear",
-    blurb: "Strong luck. Unique and Legendary weights jump.",
+    blurb: "Strong luck. Rare and Legendary weights jump.",
   },
   {
     itemId: "salve",

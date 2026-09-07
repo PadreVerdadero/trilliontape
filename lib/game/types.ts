@@ -2,7 +2,7 @@ export type ItemKind = "material" | "good" | "relic";
 export type CosmeticSlot = "hat" | "outfit" | "accessory";
 export type BusyType = "idle" | "travel" | "search";
 export type OrderSide = "buy" | "sell";
-export type Rarity = "common" | "uncommon" | "rare" | "unique" | "legendary";
+export type Rarity = "common" | "uncommon" | "rare" | "legendary";
 
 export type Item = {
   id: string;
@@ -140,8 +140,14 @@ export type GameState = {
   bank: BankQuote[];
 };
 
+export type PricePoint = {
+  at: number;
+  price: number;
+};
+
 export type OrderBook = {
   itemId: string;
   bids: OrderRow[];
   asks: OrderRow[];
+  history: PricePoint[];
 };

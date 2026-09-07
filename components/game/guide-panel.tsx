@@ -79,7 +79,6 @@ export function GuidePanel() {
           Borders tell the story: <span className="text-white/80">white Common</span>,{" "}
           <span className="text-emerald-300">green Uncommon</span>,{" "}
           <span className="text-sky-300">blue Rare</span>,{" "}
-          <span className="text-violet-300">purple Unique</span>,{" "}
           <span className="text-red-400">red Legendary</span>.
         </p>
       </section>

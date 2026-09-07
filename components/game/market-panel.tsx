@@ -10,6 +10,7 @@ import { rarityClass, rarityLabel, rarityOf, rarityText } from "@/lib/game/rarit
 import { cn } from "@/lib/utils";
 import { useOrderBook } from "@/hooks/use-game";
 import { ItemChip } from "@/components/game/item-chip";
+import { PriceChart } from "@/components/game/price-chart";
 import type { GameState, OrderSide } from "@/lib/game/types";
 
 export function MarketPanel({
@@ -62,14 +63,19 @@ export function MarketPanel({
     await reloadBook();
   }
 
+  function pick(id: string) {
+    onSelectItem(id);
+    setPriceInput("");
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="font-heading text-2xl sm:text-3xl">Player market</p>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            Live buy and sell orders from other travelers. Tap a Bid to sell one to them, or an
-            Ask to buy one. Crossing trades clear at the ask — the lower price.
+            Pick an item, post a buy or sell at the top, then tap a listing to take one. Crossing
+            trades clear at the ask — the lower price.
           </p>
         </div>
         {state.recentTrades[0] ? (
@@ -82,50 +88,22 @@ export function MarketPanel({
         )}
       </div>
 
-      <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
-        <div className="grid grid-cols-[minmax(0,1.4fr)_1fr_1fr_1fr] gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase sm:px-4">
-          <span>Item</span>
-          <span className="text-emerald-200/90">Best bid</span>
-          <span className="text-rose-200/90">Best ask</span>
-          <span>MV</span>
-        </div>
-        <div className="max-h-[min(40vh,22rem)] overflow-auto">
-          {items.map((item) => {
-            const quote = state.prices.find((row) => row.itemId === item.id);
-            const active = item.id === selectedItemId;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  onSelectItem(item.id);
-                  setPriceInput("");
-                }}
-                className={cn(
-                  "grid w-full grid-cols-[minmax(0,1.4fr)_1fr_1fr_1fr] items-center gap-2 border-b border-border/40 px-3 py-2.5 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4 sm:py-3",
-                  active && "bg-primary/15"
-                )}
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className={cn("text-xl", rarityClass(item.id))}>{item.emoji}</span>
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{item.name}</span>
-                    <span className={cn("text-[10px] uppercase tracking-wide", rarityText[rarityOf(item.id)])}>
-                      {rarityLabel[rarityOf(item.id)]}
-                    </span>
-                  </span>
-                </span>
-                <span className="font-medium text-emerald-200">
-                  {quote?.bestBid != null ? `${quote.bestBid}🪙` : "—"}
-                </span>
-                <span className="font-medium text-rose-200">
-                  {quote?.bestAsk != null ? `${quote.bestAsk}🪙` : "—"}
-                </span>
-                <span className="text-muted-foreground">{quote?.vwap ?? item.basePrice}🪙</span>
-              </button>
-            );
-          })}
-        </div>
+      <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
+        {items.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            title={item.name}
+            onClick={() => pick(item.id)}
+            className={cn(
+              "grid size-12 shrink-0 place-items-center rounded-xl text-xl ring-1 hover:bg-card",
+              item.id === selectedItemId ? "bg-primary/20" : "bg-card/60",
+              rarityClass(item.id)
+            )}
+          >
+            {item.emoji}
+          </button>
+        ))}
       </div>
 
       {selected ? (
@@ -142,39 +120,6 @@ export function MarketPanel({
               <Stat label="Best bid" value={price?.bestBid != null ? `${price.bestBid}🪙` : "none"} tone="bid" />
               <Stat label="Best ask" value={price?.bestAsk != null ? `${price.bestAsk}🪙` : "none"} tone="ask" />
               <Stat label="MV" value={formatCoins(price?.vwap ?? selected.basePrice)} />
-            </div>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
-              <p className="mb-2 font-heading text-lg text-emerald-100">People buying</p>
-              <p className="mb-3 text-xs text-muted-foreground">Tap a row to sell them 1.</p>
-              <OrderList
-                empty="No bids. Post one below if you want this."
-                rows={book?.bids ?? []}
-                selfId={state.player.id}
-                pending={pending}
-                actionLabel="Sell 1"
-                onTake={async (id) => {
-                  await onTake(id);
-                  await reloadBook();
-                }}
-              />
-            </div>
-            <div className="rounded-xl bg-rose-950/20 p-3 ring-1 ring-rose-400/20">
-              <p className="mb-2 font-heading text-lg text-rose-100">People selling</p>
-              <p className="mb-3 text-xs text-muted-foreground">Tap a row to buy 1 from them.</p>
-              <OrderList
-                empty="No asks. Gather it, craft it, or post your own."
-                rows={book?.asks ?? []}
-                selfId={state.player.id}
-                pending={pending}
-                actionLabel="Buy 1"
-                onTake={async (id) => {
-                  await onTake(id);
-                  await reloadBook();
-                }}
-              />
             </div>
           </div>
 
@@ -233,8 +178,86 @@ export function MarketPanel({
               </div>
             </div>
           </div>
+
+          <PriceChart history={book?.history ?? []} basePrice={selected.basePrice} />
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
+              <p className="mb-2 font-heading text-lg text-emerald-100">People buying</p>
+              <p className="mb-3 text-xs text-muted-foreground">Tap a row to sell them 1.</p>
+              <OrderList
+                empty="No bids. Post one above if you want this."
+                rows={book?.bids ?? []}
+                selfId={state.player.id}
+                pending={pending}
+                actionLabel="Sell 1"
+                onTake={async (id) => {
+                  await onTake(id);
+                  await reloadBook();
+                }}
+              />
+            </div>
+            <div className="rounded-xl bg-rose-950/20 p-3 ring-1 ring-rose-400/20">
+              <p className="mb-2 font-heading text-lg text-rose-100">People selling</p>
+              <p className="mb-3 text-xs text-muted-foreground">Tap a row to buy 1 from them.</p>
+              <OrderList
+                empty="No asks. Gather it, craft it, or post your own."
+                rows={book?.asks ?? []}
+                selfId={state.player.id}
+                pending={pending}
+                actionLabel="Buy 1"
+                onTake={async (id) => {
+                  await onTake(id);
+                  await reloadBook();
+                }}
+              />
+            </div>
+          </div>
         </div>
       ) : null}
+
+      <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
+        <div className="grid grid-cols-[minmax(0,1.4fr)_1fr_1fr_1fr] gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase sm:px-4">
+          <span>Item</span>
+          <span className="text-emerald-200/90">Best bid</span>
+          <span className="text-rose-200/90">Best ask</span>
+          <span>MV</span>
+        </div>
+        <div className="max-h-[min(40vh,22rem)] overflow-auto">
+          {items.map((item) => {
+            const quote = state.prices.find((row) => row.itemId === item.id);
+            const active = item.id === selectedItemId;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => pick(item.id)}
+                className={cn(
+                  "grid w-full grid-cols-[minmax(0,1.4fr)_1fr_1fr_1fr] items-center gap-2 border-b border-border/40 px-3 py-2.5 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4 sm:py-3",
+                  active && "bg-primary/15"
+                )}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className={cn("text-xl", rarityClass(item.id))}>{item.emoji}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{item.name}</span>
+                    <span className={cn("text-[10px] uppercase tracking-wide", rarityText[rarityOf(item.id)])}>
+                      {rarityLabel[rarityOf(item.id)]}
+                    </span>
+                  </span>
+                </span>
+                <span className="font-medium text-emerald-200">
+                  {quote?.bestBid != null ? `${quote.bestBid}🪙` : "—"}
+                </span>
+                <span className="font-medium text-rose-200">
+                  {quote?.bestAsk != null ? `${quote.bestAsk}🪙` : "—"}
+                </span>
+                <span className="text-muted-foreground">{quote?.vwap ?? item.basePrice}🪙</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
         <p className="mb-3 font-heading text-lg">Your open orders</p>

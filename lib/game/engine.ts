@@ -34,6 +34,7 @@ import type {
   OrderBook,
   OrderRow,
   PlayerState,
+  PricePoint,
   TradeRow,
 } from "@/lib/game/types";
 
@@ -256,7 +257,7 @@ function rollSearchLoot(locationId: string, luck = 1, skipCommon = false) {
   const weights = pool.map((item) => {
     let weight = searchWeight(item);
     const rarity = rarityOf(item.id);
-    if (luck > 1 && (rarity === "unique" || rarity === "legendary")) {
+    if (luck > 1 && rarity === "legendary") {
       weight *= luck;
     } else if (luck > 1 && rarity === "rare") {
       weight *= 1 + (luck - 1) * 0.5;
@@ -897,7 +898,28 @@ export function getOrderBook(itemId: string): OrderBook {
     asks: mapped
       .filter((row) => row.side === "sell")
       .sort((a, b) => a.price - b.price || a.createdAt - b.createdAt),
+    history: getPriceHistory(itemId),
   };
+}
+
+export function getPriceHistory(itemId: string): PricePoint[] {
+  const base = itemById[itemId]?.basePrice ?? 1;
+  const rows = getDb()
+    .prepare(
+      "SELECT created_at, price FROM trades WHERE item_id = ? ORDER BY created_at ASC, id ASC LIMIT 120"
+    )
+    .all(itemId) as { created_at: number; price: number }[];
+  if (rows.length === 0) {
+    const now = Date.now();
+    return [
+      { at: now - 60 * 60 * 1000, price: base },
+      { at: now, price: base },
+    ];
+  }
+  return [
+    { at: rows[0].created_at - 1, price: base },
+    ...rows.map((row) => ({ at: row.created_at, price: row.price })),
+  ];
 }
 
 function priceSheet(): MarketPrice[] {

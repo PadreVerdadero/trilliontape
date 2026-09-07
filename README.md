@@ -68,7 +68,7 @@ Every item has one job:
 | 🩹 Salve | +8 energy and next search ignores crowd |
 | 🧺 Basket | Next find +1 |
 | 🧱 Brick | Next search costs 1 energy |
-| 📿 Charm | Strong luck (Unique / Legendary) |
+| 📿 Charm | Strong luck (Rare / Legendary) |
 | 🕯️ Candle / 🗡️ Blade / 💍 Jewel | Relic pieces |
 | 🍲 Stew | Eat: refill 20 energy, **or** relic piece |
 | 🌟 Celestial Relic | Craft to win |
