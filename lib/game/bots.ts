@@ -257,16 +257,44 @@ export function botWillTake(
   fair: number,
   side: "liftAsk" | "hitBid",
   price: number,
-  feelingLucky: boolean
+  feelingLucky: boolean,
+  slack = hopeCoins(spread, fair)
 ) {
   const fairPx = Math.max(1, Math.round(fair));
-  const slack = hopeCoins(spread, fairPx);
+  const band = Math.max(1, Math.round(slack));
   if (side === "liftAsk") {
     const bargain = price <= Math.round(fairPx * (1 - spread.take));
-    const overpay = feelingLucky && price <= fairPx + slack;
+    const overpay = feelingLucky && price <= fairPx + band;
     return bargain || overpay;
   }
   const rich = price >= Math.round(fairPx * (1 + spread.take));
-  const dump = feelingLucky && price >= Math.max(1, fairPx - slack);
+  const dump = feelingLucky && price >= Math.max(1, fairPx - band);
   return rich || dump;
+}
+
+export function waitSteps(waitMs: number) {
+  if (waitMs < 18_000) return 0;
+  if (waitMs < 40_000) return 1;
+  if (waitMs < 75_000) return 2;
+  return 3;
+}
+
+export function chaseSlack(spread: BotSpread, fair: number, waitMs: number) {
+  const steps = waitSteps(waitMs);
+  const base = hopeCoins(spread, fair);
+  if (steps === 0) return base;
+  const stepCoins = Math.max(2, Math.round(Math.max(1, fair) * (0.2 + spread.hope * 0.2)));
+  return base + steps * stepCoins;
+}
+
+export function chaseBidPrice(oldPrice: number, fair: number, slack: number, steps: number) {
+  const bump = Math.max(1, steps);
+  const target = Math.round(fair + slack * (0.35 + steps * 0.22));
+  return Math.max(1, Math.max(oldPrice + bump, target));
+}
+
+export function chaseAskPrice(oldPrice: number, fair: number, slack: number, steps: number) {
+  const cut = Math.max(1, steps);
+  const target = Math.max(1, Math.round(fair - slack * (0.35 + steps * 0.22)));
+  return Math.max(1, Math.min(oldPrice - cut, target));
 }
