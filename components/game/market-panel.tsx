@@ -1,40 +1,24 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { itemById, items } from "@/lib/game/catalog";
+import { itemById } from "@/lib/game/catalog";
 import { formatCoins, formatNumber } from "@/lib/game/format";
+import type { MarketSort, SortColumn, SortDir } from "@/lib/game/market-sort";
 import {
-  compareByCommonness,
   rarityClass,
   rarityLabel,
-  rarityMapFromPrices,
   rarityOf,
   rarityText,
+  type RarityMap,
 } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
 import { useOrderBook } from "@/hooks/use-game";
 import { PriceChart } from "@/components/game/price-chart";
 import { SwapPanel } from "@/components/game/swap-panel";
-import type { GameState, MarketPrice, OrderSide } from "@/lib/game/types";
-
-type MarketSort = "item" | "bid" | "ask" | "mv" | "bookBid" | "bookAsk" | "volume";
-type SortColumn = Exclude<MarketSort, "bookBid" | "bookAsk"> | "book";
-
-function quoteOf(prices: MarketPrice[], itemId: string) {
-  return prices.find((row) => row.itemId === itemId);
-}
-
-function cmpMissingLast(a: number | null | undefined, b: number | null | undefined, dir: 1 | -1) {
-  const aMissing = a == null;
-  const bMissing = b == null;
-  if (aMissing && bMissing) return 0;
-  if (aMissing) return 1;
-  if (bMissing) return -1;
-  return (a - b) * dir;
-}
+import type { GameState, Item, OrderSide } from "@/lib/game/types";
 
 function SortHead({
   label,
@@ -82,6 +66,23 @@ function SortHead({
   );
 }
 
+function focusOrderField(el: HTMLInputElement | null, fallbackId?: string) {
+  const field =
+    el ??
+    (fallbackId ? document.getElementById(fallbackId) : null);
+  if (!(field instanceof HTMLInputElement)) return;
+  field.focus();
+  field.select();
+}
+
+function shortcutTargetIsText(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const field = target.closest("input, textarea, select");
+  if (!field || !(field instanceof HTMLElement)) return false;
+  return field.id !== "px" && field.id !== "qty";
+}
+
 function unitRows<T extends { remaining: number }>(rows: T[]) {
   return rows.flatMap((row) =>
     Array.from({ length: Math.max(0, row.remaining) }, (_, unit) => ({
@@ -104,6 +105,11 @@ export function MarketPanel({
   onDeclineSwap,
   selectedItemId,
   onSelectItem,
+  rankedItems,
+  rarityMap,
+  sort,
+  sortDir,
+  cycleSort,
 }: {
   state: GameState;
   pending: boolean;
@@ -127,71 +133,19 @@ export function MarketPanel({
   onDeclineSwap: (offerId: number) => Promise<unknown>;
   selectedItemId: string;
   onSelectItem: (itemId: string) => void;
+  rankedItems: Item[];
+  rarityMap: RarityMap;
+  sort: MarketSort;
+  sortDir: SortDir;
+  cycleSort: (column: SortColumn) => void;
 }) {
   const selected = itemById[selectedItemId];
   const price = state.prices.find((row) => row.itemId === selectedItemId);
-  const rarityMap = useMemo(
-    () => rarityMapFromPrices(items.map((item) => item.id), state.prices),
-    [state.prices]
-  );
-  const [sort, setSort] = useState<MarketSort>("item");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  const rankedItems = useMemo(() => {
-    const dir = sortDir === "asc" ? 1 : -1;
-    return [...items].sort((a, b) => {
-      const qa = quoteOf(state.prices, a.id);
-      const qb = quoteOf(state.prices, b.id);
-      let cmp = 0;
-      if (sort === "bid") cmp = cmpMissingLast(qa?.bestBid, qb?.bestBid, dir);
-      else if (sort === "ask") cmp = cmpMissingLast(qa?.bestAsk, qb?.bestAsk, dir);
-      else if (sort === "mv") {
-        const ma = qa?.vwap ?? a.basePrice;
-        const mb = qb?.vwap ?? b.basePrice;
-        cmp = (ma - mb) * dir;
-      } else if (sort === "bookBid") {
-        const da = (qa?.wanted ?? 0) > 0 ? qa?.wanted : null;
-        const db = (qb?.wanted ?? 0) > 0 ? qb?.wanted : null;
-        cmp = cmpMissingLast(da, db, dir);
-      } else if (sort === "bookAsk") {
-        const da = (qa?.listed ?? 0) > 0 ? qa?.listed : null;
-        const db = (qb?.listed ?? 0) > 0 ? qb?.listed : null;
-        cmp = cmpMissingLast(da, db, dir);
-      } else if (sort === "volume") cmp = ((qa?.held ?? 0) - (qb?.held ?? 0)) * dir;
-      else cmp = compareByCommonness(a, b, rarityMap) * dir;
-      if (cmp !== 0) return cmp;
-      return a.name.localeCompare(b.name);
-    });
-  }, [rarityMap, sort, sortDir, state.prices]);
-
-  function cycleSort(column: SortColumn) {
-    if (column === "book") {
-      if (sort === "bookBid" && sortDir === "desc") {
-        setSortDir("asc");
-        return;
-      }
-      if (sort === "bookBid" && sortDir === "asc") {
-        setSort("bookAsk");
-        setSortDir("desc");
-        return;
-      }
-      if (sort === "bookAsk" && sortDir === "desc") {
-        setSortDir("asc");
-        return;
-      }
-      setSort("bookBid");
-      setSortDir("desc");
-      return;
-    }
-    if (sort === column) {
-      setSortDir((prev) => (prev === "desc" ? "asc" : "desc"));
-      return;
-    }
-    setSort(column);
-    setSortDir(column === "item" || column === "ask" ? "asc" : "desc");
-  }
   const { book, reloadBook } = useOrderBook(selectedItemId);
   const [priceInput, setPriceInput] = useState("");
   const [qtyInput, setQtyInput] = useState("1");
+  const priceRef = useRef<HTMLInputElement>(null);
+  const qtyRef = useRef<HTMLInputElement>(null);
 
   const suggested = useMemo(() => {
     return String(Math.max(1, Math.round(Number(price?.bestAsk ?? price?.vwap ?? selected?.basePrice ?? 5))));
@@ -219,6 +173,57 @@ export function MarketPanel({
     setPriceInput("");
   }
 
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (shortcutTargetIsText(event.target)) return;
+      const key = event.key.toLowerCase();
+      if (key === "w" || key === "s") {
+        event.preventDefault();
+        const ids = rankedItems.map((item) => item.id);
+        if (ids.length === 0) return;
+        const at = ids.indexOf(selectedItemId);
+        const index = at < 0 ? 0 : at;
+        const next =
+          key === "w" ? Math.max(0, index - 1) : Math.min(ids.length - 1, index + 1);
+        if (next === index && at >= 0) return;
+        const id = ids[next];
+        pick(id);
+        requestAnimationFrame(() => {
+          document
+            .querySelector(`[data-market-item="${id}"]`)
+            ?.scrollIntoView({ block: "nearest" });
+          document
+            .querySelector(`[data-pack-item="${id}"]`)
+            ?.scrollIntoView({ block: "nearest" });
+        });
+        return;
+      }
+      if (key === "a") {
+        event.preventDefault();
+        focusOrderField(priceRef.current, "px");
+        return;
+      }
+      if (key === "d") {
+        event.preventDefault();
+        focusOrderField(qtyRef.current, "qty");
+        return;
+      }
+      if (event.repeat) return;
+      if (key === "v") {
+        event.preventDefault();
+        if (!pending) void place("buy");
+        return;
+      }
+      if (key === "x") {
+        event.preventDefault();
+        if (!pending) void place("sell");
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -226,7 +231,8 @@ export function MarketPanel({
           <p className="font-heading text-xl sm:text-2xl">Player market</p>
           <p className="text-xs text-muted-foreground">
             Crossing bids fill at the ask. Bid/Ask is units on the book. Volume is stock in packs.
-            Tap a column to sort. Bid/Ask: two taps on bids, then two on asks.
+            Tap a column to sort. Bid/Ask: two taps on bids, then two on asks. Pack on the left
+            follows this order. W/S select · A price · D qty · V buy · X sell.
           </p>
         </div>
         {state.recentTrades[0] ? (
@@ -290,6 +296,10 @@ export function MarketPanel({
           <div className="grid gap-2 lg:grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)] lg:items-start">
             <div className="rounded-lg bg-background/40 p-2 ring-1 ring-foreground/10">
               <p className="mb-1 font-heading text-sm">Post your own order</p>
+              <p className="mb-1 text-[10px] leading-4 text-muted-foreground">
+                <kbd className="text-foreground">A</kbd> price · <kbd className="text-foreground">D</kbd> qty
+                · <kbd className="text-foreground">V</kbd> buy · <kbd className="text-foreground">X</kbd> sell
+              </p>
               {state.player.isGov ? (
                 <p className="mb-1 text-[10px] leading-4 text-amber-100/90">
                   Treasury is unlimited. Asks mint on fill, bids burn on fill.
@@ -303,6 +313,7 @@ export function MarketPanel({
                   </Label>
                   <Input
                     id="px"
+                    ref={priceRef}
                     className="h-8 md:h-7"
                     inputMode="numeric"
                     value={priceInput}
@@ -317,6 +328,7 @@ export function MarketPanel({
                   </Label>
                   <Input
                     id="qty"
+                    ref={qtyRef}
                     className="h-8 md:h-7"
                     inputMode="numeric"
                     value={qtyInput}
@@ -518,6 +530,7 @@ export function MarketPanel({
               <button
                 key={item.id}
                 type="button"
+                data-market-item={item.id}
                 onClick={() => pick(item.id)}
                 className={cn(
                   "grid w-full grid-cols-[minmax(0,1.2fr)_minmax(0,1.05fr)_minmax(0,1.05fr)_0.7fr_minmax(0,1fr)_0.7fr] items-center gap-2 border-b border-border/40 px-3 py-2.5 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4 sm:py-3",

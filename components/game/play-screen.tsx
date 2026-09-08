@@ -7,6 +7,7 @@ import { InventoryPanel } from "@/components/game/inventory-panel";
 import { MarketPanel } from "@/components/game/market-panel";
 import { OpenOrdersPanel } from "@/components/game/open-orders-panel";
 import { useGame } from "@/hooks/use-game";
+import { useMarketSort } from "@/hooks/use-market-sort";
 import { itemById } from "@/lib/game/catalog";
 import { formatCoins, formatNumber } from "@/lib/game/format";
 import type { GameState, MarketPrice } from "@/lib/game/types";
@@ -24,6 +25,7 @@ function holdingsValue(state: GameState) {
 export function PlayScreen({ initialState }: { initialState: GameState }) {
   const { state, error, loading, pending, run, setError } = useGame(initialState);
   const [itemId, setItemId] = useState("wheat");
+  const marketSort = useMarketSort(state?.prices ?? []);
 
   if (loading) {
     return (
@@ -135,6 +137,7 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
               prices={state.prices}
               onSelect={setItemId}
               selectedItemId={itemId}
+              rankedItemIds={marketSort.rankedItems.map((item) => item.id)}
             />
           </div>
         </aside>
@@ -144,6 +147,11 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
             pending={pending}
             selectedItemId={itemId}
             onSelectItem={setItemId}
+            rankedItems={marketSort.rankedItems}
+            rarityMap={marketSort.rarityMap}
+            sort={marketSort.sort}
+            sortDir={marketSort.sortDir}
+            cycleSort={marketSort.cycleSort}
             onOrder={(input) => run({ action: "order", ...input })}
             onTake={(orderId) => run({ action: "take", orderId })}
             onCancel={(orderId) => run({ action: "cancel", orderId })}
