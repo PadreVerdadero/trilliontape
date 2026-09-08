@@ -1742,14 +1742,16 @@ function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: num
   const waitMs = now - oldest.created_at;
   const steps = waitSteps(waitMs);
   if (steps < 1) return false;
-  if (steps === 1 && Math.random() < 0.45) return false;
-  if (steps === 2 && Math.random() < 0.18) return false;
+  if (steps === 1 && Math.random() < 0.35) return false;
 
   const itemId = oldest.item_id;
   const fair = marketPrice(itemId);
   const spread = botSpread(style);
   const slack = chaseSlack(spread, fair, waitMs);
-  const impatient = steps >= 2 || Math.random() < botLossChance(spread, fair) + steps * 0.22;
+  const impatient =
+    oldest.side === "buy"
+      ? steps >= 2 || Math.random() < Math.min(0.97, botLossChance(spread, fair) + steps * 0.1)
+      : steps >= 2 || Math.random() < botLossChance(spread, fair) + Math.min(steps, 8) * 0.22;
   const db = getDb();
 
   if (oldest.side === "buy") {
@@ -1773,11 +1775,17 @@ function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: num
     }
     const next = chaseBidPrice(oldest.price, fair, slack, steps);
     if (next > oldest.price) {
-      cancelOrders(userId, [oldest.id]);
-      if (availableGold(userId) >= next) {
-        placeOrder(userId, itemId, "buy", next, 1);
-        return true;
+      const extra = next - oldest.price;
+      const free = availableGold(userId);
+      if (extra > free) {
+        db.prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?").run(
+          extra - free + 20,
+          userId
+        );
       }
+      db.prepare("UPDATE orders SET price = ? WHERE id = ?").run(next, oldest.id);
+      matchItem(itemId);
+      return true;
     }
     return false;
   }
@@ -1817,7 +1825,7 @@ export function tickBots() {
   botClock.bazaarBotTick = now;
   const db = getDb();
   db.prepare(
-    "DELETE FROM orders WHERE created_at < ? AND user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)"
+    "DELETE FROM orders WHERE created_at < ? AND side = 'sell' AND user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)"
   ).run(now - 150_000);
   for (const profile of shufflePick(BOT_PROFILES, 14)) {
     const user = db

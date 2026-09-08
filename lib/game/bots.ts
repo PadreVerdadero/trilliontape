@@ -273,23 +273,21 @@ export function botWillTake(
 }
 
 export function waitSteps(waitMs: number) {
-  if (waitMs < 18_000) return 0;
-  if (waitMs < 40_000) return 1;
-  if (waitMs < 75_000) return 2;
-  return 3;
+  if (waitMs < 15_000) return 0;
+  return Math.floor((waitMs - 15_000) / 12_000) + 1;
 }
 
 export function chaseSlack(spread: BotSpread, fair: number, waitMs: number) {
   const steps = waitSteps(waitMs);
   const base = hopeCoins(spread, fair);
   if (steps === 0) return base;
-  const stepCoins = Math.max(2, Math.round(Math.max(1, fair) * (0.2 + spread.hope * 0.2)));
+  const stepCoins = Math.max(1, Math.round(Math.max(1, fair) * (0.12 + spread.hope * 0.12)));
   return base + steps * stepCoins;
 }
 
 export function chaseBidPrice(oldPrice: number, fair: number, slack: number, steps: number) {
-  const bump = Math.max(1, steps);
-  const target = Math.round(fair + slack * (0.35 + steps * 0.22));
+  const bump = Math.max(1, Math.ceil(steps / 3));
+  const target = Math.round(fair + slack);
   return Math.max(1, Math.max(oldPrice + bump, target));
 }
 
