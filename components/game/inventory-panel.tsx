@@ -69,10 +69,10 @@ export function InventoryPanel({
             >
               <span className="text-base leading-none">{item?.emoji}</span>
               <span className="truncate text-xs font-medium sm:text-sm">{item?.name}</span>
-              <span className="tabular-nums text-right text-xs text-muted-foreground">
-                {formatNumber(free)}
+              <span className="tabular-nums text-right text-xs sm:text-sm">
+                <span className="font-medium">{formatNumber(free)}</span>
                 {reserved ? (
-                  <span className="text-muted-foreground/70">/{formatNumber(row.quantity)}</span>
+                  <span className="text-muted-foreground">/{formatNumber(row.quantity)}</span>
                 ) : null}
               </span>
               <span className="tabular-nums text-right text-xs font-medium text-sky-200">
