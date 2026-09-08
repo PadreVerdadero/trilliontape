@@ -5,8 +5,11 @@ import bcrypt from "bcryptjs";
 import { ENERGY_MAX, RETIRED_ITEM_IDS, STARTING_ENERGY, STARTING_GOLD, itemById } from "@/lib/game/catalog";
 import { BOT_PROFILES } from "@/lib/game/bots";
 
+const BOOTSTRAP_REV = 3;
+
 const globalForDb = globalThis as unknown as {
   bazaarDb?: Database.Database;
+  bazaarBootstrapRev?: number;
 };
 
 function rotateIds(ids: number[], salt: string) {
@@ -196,6 +199,12 @@ function ensureColumn(db: Database.Database, table: string, column: string, sql:
 }
 
 function seedInventoryCostBasis(db: Database.Database) {
+  const stacks = db
+    .prepare(
+      "SELECT user_id, item_id, quantity FROM inventory WHERE quantity > 0 AND COALESCE(cost_basis, 0) = 0"
+    )
+    .all() as { user_id: number; item_id: string; quantity: number }[];
+  if (stacks.length === 0) return;
   const avgs = db
     .prepare(
       `SELECT buy_user_id, item_id, SUM(price * quantity) AS paid, SUM(quantity) AS qty
@@ -207,12 +216,6 @@ function seedInventoryCostBasis(db: Database.Database) {
       .filter((row) => row.qty > 0)
       .map((row) => [`${row.buy_user_id}:${row.item_id}`, row.paid / row.qty])
   );
-  const stacks = db
-    .prepare(
-      "SELECT user_id, item_id, quantity FROM inventory WHERE quantity > 0 AND COALESCE(cost_basis, 0) = 0"
-    )
-    .all() as { user_id: number; item_id: string; quantity: number }[];
-  if (stacks.length === 0) return;
   const upd = db.prepare(
     "UPDATE inventory SET cost_basis = ? WHERE user_id = ? AND item_id = ?"
   );
@@ -429,6 +432,15 @@ function seedBots(db: Database.Database) {
   }
 }
 
+function bootstrap(db: Database.Database) {
+  migrate(db);
+  clearBankerBook(db);
+  seedGuest(db);
+  seedBots(db);
+  purgeRetiredItems(db);
+  shareBankerHoldings(db);
+}
+
 export function getDb() {
   if (!globalForDb.bazaarDb) {
     const dir = path.join(process.cwd(), "data");
@@ -436,19 +448,13 @@ export function getDb() {
     const db = new Database(path.join(dir, "bazaar.db"));
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
-    migrate(db);
-    clearBankerBook(db);
-    seedGuest(db);
-    seedBots(db);
-    purgeRetiredItems(db);
-    shareBankerHoldings(db);
+    db.pragma("busy_timeout = 5000");
+    bootstrap(db);
     globalForDb.bazaarDb = db;
-  } else {
-    migrate(globalForDb.bazaarDb);
-    clearBankerBook(globalForDb.bazaarDb);
-    seedBots(globalForDb.bazaarDb);
-    purgeRetiredItems(globalForDb.bazaarDb);
-    shareBankerHoldings(globalForDb.bazaarDb);
+    globalForDb.bazaarBootstrapRev = BOOTSTRAP_REV;
+  } else if (globalForDb.bazaarBootstrapRev !== BOOTSTRAP_REV) {
+    bootstrap(globalForDb.bazaarDb);
+    globalForDb.bazaarBootstrapRev = BOOTSTRAP_REV;
   }
   return globalForDb.bazaarDb;
 }

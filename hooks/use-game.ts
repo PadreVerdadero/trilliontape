@@ -21,7 +21,9 @@ export function useGame(initialState?: GameState | null) {
   const [loading, setLoading] = useState(!initialState);
   const [pending, setPending] = useState(false);
   const lastEvent = useRef<string | null>(null);
+  const pendingRef = useRef(false);
   const busy = state?.player.busy.type !== "idle";
+  pendingRef.current = pending;
 
   const refresh = useCallback(async () => {
     const response = await fetch(`/api/state?tz=${encodeURIComponent(clientTimeZone())}`, {
@@ -51,6 +53,7 @@ export function useGame(initialState?: GameState | null) {
 
   useEffect(() => {
     const id = window.setInterval(() => {
+      if (pendingRef.current) return;
       void refresh();
     }, busy ? 1000 : 4000);
     return () => window.clearInterval(id);

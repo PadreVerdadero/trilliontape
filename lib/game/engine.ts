@@ -2141,8 +2141,12 @@ function listSwaps(userId: number): SwapOffer[] {
   return ids.map((row) => mapSwap(loadSwap(row.id), userId));
 }
 
-export function getGameState(userId: number, timeZone?: string): GameState {
-  tickBots();
+export function getGameState(
+  userId: number,
+  timeZone?: string,
+  options?: { tick?: boolean }
+): GameState {
+  if (options?.tick !== false) tickBots();
   resolveBusy(userId);
   const player = loadPlayerRow(userId);
   const stacks = getDb()

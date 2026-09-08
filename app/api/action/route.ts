@@ -118,7 +118,7 @@ export async function POST(request: Request) {
       default:
         throw new Error("Unknown action.");
     }
-    return asJson(getGameState(userId, tz));
+    return asJson(getGameState(userId, tz, { tick: false }));
   } catch (error) {
     return handleError(error);
   }
