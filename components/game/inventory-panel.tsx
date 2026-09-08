@@ -48,9 +48,9 @@ export function InventoryPanel({
               : `${formatNumber(player.availableGold)} free`
           }
         >
-          {formatCompact(player.availableGold)}
+          {formatNumber(player.availableGold)}
           {player.availableGold !== player.gold ? (
-            <span className="text-muted-foreground">/{formatCompact(player.gold)}</span>
+            <span className="text-muted-foreground">/{formatNumber(player.gold)}</span>
           ) : null}
         </span>
       </div>
