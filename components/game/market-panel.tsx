@@ -185,7 +185,7 @@ export function MarketPanel({
             ) : null}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto]">
               <div className="space-y-1">
-                <Label htmlFor="px">Price each</Label>
+                <Label htmlFor="px">🪙</Label>
                 <Input
                   id="px"
                   inputMode="numeric"
@@ -195,7 +195,7 @@ export function MarketPanel({
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="qty">How many</Label>
+                <Label htmlFor="qty">#</Label>
                 <Input
                   id="qty"
                   inputMode="numeric"
