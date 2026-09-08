@@ -77,7 +77,6 @@ export function MarketPanel({
     [rarityMap]
   );
   const { book, reloadBook } = useOrderBook(selectedItemId);
-  const [side, setSide] = useState<OrderSide>("buy");
   const [priceInput, setPriceInput] = useState("");
   const [qtyInput, setQtyInput] = useState("1");
 
@@ -91,11 +90,11 @@ export function MarketPanel({
       ? draftQty * draftPrice
       : null;
 
-  async function place() {
+  async function place(next: OrderSide) {
     if (!selected) return;
     await onOrder({
       itemId: selected.id,
-      side,
+      side: next,
       price: Number(priceInput || suggested),
       quantity: Number(qtyInput),
     });
@@ -184,28 +183,7 @@ export function MarketPanel({
                 book after you leave office.
               </p>
             ) : null}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[auto_1fr_1fr_auto]">
-              <div className="space-y-1">
-                <Label>I want to</Label>
-                <div className="flex gap-1">
-                  <Button
-                    size="sm"
-                    className="h-11 flex-1 md:h-10"
-                    variant={side === "buy" ? "default" : "outline"}
-                    onClick={() => setSide("buy")}
-                  >
-                    Buy
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="h-11 flex-1 md:h-10"
-                    variant={side === "sell" ? "default" : "outline"}
-                    onClick={() => setSide("sell")}
-                  >
-                    Sell
-                  </Button>
-                </div>
-              </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto]">
               <div className="space-y-1">
                 <Label htmlFor="px">Price each</Label>
                 <Input
@@ -225,10 +203,23 @@ export function MarketPanel({
                   onChange={(event) => setQtyInput(event.target.value)}
                 />
               </div>
-              <div className="flex flex-col justify-end gap-1">
-                <Button className="h-11 w-full lg:min-w-40" disabled={pending} onClick={() => void place()}>
-                  Post {side === "buy" ? "bid" : "ask"}
-                </Button>
+              <div className="flex flex-col justify-end gap-1 sm:col-span-2 lg:col-span-1">
+                <div className="flex gap-1">
+                  <Button
+                    className="h-11 flex-1 bg-emerald-600 text-white hover:bg-emerald-500 lg:min-w-24"
+                    disabled={pending}
+                    onClick={() => void place("buy")}
+                  >
+                    Buy
+                  </Button>
+                  <Button
+                    className="h-11 flex-1 bg-rose-600 text-white hover:bg-rose-500 lg:min-w-24"
+                    disabled={pending}
+                    onClick={() => void place("sell")}
+                  >
+                    Sell
+                  </Button>
+                </div>
                 {draftTotal != null ? (
                   <p className="text-center text-xs text-muted-foreground">
                     {formatNumber(draftQty)} × {formatCoins(draftPrice)} = {formatCoins(draftTotal)}
