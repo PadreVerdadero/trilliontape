@@ -47,21 +47,20 @@ function SortHead({
       onClick={() => onSort(column)}
       aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}
       className={cn(
-        "grid w-full min-w-0 grid-cols-[minmax(0,1fr)_0.75rem] items-center gap-0.5 rounded-md text-left uppercase transition-colors hover:text-foreground",
+        "grid w-full min-w-0 grid-cols-[0.7rem_minmax(0,1fr)] items-center gap-0.5 rounded-md text-left uppercase transition-colors hover:text-foreground",
         className,
         active && emphasize && "text-foreground"
       )}
     >
-      <span className="min-w-0 truncate tracking-wide">{label}</span>
       <span
-        className={cn(
-          "text-center text-[10px] font-semibold leading-none",
-          !active && "invisible"
-        )}
+        className={cn("flex h-3 w-3 items-center justify-center", !active && "invisible")}
         aria-hidden
       >
-        {dir === "desc" ? "▼" : "▲"}
+        <svg viewBox="0 0 10 10" className="h-2.5 w-2.5 fill-current">
+          {dir === "desc" ? <path d="M1 2.5h8L5 8.5z" /> : <path d="M1 8.5h8L5 2.5z" />}
+        </svg>
       </span>
+      <span className="min-w-0 truncate tracking-wide">{label}</span>
     </button>
   );
 }
@@ -473,7 +472,7 @@ export function MarketPanel({
       ) : null}
 
       <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
-        <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.05fr)_minmax(0,1.05fr)_0.7fr_minmax(0,1fr)_0.7fr] gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium text-muted-foreground sm:px-4">
+        <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.05fr)_minmax(0,1.05fr)_minmax(0,0.85fr)_minmax(0,1fr)_minmax(0,0.85fr)] gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium text-muted-foreground sm:px-4">
           <SortHead label="Item" column="item" sort={sort} dir={sortDir} onSort={cycleSort} />
           <SortHead
             label="Best bid"
@@ -552,7 +551,7 @@ export function MarketPanel({
                 data-market-item={item.id}
                 onClick={() => pick(item.id)}
                 className={cn(
-                  "grid w-full grid-cols-[minmax(0,1.2fr)_minmax(0,1.05fr)_minmax(0,1.05fr)_0.7fr_minmax(0,1fr)_0.7fr] items-center gap-2 border-b border-border/40 px-3 py-2.5 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4 sm:py-3",
+                  "grid w-full grid-cols-[minmax(0,1.2fr)_minmax(0,1.05fr)_minmax(0,1.05fr)_minmax(0,0.85fr)_minmax(0,1fr)_minmax(0,0.85fr)] items-center gap-2 border-b border-border/40 px-3 py-2.5 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4 sm:py-3",
                   active && "bg-primary/15"
                 )}
               >
