@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,7 +20,8 @@ import { PriceChart } from "@/components/game/price-chart";
 import { SwapPanel } from "@/components/game/swap-panel";
 import type { GameState, MarketPrice, OrderSide } from "@/lib/game/types";
 
-type MarketSort = "item" | "bid" | "ask" | "mv" | "book" | "volume";
+type MarketSort = "item" | "bid" | "ask" | "mv" | "bookBid" | "bookAsk" | "volume";
+type SortColumn = Exclude<MarketSort, "bookBid" | "bookAsk"> | "book";
 
 function quoteOf(prices: MarketPrice[], itemId: string) {
   return prices.find((row) => row.itemId === itemId);
@@ -42,15 +43,20 @@ function SortHead({
   dir,
   onSort,
   className,
+  active: activeOverride,
+  emphasize = true,
 }: {
-  label: string;
-  column: MarketSort;
+  label: ReactNode;
+  column: SortColumn;
   sort: MarketSort;
   dir: "asc" | "desc";
-  onSort: (column: MarketSort) => void;
+  onSort: (column: SortColumn) => void;
   className?: string;
+  active?: boolean;
+  emphasize?: boolean;
 }) {
-  const active = sort === column;
+  const active =
+    activeOverride ?? (column === "book" ? sort === "bookBid" || sort === "bookAsk" : sort === column);
   return (
     <button
       type="button"
@@ -59,7 +65,7 @@ function SortHead({
       className={cn(
         "-mx-1 rounded-md px-1 text-left uppercase tracking-wide transition-colors hover:text-foreground",
         className,
-        active && "text-foreground"
+        active && emphasize && "text-foreground"
       )}
     >
       {label}
@@ -134,10 +140,14 @@ export function MarketPanel({
         const ma = qa?.vwap ?? a.basePrice;
         const mb = qb?.vwap ?? b.basePrice;
         cmp = (ma - mb) * dir;
-      } else if (sort === "book") {
-        const da = (qa?.wanted ?? 0) + (qa?.listed ?? 0);
-        const db = (qb?.wanted ?? 0) + (qb?.listed ?? 0);
-        cmp = (da - db) * dir || ((qa?.wanted ?? 0) - (qb?.wanted ?? 0)) * dir;
+      } else if (sort === "bookBid") {
+        const da = (qa?.wanted ?? 0) > 0 ? qa?.wanted : null;
+        const db = (qb?.wanted ?? 0) > 0 ? qb?.wanted : null;
+        cmp = cmpMissingLast(da, db, dir);
+      } else if (sort === "bookAsk") {
+        const da = (qa?.listed ?? 0) > 0 ? qa?.listed : null;
+        const db = (qb?.listed ?? 0) > 0 ? qb?.listed : null;
+        cmp = cmpMissingLast(da, db, dir);
       } else if (sort === "volume") cmp = ((qa?.held ?? 0) - (qb?.held ?? 0)) * dir;
       else cmp = compareByCommonness(a, b, rarityMap) * dir;
       if (cmp !== 0) return cmp;
@@ -145,7 +155,25 @@ export function MarketPanel({
     });
   }, [rarityMap, sort, sortDir, state.prices]);
 
-  function cycleSort(column: MarketSort) {
+  function cycleSort(column: SortColumn) {
+    if (column === "book") {
+      if (sort === "bookBid" && sortDir === "desc") {
+        setSortDir("asc");
+        return;
+      }
+      if (sort === "bookBid" && sortDir === "asc") {
+        setSort("bookAsk");
+        setSortDir("desc");
+        return;
+      }
+      if (sort === "bookAsk" && sortDir === "desc") {
+        setSortDir("asc");
+        return;
+      }
+      setSort("bookBid");
+      setSortDir("desc");
+      return;
+    }
     if (sort === column) {
       setSortDir((prev) => (prev === "desc" ? "asc" : "desc"));
       return;
@@ -190,7 +218,7 @@ export function MarketPanel({
           <p className="font-heading text-xl sm:text-2xl">Player market</p>
           <p className="text-xs text-muted-foreground">
             Crossing bids fill at the ask. Bid/Ask is units on the book. Volume is stock in packs.
-            Tap a column to sort.
+            Tap a column to sort. Bid/Ask sorts bids first, then asks on the third tap.
           </p>
         </div>
         {state.recentTrades[0] ? (
@@ -433,12 +461,19 @@ export function MarketPanel({
             className="text-sky-200/90"
           />
           <SortHead
-            label="Bid/Ask"
+            label={
+              <>
+                <span className={sort === "bookBid" ? "text-foreground" : undefined}>Bid</span>
+                /
+                <span className={sort === "bookAsk" ? "text-foreground" : undefined}>Ask</span>
+              </>
+            }
             column="book"
             sort={sort}
             dir={sortDir}
             onSort={cycleSort}
             className="text-amber-200/90"
+            emphasize={false}
           />
           <SortHead
             label="Volume"
@@ -486,7 +521,13 @@ export function MarketPanel({
                   {formatCoins(quote?.vwap ?? item.basePrice)}
                 </span>
                 <span className="font-medium tabular-nums text-amber-200">
-                  {formatNumber(wanted)}/{formatNumber(listed)}
+                  <span className={sort === "bookBid" ? "text-foreground" : undefined}>
+                    {formatNumber(wanted)}
+                  </span>
+                  /
+                  <span className={sort === "bookAsk" ? "text-foreground" : undefined}>
+                    {formatNumber(listed)}
+                  </span>
                 </span>
                 <span className="font-medium text-violet-200">
                   {volume > 0 ? formatNumber(volume) : "—"}
