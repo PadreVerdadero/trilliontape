@@ -63,13 +63,17 @@ function SortHead({
       onClick={() => onSort(column)}
       aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}
       className={cn(
-        "-mx-1 rounded-md px-1 text-left uppercase tracking-wide transition-colors hover:text-foreground",
+        "-mx-1 flex min-w-0 max-w-full items-center gap-0.5 rounded-md px-1 text-left uppercase tracking-wide transition-colors hover:text-foreground",
         className,
         active && emphasize && "text-foreground"
       )}
     >
-      {label}
-      {active ? (dir === "desc" ? " ↓" : " ↑") : ""}
+      <span className="min-w-0 truncate">{label}</span>
+      {active ? (
+        <span className="shrink-0 font-semibold leading-none" aria-hidden>
+          {dir === "desc" ? "↓" : "↑"}
+        </span>
+      ) : null}
     </button>
   );
 }
