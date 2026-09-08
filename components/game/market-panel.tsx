@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -102,6 +102,27 @@ function focusOrderField(el: HTMLInputElement | null, fallbackId?: string) {
   field.select();
 }
 
+function nudgeWhole(raw: string, delta: number, fallback: number) {
+  const n = Number(raw);
+  const base = Number.isFinite(n) && n > 0 ? Math.round(n) : fallback;
+  return String(Math.max(1, base + delta));
+}
+
+function orderFieldFocused(
+  priceEl: HTMLInputElement | null,
+  qtyEl: HTMLInputElement | null
+): "px" | "qty" | null {
+  const active = document.activeElement;
+  if (!active) return null;
+  if (active === priceEl || (active instanceof HTMLElement && active.id === "px")) return "px";
+  if (active === qtyEl || (active instanceof HTMLElement && active.id === "qty")) return "qty";
+  if (active instanceof HTMLElement) {
+    if (priceEl && priceEl.contains(active)) return "px";
+    if (qtyEl && qtyEl.contains(active)) return "qty";
+  }
+  return null;
+}
+
 function shortcutTargetIsText(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
@@ -173,10 +194,12 @@ export function MarketPanel({
   const [qtyInput, setQtyInput] = useState("1");
   const priceRef = useRef<HTMLInputElement>(null);
   const qtyRef = useRef<HTMLInputElement>(null);
+  const focusAfter = useRef<"px" | "qty" | null>(null);
 
   const suggested = useMemo(() => {
     return String(Math.max(1, Math.round(Number(price?.bestAsk ?? price?.vwap ?? selected?.basePrice ?? 5))));
   }, [price, selected]);
+  const mvCoins = Math.max(1, Math.round(Number(price?.vwap ?? selected?.basePrice ?? 1)));
   const draftQty = Number(qtyInput);
   const draftPrice = Number(priceInput || suggested);
   const draftTotal =
@@ -199,6 +222,30 @@ export function MarketPanel({
     onSelectItem(id);
     setPriceInput("");
   }
+
+  function focusPreparedField(id: "px" | "qty") {
+    withPreservedScroll(() =>
+      focusOrderField(id === "px" ? priceRef.current : qtyRef.current, id)
+    );
+  }
+
+  function prepareOrderField(id: "px" | "qty", value: string) {
+    const current = id === "px" ? priceInput : qtyInput;
+    if (current === value) {
+      focusPreparedField(id);
+      return;
+    }
+    focusAfter.current = id;
+    if (id === "px") setPriceInput(value);
+    else setQtyInput(value);
+  }
+
+  useLayoutEffect(() => {
+    const which = focusAfter.current;
+    if (!which) return;
+    focusAfter.current = null;
+    focusPreparedField(which);
+  }, [priceInput, qtyInput]);
 
   function firstTakeable(side: "buy" | "ask") {
     const rows = side === "buy" ? book?.bids ?? [] : book?.asks ?? [];
@@ -234,12 +281,24 @@ export function MarketPanel({
       }
       if (key === "a") {
         event.preventDefault();
-        withPreservedScroll(() => focusOrderField(priceRef.current, "px"));
+        prepareOrderField("px", String(mvCoins));
         return;
       }
       if (key === "d") {
         event.preventDefault();
-        withPreservedScroll(() => focusOrderField(qtyRef.current, "qty"));
+        prepareOrderField("qty", "1");
+        return;
+      }
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        const field = orderFieldFocused(priceRef.current, qtyRef.current);
+        if (!field) return;
+        event.preventDefault();
+        const delta = event.key === "ArrowUp" ? 1 : -1;
+        if (field === "px") {
+          setPriceInput((prev) => nudgeWhole(prev, delta, mvCoins));
+        } else {
+          setQtyInput((prev) => nudgeWhole(prev, delta, 1));
+        }
         return;
       }
       if (event.repeat) return;
@@ -275,7 +334,7 @@ export function MarketPanel({
           <p className="text-xs text-muted-foreground">
             Crossing bids fill at the ask. Bid/Ask is units on the book. Volume is stock in packs.
             Tap a column to sort. Bid/Ask: two taps on bids, then two on asks. Pack on the left
-            follows this order. W/S select · A price · D qty · V buy · X sell · Q take bid · E take ask.
+            follows this order. W/S select · A fills MV · D qty 1 · arrows nudge · V buy · X sell · Q take bid · E take ask.
           </p>
         </div>
         {state.recentTrades[0] ? (
@@ -340,8 +399,9 @@ export function MarketPanel({
             <div className="rounded-lg bg-background/40 p-2 ring-1 ring-foreground/10">
               <p className="mb-1 font-heading text-sm">Post your own order</p>
               <p className="mb-1 text-[10px] leading-4 text-muted-foreground">
-                <kbd className="text-foreground">A</kbd> price · <kbd className="text-foreground">D</kbd> qty
-                · <kbd className="text-foreground">V</kbd> buy · <kbd className="text-foreground">X</kbd> sell
+                <kbd className="text-foreground">A</kbd> MV · arrows nudge ·{" "}
+                <kbd className="text-foreground">D</kbd> qty 1 · <kbd className="text-foreground">V</kbd> buy
+                · <kbd className="text-foreground">X</kbd> sell
               </p>
               {state.player.isGov ? (
                 <p className="mb-1 text-[10px] leading-4 text-amber-100/90">
