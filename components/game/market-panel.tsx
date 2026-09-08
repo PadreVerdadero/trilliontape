@@ -66,12 +66,40 @@ function SortHead({
   );
 }
 
+function snapshotScrolls() {
+  const win = { x: window.scrollX, y: window.scrollY };
+  const panels = [...document.querySelectorAll<HTMLElement>("[data-keep-scroll]")].map((el) => ({
+    el,
+    left: el.scrollLeft,
+    top: el.scrollTop,
+  }));
+  return { win, panels };
+}
+
+function restoreScrolls(shot: ReturnType<typeof snapshotScrolls>) {
+  window.scrollTo(shot.win.x, shot.win.y);
+  for (const panel of shot.panels) {
+    panel.el.scrollLeft = panel.left;
+    panel.el.scrollTop = panel.top;
+  }
+}
+
+function withPreservedScroll(run: () => void) {
+  const shot = snapshotScrolls();
+  run();
+  restoreScrolls(shot);
+  requestAnimationFrame(() => {
+    restoreScrolls(shot);
+    requestAnimationFrame(() => restoreScrolls(shot));
+  });
+}
+
 function focusOrderField(el: HTMLInputElement | null, fallbackId?: string) {
   const field =
     el ??
     (fallbackId ? document.getElementById(fallbackId) : null);
   if (!(field instanceof HTMLInputElement)) return;
-  field.focus();
+  field.focus({ preventScroll: true });
   field.select();
 }
 
@@ -187,26 +215,17 @@ export function MarketPanel({
         const next =
           key === "w" ? Math.max(0, index - 1) : Math.min(ids.length - 1, index + 1);
         if (next === index && at >= 0) return;
-        const id = ids[next];
-        pick(id);
-        requestAnimationFrame(() => {
-          document
-            .querySelector(`[data-market-item="${id}"]`)
-            ?.scrollIntoView({ block: "nearest" });
-          document
-            .querySelector(`[data-pack-item="${id}"]`)
-            ?.scrollIntoView({ block: "nearest" });
-        });
+        withPreservedScroll(() => pick(ids[next]));
         return;
       }
       if (key === "a") {
         event.preventDefault();
-        focusOrderField(priceRef.current, "px");
+        withPreservedScroll(() => focusOrderField(priceRef.current, "px"));
         return;
       }
       if (key === "d") {
         event.preventDefault();
-        focusOrderField(qtyRef.current, "qty");
+        withPreservedScroll(() => focusOrderField(qtyRef.current, "qty"));
         return;
       }
       if (event.repeat) return;

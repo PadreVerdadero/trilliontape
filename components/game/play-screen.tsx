@@ -131,7 +131,7 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
             <span className="text-right">MV</span>
             <span className="text-right">Total</span>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-1 py-1 sm:px-2">
+          <div className="min-h-0 flex-1 overflow-y-auto px-1 py-1 sm:px-2" data-keep-scroll>
             <InventoryPanel
               player={player}
               prices={state.prices}
@@ -141,7 +141,7 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
             />
           </div>
         </aside>
-        <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 sm:px-3">
+        <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 sm:px-3" data-keep-scroll>
           <MarketPanel
             state={state}
             pending={pending}

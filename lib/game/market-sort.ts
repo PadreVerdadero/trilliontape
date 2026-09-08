@@ -68,7 +68,3 @@ export function rankCatalogItems(
     return a.name.localeCompare(b.name);
   });
 }
-
-export function orderIndex(rankedIds: string[]) {
-  return new Map(rankedIds.map((id, index) => [id, index]));
-}
