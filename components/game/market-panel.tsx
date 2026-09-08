@@ -90,7 +90,8 @@ export function MarketPanel({
         <div>
           <p className="font-heading text-2xl sm:text-3xl">Player market</p>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            Post a buy or sell at any whole-coin price of 1 or more. Tap a listing to take one.
+            Post a buy or sell at any whole-coin price of 1 or more. Tap a listing to take one;
+            tap your highlighted bid or ask to cancel it.
             MV is the average of the last 100 board trades. Bid/ask is units on the book
             (bids/asks). Volume is how many exist in packs — it rises when stock is minted (treasury
             asks, regular restocks) and falls when it is burned (treasury bids).
@@ -220,7 +221,7 @@ export function MarketPanel({
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
               <p className="mb-2 font-heading text-lg text-emerald-100">Bids</p>
-              <p className="mb-3 text-xs text-muted-foreground">Tap a row to sell them 1.</p>
+              <p className="mb-3 text-xs text-muted-foreground">Tap a row to sell them 1. Tap yours to cancel.</p>
               <OrderList
                 empty="No bids. Post one above if you want this."
                 rows={book?.bids ?? []}
@@ -231,11 +232,15 @@ export function MarketPanel({
                   await onTake(id);
                   await reloadBook();
                 }}
+                onCancel={async (id) => {
+                  await onCancel(id);
+                  await reloadBook();
+                }}
               />
             </div>
             <div className="rounded-xl bg-rose-950/20 p-3 ring-1 ring-rose-400/20">
               <p className="mb-2 font-heading text-lg text-rose-100">Asks</p>
-              <p className="mb-3 text-xs text-muted-foreground">Tap a row to buy 1 from them.</p>
+              <p className="mb-3 text-xs text-muted-foreground">Tap a row to buy 1 from them. Tap yours to cancel.</p>
               <OrderList
                 empty="No asks. Post your own, or wait for a regular."
                 rows={book?.asks ?? []}
@@ -244,6 +249,10 @@ export function MarketPanel({
                 actionLabel="Buy 1"
                 onTake={async (id) => {
                   await onTake(id);
+                  await reloadBook();
+                }}
+                onCancel={async (id) => {
+                  await onCancel(id);
                   await reloadBook();
                 }}
               />
@@ -438,6 +447,7 @@ function OrderList({
   pending,
   actionLabel,
   onTake,
+  onCancel,
 }: {
   rows: { id: number; username: string; price: number; remaining: number; playerId: number; isGov?: boolean }[];
   empty: string;
@@ -445,6 +455,7 @@ function OrderList({
   pending: boolean;
   actionLabel: string;
   onTake: (id: number) => void;
+  onCancel: (id: number) => void;
 }) {
   if (rows.length === 0) {
     return <p className="text-sm leading-6 text-muted-foreground">{empty}</p>;
@@ -457,12 +468,12 @@ function OrderList({
           <li key={row.id}>
             <button
               type="button"
-              disabled={pending || yours}
-              onClick={() => onTake(row.id)}
+              disabled={pending}
+              onClick={() => (yours ? onCancel(row.id) : onTake(row.id))}
               className={cn(
                 "flex min-h-12 w-full items-center justify-between gap-3 rounded-xl px-3 py-3 text-left ring-1 hover:bg-background disabled:opacity-100",
                 yours
-                  ? "bg-primary/25 ring-2 ring-primary"
+                  ? "bg-primary/25 ring-2 ring-primary hover:bg-primary/35"
                   : "bg-background/60 ring-foreground/10"
               )}
             >
@@ -482,7 +493,7 @@ function OrderList({
                 </span>
               </span>
               <span className="shrink-0 text-sm font-medium text-primary">
-                {yours ? "resting" : actionLabel}
+                {yours ? "Cancel" : actionLabel}
               </span>
             </button>
           </li>
