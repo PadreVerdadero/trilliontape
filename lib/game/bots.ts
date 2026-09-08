@@ -87,7 +87,7 @@ export function isBotUsername(name: string) {
 }
 
 export function botSpread(style: BotProfile["style"]) {
-  if (style === "tight") return { bid: 0.94, ask: 1.06, take: 0.08 };
-  if (style === "wide") return { bid: 0.88, ask: 1.12, take: 0.1 };
-  return { bid: 0.82, ask: 1.18, take: 0.14 };
+  if (style === "tight") return { bid: 0.88, ask: 1.12, take: 0.06 };
+  if (style === "wide") return { bid: 0.78, ask: 1.24, take: 0.1 };
+  return { bid: 0.7, ask: 1.34, take: 0.14 };
 }

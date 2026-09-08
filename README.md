@@ -9,7 +9,7 @@ The UI is built for a phone in the pocket and a computer at the desk.
 1. Create a traveler name and password, or press **Play as Guest** (Guest / play).
 2. Your **pack** is the left rail: how many you hold, and each item’s current **market value**.
 3. **Coin** sits at the top. **Net worth** (coin plus goods at MV) sits at the bottom.
-4. The **player market** never closes. Post a bid or ask at any whole-coin price of 1 or more. Crossing trades clear at the ask. MV is the simple average of the last 100 board trades (catalog starting price if none). **Listed** is how many units are for sale.
+4. The **player market** never closes. Post a bid or ask at any whole-coin price of 1 or more. Crossing trades clear at the ask. MV is the simple average of the last 100 board trades (catalog starting price if none). **Listed** is how many units are for sale. **Volume** is how many exist in packs and could be traded.
 5. **Direct deals** let two travelers swap several different items plus gold. Those swaps do not print and do not move MV.
 6. Twelve plaza regulars (computer traders) keep the book lively.
 

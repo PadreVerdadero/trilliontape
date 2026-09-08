@@ -1551,15 +1551,25 @@ export function tickBots() {
         .prepare("SELECT COUNT(*) AS n FROM orders WHERE user_id = ? AND remaining > 0")
         .get(user.id) as { n: number };
       if (live.n >= 6) continue;
-      const jitter = 0.96 + Math.random() * 0.08;
       const qty = profile.style === "thin" ? 1 : 1 + Math.floor(Math.random() * 3);
-      if (Math.random() < 0.55) {
-        const price = Math.max(1, Math.round(fair * spread.bid * jitter));
-        if (availableGold(user.id) >= price * qty) placeOrder(user.id, itemId, "buy", price, qty);
-      } else {
-        const price = Math.max(1, Math.round(fair * spread.ask * jitter));
+      const quoteBoth = live.n <= 3 && Math.random() < 0.4;
+      const chase = Math.random() < 0.3;
+      const drift = 0.94 + Math.random() * 0.12;
+      const buySide = Math.random() < 0.5;
+      if (quoteBoth || buySide) {
+        const bidPx = Math.max(
+          1,
+          Math.round(fair * (chase ? 1.04 + Math.random() * 0.08 : spread.bid * drift))
+        );
+        if (availableGold(user.id) >= bidPx * qty) placeOrder(user.id, itemId, "buy", bidPx, qty);
+      }
+      if (quoteBoth || !buySide) {
+        const askPx = Math.max(
+          1,
+          Math.round(fair * (chase ? 0.88 + Math.random() * 0.08 : spread.ask * drift))
+        );
         if (availableItem(user.id, itemId) >= qty) {
-          placeOrder(user.id, itemId, "sell", price, qty);
+          placeOrder(user.id, itemId, "sell", askPx, qty);
         }
       }
     } catch {
