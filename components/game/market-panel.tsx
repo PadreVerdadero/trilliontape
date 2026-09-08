@@ -63,17 +63,21 @@ function SortHead({
       onClick={() => onSort(column)}
       aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}
       className={cn(
-        "-mx-1 flex min-w-0 max-w-full items-center gap-0.5 rounded-md px-1 text-left uppercase tracking-wide transition-colors hover:text-foreground",
+        "grid w-full min-w-0 grid-cols-[minmax(0,1fr)_0.75rem] items-center gap-0.5 rounded-md text-left uppercase transition-colors hover:text-foreground",
         className,
         active && emphasize && "text-foreground"
       )}
     >
-      <span className="min-w-0 truncate">{label}</span>
-      {active ? (
-        <span className="shrink-0 font-semibold leading-none" aria-hidden>
-          {dir === "desc" ? "↓" : "↑"}
-        </span>
-      ) : null}
+      <span className="min-w-0 truncate tracking-wide">{label}</span>
+      <span
+        className={cn(
+          "text-center text-[10px] font-semibold leading-none",
+          !active && "invisible"
+        )}
+        aria-hidden
+      >
+        {dir === "desc" ? "▼" : "▲"}
+      </span>
     </button>
   );
 }
@@ -222,7 +226,7 @@ export function MarketPanel({
           <p className="font-heading text-xl sm:text-2xl">Player market</p>
           <p className="text-xs text-muted-foreground">
             Crossing bids fill at the ask. Bid/Ask is units on the book. Volume is stock in packs.
-            Tap a column to sort. Bid/Ask sorts bids first, then asks on the third tap.
+            Tap a column to sort. Bid/Ask: two taps on bids, then two on asks.
           </p>
         </div>
         {state.recentTrades[0] ? (
@@ -438,7 +442,7 @@ export function MarketPanel({
       ) : null}
 
       <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
-        <div className="grid grid-cols-[minmax(0,1.3fr)_1fr_1fr_0.85fr_0.9fr_0.7fr] gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium tracking-wide text-muted-foreground sm:px-4">
+        <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.05fr)_minmax(0,1.05fr)_0.7fr_minmax(0,1fr)_0.7fr] gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium text-muted-foreground sm:px-4">
           <SortHead label="Item" column="item" sort={sort} dir={sortDir} onSort={cycleSort} />
           <SortHead
             label="Best bid"
@@ -467,9 +471,23 @@ export function MarketPanel({
           <SortHead
             label={
               <>
-                <span className={sort === "bookBid" ? "text-foreground" : undefined}>Bid</span>
+                <span
+                  className={cn(
+                    sort === "bookBid" && "text-emerald-300",
+                    sort === "bookAsk" && "opacity-40"
+                  )}
+                >
+                  Bid
+                </span>
                 /
-                <span className={sort === "bookAsk" ? "text-foreground" : undefined}>Ask</span>
+                <span
+                  className={cn(
+                    sort === "bookAsk" && "text-rose-300",
+                    sort === "bookBid" && "opacity-40"
+                  )}
+                >
+                  Ask
+                </span>
               </>
             }
             column="book"
@@ -502,7 +520,7 @@ export function MarketPanel({
                 type="button"
                 onClick={() => pick(item.id)}
                 className={cn(
-                  "grid w-full grid-cols-[minmax(0,1.3fr)_1fr_1fr_0.85fr_0.9fr_0.7fr] items-center gap-2 border-b border-border/40 px-3 py-2.5 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4 sm:py-3",
+                  "grid w-full grid-cols-[minmax(0,1.2fr)_minmax(0,1.05fr)_minmax(0,1.05fr)_0.7fr_minmax(0,1fr)_0.7fr] items-center gap-2 border-b border-border/40 px-3 py-2.5 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4 sm:py-3",
                   active && "bg-primary/15"
                 )}
               >
@@ -525,11 +543,21 @@ export function MarketPanel({
                   {formatCoins(quote?.vwap ?? item.basePrice)}
                 </span>
                 <span className="font-medium tabular-nums text-amber-200">
-                  <span className={sort === "bookBid" ? "text-foreground" : undefined}>
+                  <span
+                    className={cn(
+                      sort === "bookBid" && "text-emerald-200",
+                      sort === "bookAsk" && "opacity-40"
+                    )}
+                  >
                     {formatNumber(wanted)}
                   </span>
                   /
-                  <span className={sort === "bookAsk" ? "text-foreground" : undefined}>
+                  <span
+                    className={cn(
+                      sort === "bookAsk" && "text-rose-200",
+                      sort === "bookBid" && "opacity-40"
+                    )}
+                  >
                     {formatNumber(listed)}
                   </span>
                 </span>
