@@ -1,5 +1,5 @@
 import { itemById, items } from "@/lib/game/catalog";
-import { formatCoins, formatNumber } from "@/lib/game/format";
+import { formatCoins, formatCompact, formatNumber } from "@/lib/game/format";
 import { rarityClass, rarityMapFromPrices } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
 import type { InventoryRow, MarketPrice, PlayerState } from "@/lib/game/types";
@@ -48,9 +48,9 @@ export function InventoryPanel({
               : `${formatNumber(player.availableGold)} free`
           }
         >
-          {formatNumber(player.availableGold)}
+          {formatCompact(player.availableGold)}
           {player.availableGold !== player.gold ? (
-            <span className="text-muted-foreground">/{formatNumber(player.gold)}</span>
+            <span className="text-muted-foreground">/{formatCompact(player.gold)}</span>
           ) : null}
         </span>
       </div>
@@ -83,13 +83,13 @@ export function InventoryPanel({
             <span className="text-base leading-none">{item?.emoji}</span>
             <span className="truncate text-xs font-medium sm:text-sm">{item?.name}</span>
             <span className="tabular-nums text-right text-xs sm:text-sm">
-              <span className="font-medium">{formatNumber(free)}</span>
+              <span className="font-medium">{formatCompact(free)}</span>
               {reserved ? (
-                <span className="text-muted-foreground">/{formatNumber(row.quantity)}</span>
+                <span className="text-muted-foreground">/{formatCompact(row.quantity)}</span>
               ) : null}
             </span>
             <span className="tabular-nums text-right text-xs font-medium text-sky-200">
-              {formatCoins(mv)}
+              {formatCompact(mv)}
             </span>
             <span
               className={cn(
@@ -104,10 +104,10 @@ export function InventoryPanel({
               )}
               title="Average price you paid for units you still hold"
             >
-              {avg == null ? "—" : formatCoins(avg)}
+              {avg == null ? "—" : formatCompact(avg)}
             </span>
             <span className="tabular-nums text-right text-xs font-medium sm:text-sm">
-              {empty ? "—" : formatCoins(total)}
+              {empty ? "—" : formatCompact(total)}
             </span>
           </button>
         );

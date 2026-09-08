@@ -23,6 +23,18 @@ export function formatNumber(amount: number) {
   return Math.round(amount).toLocaleString("en-US");
 }
 
+export function formatCompact(amount: number) {
+  if (!Number.isFinite(amount)) return "0";
+  const sign = amount < 0 ? "-" : "";
+  const n = Math.abs(Math.round(amount));
+  if (n < 1000) return `${sign}${n.toLocaleString("en-US")}`;
+  const thousands = Math.round(n / 1000);
+  if (thousands < 1000) return `${sign}${thousands}k`;
+  const millions = Math.round(n / 1_000_000);
+  if (millions < 1000) return `${sign}${millions}M`;
+  return `${sign}${Math.round(n / 1_000_000_000)}B`;
+}
+
 export function formatCoins(amount: number) {
   return `${formatNumber(amount)}🪙`;
 }
