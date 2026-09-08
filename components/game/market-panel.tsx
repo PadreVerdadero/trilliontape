@@ -152,9 +152,9 @@ export function MarketPanel({
             <p className="mb-3 font-heading text-lg">Post your own order</p>
             {state.player.isGov ? (
               <p className="mb-3 text-xs leading-5 text-amber-100/90">
-                Treasury desk: unlimited, and it does not spend or add to your purse. An ask mints
-                new units when it fills (the buyer’s coins are burned). A bid pays the seller with
-                new coin and burns the goods, so volume drops.
+                Treasury desk: unlimited, and it does not spend or add to your purse. White asks mint
+                new units when they fill (volume up). Black bids pay the seller with new coin and
+                burn the goods (volume down).
               </p>
             ) : null}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[auto_1fr_1fr_auto]">
@@ -224,6 +224,7 @@ export function MarketPanel({
               <p className="mb-3 text-xs text-muted-foreground">Tap a row to sell them 1. Tap yours to cancel.</p>
               <OrderList
                 empty="No bids. Post one above if you want this."
+                side="buy"
                 rows={book?.bids ?? []}
                 selfId={state.player.id}
                 pending={pending}
@@ -243,6 +244,7 @@ export function MarketPanel({
               <p className="mb-3 text-xs text-muted-foreground">Tap a row to buy 1 from them. Tap yours to cancel.</p>
               <OrderList
                 empty="No asks. Post your own, or wait for a regular."
+                side="sell"
                 rows={book?.asks ?? []}
                 selfId={state.player.id}
                 pending={pending}
@@ -325,21 +327,25 @@ export function MarketPanel({
           </p>
         ) : (
           <ul className="space-y-2">
-            {state.myOrders.map((order) => (
+            {state.myOrders.map((order) => {
+              const govAsk = order.isGov && order.side === "sell";
+              const govBid = order.isGov && order.side === "buy";
+              return (
               <li
                 key={order.id}
                 className={cn(
                   "flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm",
-                  order.itemId === selectedItemId
-                    ? "bg-primary/25 ring-2 ring-primary"
-                    : "bg-background/40"
+                  govAsk && "bg-white text-zinc-950 ring-2 ring-white",
+                  govBid && "bg-black text-white ring-2 ring-white/70",
+                  !order.isGov && order.itemId === selectedItemId && "bg-primary/25 ring-2 ring-primary",
+                  !order.isGov && order.itemId !== selectedItemId && "bg-background/40"
                 )}
               >
                 <span>
                   {order.side === "buy" ? "Buying" : "Selling"}{" "}
                   <ItemChip itemId={order.itemId} qty={order.remaining} /> @ {formatCoins(order.price)}
                   {order.remaining > 1 ? (
-                    <span className="text-muted-foreground">
+                    <span className={cn(govBid ? "text-white/70" : govAsk ? "text-zinc-600" : "text-muted-foreground")}>
                       {" "}
                       · {formatCoins(order.remaining * order.price)} total
                     </span>
@@ -347,7 +353,11 @@ export function MarketPanel({
                 </span>
                 <Button
                   size="sm"
-                  className="h-10 md:h-8"
+                  className={cn(
+                    "h-10 md:h-8",
+                    govAsk && "text-zinc-950 hover:bg-zinc-200",
+                    govBid && "text-white hover:bg-white/15"
+                  )}
                   variant="ghost"
                   disabled={pending}
                   onClick={() => void onCancel(order.id)}
@@ -355,7 +365,8 @@ export function MarketPanel({
                   Cancel
                 </Button>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>
@@ -445,6 +456,7 @@ function OrderList({
   empty,
   selfId,
   pending,
+  side,
   actionLabel,
   onTake,
   onCancel,
@@ -453,6 +465,7 @@ function OrderList({
   empty: string;
   selfId: number;
   pending: boolean;
+  side: OrderSide;
   actionLabel: string;
   onTake: (id: number) => void;
   onCancel: (id: number) => void;
@@ -464,6 +477,8 @@ function OrderList({
     <ul className="space-y-2">
       {rows.map((row) => {
         const yours = row.playerId === selfId;
+        const govAsk = Boolean(row.isGov) && side === "sell";
+        const govBid = Boolean(row.isGov) && side === "buy";
         return (
           <li key={row.id}>
             <button
@@ -471,28 +486,39 @@ function OrderList({
               disabled={pending}
               onClick={() => (yours ? onCancel(row.id) : onTake(row.id))}
               className={cn(
-                "flex min-h-12 w-full items-center justify-between gap-3 rounded-xl px-3 py-3 text-left ring-1 hover:bg-background disabled:opacity-100",
-                yours
-                  ? "bg-primary/25 ring-2 ring-primary hover:bg-primary/35"
-                  : "bg-background/60 ring-foreground/10"
+                "flex min-h-12 w-full items-center justify-between gap-3 rounded-xl px-3 py-3 text-left ring-1 disabled:opacity-100",
+                govAsk && "bg-white text-zinc-950 ring-2 ring-white hover:bg-zinc-100",
+                govBid && "bg-black text-white ring-2 ring-white/70 hover:bg-zinc-900",
+                !row.isGov && yours && "bg-primary/25 ring-2 ring-primary hover:bg-primary/35",
+                !row.isGov && !yours && "bg-background/60 ring-foreground/10 hover:bg-background"
               )}
             >
               <span>
                 <span className="block text-base font-medium">
                   {formatNumber(row.remaining)} @ {formatCoins(row.price)}
                 </span>
-                <span className="text-xs text-muted-foreground">
-                  {yours
-                    ? "your order"
-                    : row.isGov
-                      ? "Government"
-                      : isBotUsername(row.username)
-                        ? `${row.username} · regular`
-                        : row.username}
+                <span
+                  className={cn(
+                    "text-xs",
+                    govAsk && "text-zinc-600",
+                    govBid && "text-white/70",
+                    !row.isGov && "text-muted-foreground"
+                  )}
+                >
+                  {row.isGov ? (yours ? "treasury · tap to cancel" : "Government") : yours ? "your order" : isBotUsername(row.username)
+                    ? `${row.username} · regular`
+                    : row.username}
                   {row.remaining > 1 ? ` · ${formatCoins(row.remaining * row.price)} total` : ""}
                 </span>
               </span>
-              <span className="shrink-0 text-sm font-medium text-primary">
+              <span
+                className={cn(
+                  "shrink-0 text-sm font-medium",
+                  govAsk && "text-zinc-950",
+                  govBid && "text-white",
+                  !row.isGov && "text-primary"
+                )}
+              >
                 {yours ? "Cancel" : actionLabel}
               </span>
             </button>
