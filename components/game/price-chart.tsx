@@ -68,10 +68,10 @@ export function PriceChart({
   }
 
   return (
-    <div className="rounded-xl bg-background/40 p-3 ring-1 ring-foreground/10">
-      <div className="mb-2 flex items-end justify-between gap-3">
+    <div className="rounded-lg bg-background/40 p-2 ring-1 ring-foreground/10">
+      <div className="mb-1 flex items-end justify-between gap-3">
         <div>
-          <p className={compact ? "font-heading text-base" : "font-heading text-lg"}>Price</p>
+          <p className={compact ? "font-heading text-sm" : "font-heading text-lg"}>Price</p>
           {compact ? null : (
             <p className="text-xs text-muted-foreground">
               {traded
@@ -81,13 +81,13 @@ export function PriceChart({
             </p>
           )}
         </div>
-        <p className={up ? "text-sm text-emerald-200" : "text-sm text-rose-200"}>
+        <p className={up ? "text-xs text-emerald-200" : "text-xs text-rose-200"}>
           {formatCoins(lastPrice)} {traded ? (up ? "▲" : "▼") : ""}
         </p>
       </div>
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className={compact ? "h-36 w-full" : "h-44 w-full"}
+        className={compact ? "h-28 w-full" : "h-44 w-full"}
         role="img"
         aria-label="Price over time"
       >

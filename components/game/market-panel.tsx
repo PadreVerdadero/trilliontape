@@ -107,41 +107,34 @@ export function MarketPanel({
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-3">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="font-heading text-2xl sm:text-3xl">Player market</p>
-          <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            Post a buy or sell at any whole-coin price of 1 or more. A size of 3 still posts 3
-            quotes, listed one-by-one so you can take or cancel as many as you want. Crossing bids
-            and asks fill automatically (bid meets an equal or cheaper ask); if prices tie, the
-            earlier quote trades first.
-            MV is the average of the last 100 board trades. Bid/ask is units on the book
-            (bids/asks). Volume is how many exist in packs — it rises when a treasury ask fills or
-            regulars restock, and falls when a treasury bid fills. Posting a treasury quote does not
-            change volume until it trades.
+          <p className="font-heading text-xl sm:text-2xl">Player market</p>
+          <p className="text-xs text-muted-foreground">
+            Crossing bids fill at the ask. Bid/Ask is units on the book. Volume is stock in packs.
           </p>
         </div>
         {state.recentTrades[0] ? (
-          <p className="rounded-xl bg-primary/10 px-3 py-2 text-sm">
+          <p className="rounded-lg bg-primary/10 px-2 py-1 text-xs">
             Last tape: {itemById[state.recentTrades[0].itemId]?.emoji}{" "}
             {formatNumber(state.recentTrades[0].quantity)} @{" "}
             {formatCoins(state.recentTrades[0].price)}
           </p>
         ) : (
-          <p className="text-sm text-muted-foreground">No trades yet. Post the first order.</p>
+          <p className="text-xs text-muted-foreground">No trades yet. Post the first order.</p>
         )}
       </div>
 
       {selected ? (
-        <div className="space-y-4 rounded-2xl bg-card p-4 ring-1 ring-foreground/10 sm:p-5">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="space-y-2 rounded-2xl bg-card p-3 ring-1 ring-foreground/10">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
-              <p className="font-heading text-2xl">
+              <p className="font-heading text-xl">
                 {selected.emoji} {selected.name}
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:min-w-[24rem] sm:grid-cols-3 lg:grid-cols-5">
+            <div className="grid grid-cols-5 gap-1.5">
               <Stat
                 label="Best bid"
                 value={price?.bestBid != null ? formatCoins(price.bestBid) : "none"}
@@ -157,31 +150,26 @@ export function MarketPanel({
                 label="Bid/Ask"
                 value={`${formatNumber(price?.wanted ?? 0)}/${formatNumber(price?.listed ?? 0)}`}
                 tone="vol"
-                hint="Units on bids / units on asks"
+                title="Units on bids / units on asks"
               />
               <Stat
                 label="Volume"
                 value={formatNumber(price?.held ?? 0)}
                 tone="supply"
-                hint="Total in packs that could trade"
+                title="Total in packs that could trade"
               />
             </div>
-            <p className="text-xs text-muted-foreground lg:max-w-[12rem] lg:text-right">
-              {price?.prints
-                ? `Average of the last ${formatNumber(price.prints)} board trade${price.prints === 1 ? "" : "s"}.`
-                : "No board trades yet — using the catalog starting price."}
-            </p>
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-[minmax(15rem,20rem)_minmax(0,1fr)] lg:items-stretch">
-            <div className="rounded-xl bg-background/40 p-2.5 ring-1 ring-foreground/10">
-              <p className="mb-2 font-heading text-base">Post your own order</p>
+          <div className="grid gap-2 lg:grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)] lg:items-stretch">
+            <div className="rounded-lg bg-background/40 p-2 ring-1 ring-foreground/10">
+              <p className="mb-1 font-heading text-sm">Post your own order</p>
               {state.player.isGov ? (
-                <p className="mb-2 text-[11px] leading-4 text-amber-100/90">
+                <p className="mb-1 text-[10px] leading-4 text-amber-100/90">
                   Treasury is unlimited. Asks mint on fill, bids burn on fill.
                 </p>
               ) : null}
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-1.5">
                 <div className="space-y-0.5">
                   <Label htmlFor="px" className="text-xs">
                     <span aria-hidden>🪙</span>
@@ -189,7 +177,7 @@ export function MarketPanel({
                   </Label>
                   <Input
                     id="px"
-                    className="h-9 md:h-8"
+                    className="h-8 md:h-7"
                     inputMode="numeric"
                     value={priceInput}
                     placeholder={suggested}
@@ -203,21 +191,21 @@ export function MarketPanel({
                   </Label>
                   <Input
                     id="qty"
-                    className="h-9 md:h-8"
+                    className="h-8 md:h-7"
                     inputMode="numeric"
                     value={qtyInput}
                     onChange={(event) => setQtyInput(event.target.value)}
                   />
                 </div>
                 <Button
-                  className="h-9 bg-emerald-600 text-white hover:bg-emerald-500"
+                  className="h-8 bg-emerald-600 text-white hover:bg-emerald-500"
                   disabled={pending}
                   onClick={() => void place("buy")}
                 >
                   Buy
                 </Button>
                 <Button
-                  className="h-9 bg-rose-600 text-white hover:bg-rose-500"
+                  className="h-8 bg-rose-600 text-white hover:bg-rose-500"
                   disabled={pending}
                   onClick={() => void place("sell")}
                 >
@@ -225,20 +213,20 @@ export function MarketPanel({
                 </Button>
               </div>
               {draftTotal != null ? (
-                <p className="mt-1.5 text-center text-[11px] text-muted-foreground">
+                <p className="mt-1 text-center text-[10px] text-muted-foreground">
                   {formatNumber(draftQty)} × {formatCoins(draftPrice)} = {formatCoins(draftTotal)}
                 </p>
               ) : null}
             </div>
 
-            <div className="rounded-xl bg-background/40 p-2.5 ring-1 ring-foreground/10">
-              <p className="mb-2 font-heading text-base">
+            <div className="rounded-lg bg-background/40 p-2 ring-1 ring-foreground/10">
+              <p className="mb-1 font-heading text-sm">
                 Recent {selected.emoji} {selected.name} trades
               </p>
               {(book?.trades ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground">No prints for this item yet.</p>
+                <p className="text-xs text-muted-foreground">No prints for this item yet.</p>
               ) : (
-                <ul className="max-h-36 space-y-1 overflow-y-auto text-sm">
+                <ul className="max-h-20 space-y-0.5 overflow-y-auto text-xs">
                   {(book?.trades ?? []).map((trade) => (
                     <li
                       key={trade.id}
@@ -247,7 +235,7 @@ export function MarketPanel({
                       <span>
                         {formatNumber(trade.quantity)} @ {formatCoins(trade.price)}
                       </span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-[11px] text-muted-foreground">
                         {trade.buyUsername} bought from {trade.sellUsername}
                       </span>
                     </li>
@@ -258,6 +246,7 @@ export function MarketPanel({
           </div>
 
           <PriceChart
+            compact
             history={book?.history ?? []}
             basePrice={selected.basePrice}
             mv={price?.vwap ?? selected.basePrice}
@@ -265,10 +254,10 @@ export function MarketPanel({
             bestAsk={price?.bestAsk}
           />
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
-              <p className="mb-2 font-heading text-lg text-emerald-100">Bids</p>
-              <p className="mb-2 text-[11px] text-muted-foreground">
+          <div className="grid gap-2 lg:grid-cols-2">
+            <div className="rounded-lg bg-emerald-950/25 p-2 ring-1 ring-emerald-400/20">
+              <p className="mb-1 font-heading text-base text-emerald-100">Bids</p>
+              <p className="mb-1 text-[10px] text-muted-foreground">
                 Tap a row to sell 1. Tap yours to cancel 1.
               </p>
               <OrderList
@@ -287,9 +276,9 @@ export function MarketPanel({
                 }}
               />
             </div>
-            <div className="rounded-xl bg-rose-950/20 p-3 ring-1 ring-rose-400/20">
-              <p className="mb-2 font-heading text-lg text-rose-100">Asks</p>
-              <p className="mb-2 text-[11px] text-muted-foreground">
+            <div className="rounded-lg bg-rose-950/20 p-2 ring-1 ring-rose-400/20">
+              <p className="mb-1 font-heading text-base text-rose-100">Asks</p>
+              <p className="mb-1 text-[10px] text-muted-foreground">
                 Tap a row to buy 1. Tap yours to cancel 1.
               </p>
               <OrderList
@@ -414,17 +403,18 @@ function Stat({
   label,
   value,
   tone,
-  hint,
+  title,
 }: {
   label: string;
   value: string;
   tone?: "bid" | "ask" | "mv" | "vol" | "supply";
-  hint?: string;
+  title?: string;
 }) {
   return (
     <div
+      title={title}
       className={cn(
-        "rounded-xl px-3 py-2 ring-1 ring-foreground/10",
+        "rounded-lg px-2 py-1 ring-1 ring-foreground/10",
         tone === "bid" && "bg-emerald-950/30",
         tone === "ask" && "bg-rose-950/25",
         tone === "mv" && "bg-sky-950/30",
@@ -432,10 +422,10 @@ function Stat({
         tone === "supply" && "bg-violet-950/30"
       )}
     >
-      <p className="text-[11px] tracking-wide text-muted-foreground uppercase">{label}</p>
+      <p className="text-[10px] tracking-wide text-muted-foreground uppercase">{label}</p>
       <p
         className={cn(
-          "font-heading text-lg",
+          "font-heading text-sm tabular-nums",
           tone === "bid" && "text-emerald-200",
           tone === "ask" && "text-rose-200",
           tone === "mv" && "text-sky-200",
@@ -445,7 +435,6 @@ function Stat({
       >
         {value}
       </p>
-      {hint ? <p className="text-[10px] leading-4 text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
@@ -472,7 +461,7 @@ function OrderList({
   }
   const units = unitRows(rows);
   return (
-    <ul className="max-h-[min(56vh,34rem)] space-y-0.5 overflow-y-auto pr-0.5">
+    <ul className="max-h-28 space-y-0.5 overflow-y-auto pr-0.5">
       {units.map((row) => {
         const yours = row.playerId === selfId;
         const govAsk = Boolean(row.isGov) && side === "sell";
