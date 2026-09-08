@@ -44,19 +44,13 @@ export const foods: Food[] = [
     itemId: "fish",
     energy: 6,
     verb: "Eat",
-    blurb: "Raw shore snack. +6 energy, or save it for stew.",
+    blurb: "Raw shore snack. +6 energy.",
   },
   {
     itemId: "honey",
     energy: 8,
     verb: "Eat",
     blurb: "A spoon of gold. +8 energy, or save it for a candle.",
-  },
-  {
-    itemId: "stew",
-    energy: 20,
-    verb: "Eat",
-    blurb: "A full pot. Refills all 20 energy. Then it cannot go on the relic.",
   },
 ];
 
@@ -94,37 +88,12 @@ export const consumables: Consumable[] = [
     blurb: "Next search skips Commons — only Uncommon and rarer.",
   },
   {
-    itemId: "charm",
-    kind: "search_luck",
-    charges: 1,
-    power: 3,
-    verb: "Wear",
-    blurb: "Strong luck. Rare and Legendary weights jump.",
-  },
-  {
-    itemId: "salve",
-    kind: "search_calm",
-    charges: 1,
-    power: 1,
-    energy: 8,
-    verb: "Rub",
-    blurb: "Heals 8 energy. Next search ignores crowd cost.",
-  },
-  {
     itemId: "brick",
     kind: "search_cheap",
     charges: 1,
     power: 1,
     verb: "Brace",
     blurb: "Next search costs only 1 energy, even on a crowded node.",
-  },
-  {
-    itemId: "basket",
-    kind: "search_yield",
-    charges: 1,
-    power: 1,
-    verb: "Carry",
-    blurb: "Next find comes with +1 extra.",
   },
 ];
 

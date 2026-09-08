@@ -13,7 +13,6 @@ import {
   searchWeight,
   travelSeconds,
   VP_TO_WIN,
-  WIN_ITEM_ID,
 } from "@/lib/game/catalog";
 import { formatCoins, formatNumber } from "@/lib/game/format";
 import {
@@ -588,21 +587,6 @@ function awardFirstTradeVp(userId: number) {
   awardVp(userId, 1);
 }
 
-function markRelicContract(userId: number) {
-  const rows = getDb()
-    .prepare("SELECT id FROM festival_contracts WHERE item_id = ? AND expires_at > ?")
-    .all(WIN_ITEM_ID, nowMs()) as { id: string }[];
-  for (const row of rows) {
-    getDb()
-      .prepare(
-        `INSERT INTO contract_completions (contract_id, user_id, completed_at)
-         VALUES (?, ?, ?)
-         ON CONFLICT(contract_id, user_id) DO NOTHING`
-      )
-      .run(row.id, userId, nowMs());
-  }
-}
-
 function addBuff(userId: number, kind: BuffKind, charges: number, power: number) {
   const row = getDb()
     .prepare("SELECT charges, power FROM player_buffs WHERE user_id = ? AND kind = ?")
@@ -768,7 +752,7 @@ export function startSearch(userId: number) {
   const max = player.energy_max ?? ENERGY_MAX;
   if (energy < cost) {
     throw new Error(
-      `You are too tired (${energy} energy). Eat berries, bread, fish, honey, or stew.`
+      `You are too tired (${energy} energy). Eat berries, bread, fish, or honey.`
     );
   }
   const nextEnergy = energy - cost;
@@ -822,21 +806,6 @@ export function craftItem(userId: number, outputId: string) {
   }
   addItem(userId, recipe.outputId, recipe.outputQty);
   const output = itemById[recipe.outputId];
-  if (recipe.outputId === WIN_ITEM_ID) {
-    const player = loadPlayerRow(userId);
-    if (!player.has_won) {
-      getDb()
-        .prepare("UPDATE players SET has_won = 1, won_at = ? WHERE user_id = ?")
-        .run(nowMs(), userId);
-    }
-    awardVp(userId, 8);
-    markRelicContract(userId);
-    setEvent(
-      userId,
-      "The plaza lanterns flare. You crafted the 🌟 Celestial Relic. +8 victory points."
-    );
-    return;
-  }
   setEvent(userId, `Crafted ${output.emoji} ${output.name} ×${formatNumber(recipe.outputQty)}.`);
 }
 
@@ -1394,9 +1363,6 @@ export function completeContract(userId: number, contractId: string, timeZone?: 
     .prepare("SELECT 1 FROM contract_completions WHERE contract_id = ? AND user_id = ?")
     .get(contractId, userId);
   if (done) throw new Error("You already finished that job.");
-  if (row.item_id === WIN_ITEM_ID) {
-    throw new Error("Craft the relic at the workshop. The lanterns score it when it is made.");
-  }
   const stall = requireOpenStall(row.stall_id, clock);
   if (contractNeed(row.item_id, userId) < row.quantity) {
     throw new Error("You do not have enough for that job yet.");
@@ -1727,10 +1693,7 @@ function restockBot(userId: number, gold: number, specialty: string[]) {
   for (const itemId of specialty) {
     if (!itemById[itemId]) continue;
     const fair = marketPrice(itemId);
-    purseFloor = Math.max(
-      purseFloor,
-      Math.round(fair * (itemId === WIN_ITEM_ID ? 3 : 1.25))
-    );
+    purseFloor = Math.max(purseFloor, Math.round(fair * 1.25));
   }
   fundBotGold(userId, purseFloor);
 }
@@ -1743,50 +1706,6 @@ type BotQuoteRow = {
   created_at: number;
 };
 
-function botSideCount(userId: number, itemId: string, side: "buy" | "sell") {
-  return (
-    getDb()
-      .prepare(
-        `SELECT COALESCE(SUM(remaining), 0) AS n
-         FROM orders
-         WHERE user_id = ? AND item_id = ? AND side = ? AND remaining > 0`
-      )
-      .get(userId, itemId, side) as { n: number }
-  ).n;
-}
-
-function relicRestQuote(spread: ReturnType<typeof botSpread>, fair: number) {
-  const quote = botQuoteMultipliers(spread, fair);
-  if (quote.kind !== "rest") return quote;
-  return {
-    ...quote,
-    bid: Math.max(quote.bid, 0.78),
-    ask: Math.min(quote.ask, 1.32),
-  };
-}
-
-function ensureRelicBook(userId: number, style: BotProfile["style"], specialty: string[]) {
-  if (!specialty.includes(WIN_ITEM_ID)) return false;
-  const fair = marketPrice(WIN_ITEM_ID);
-  const spread = botSpread(style);
-  const quote = relicRestQuote(spread, fair);
-  let acted = false;
-  if (botSideCount(userId, WIN_ITEM_ID, "buy") < 1) {
-    const bidPx = Math.max(1, Math.round(fair * quote.bid));
-    fundBotGold(userId, bidPx);
-    if (availableGold(userId) >= bidPx) {
-      placeOrder(userId, WIN_ITEM_ID, "buy", bidPx, 1);
-      acted = true;
-    }
-  }
-  if (botSideCount(userId, WIN_ITEM_ID, "sell") < 1 && availableItem(userId, WIN_ITEM_ID) >= 1) {
-    const askPx = Math.max(1, Math.round(fair * quote.ask));
-    placeOrder(userId, WIN_ITEM_ID, "sell", askPx, 1);
-    acted = true;
-  }
-  return acted;
-}
-
 function chaseOneBotQuote(
   userId: number,
   style: BotProfile["style"],
@@ -1796,7 +1715,7 @@ function chaseOneBotQuote(
   const waitMs = now - quote.created_at;
   const steps = waitSteps(waitMs);
   if (steps < 1) return false;
-  if (steps === 1 && quote.item_id !== WIN_ITEM_ID && Math.random() < 0.35) return false;
+  if (steps === 1 && Math.random() < 0.35) return false;
 
   const itemId = quote.item_id;
   const fair = marketPrice(itemId);
@@ -1869,9 +1788,9 @@ function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: num
       `SELECT id, item_id, side, price, created_at
        FROM orders
        WHERE user_id = ? AND remaining > 0
-       ORDER BY CASE WHEN item_id = ? THEN 0 ELSE 1 END, created_at ASC`
+       ORDER BY created_at ASC`
     )
-    .all(userId, WIN_ITEM_ID) as BotQuoteRow[];
+    .all(userId) as BotQuoteRow[];
   let chased = 0;
   for (const quote of rows) {
     if (chased >= 4) break;
@@ -1886,12 +1805,6 @@ export function tickBots() {
   botClock.bazaarBotTick = now;
   const db = getDb();
   const picked = shufflePick(BOT_PROFILES, 14);
-  const seen = new Set(picked.map((bot) => bot.username));
-  for (const profile of BOT_PROFILES) {
-    if (profile.specialty.includes(WIN_ITEM_ID) && !seen.has(profile.username)) {
-      picked.push(profile);
-    }
-  }
   for (const profile of picked) {
     const user = db
       .prepare("SELECT id FROM users WHERE username = ? AND COALESCE(is_bot, 0) = 1")
@@ -1899,16 +1812,8 @@ export function tickBots() {
     if (!user) continue;
     try {
       restockBot(user.id, profile.gold, profile.specialty);
-      ensureRelicBook(user.id, profile.style, profile.specialty);
       if (chaseStaleBotQuote(user.id, profile.style, now)) continue;
-      let itemId = profile.specialty[Math.floor(Math.random() * profile.specialty.length)];
-      if (
-        profile.specialty.includes(WIN_ITEM_ID) &&
-        (botSideCount(user.id, WIN_ITEM_ID, "buy") < 1 ||
-          botSideCount(user.id, WIN_ITEM_ID, "sell") < 1)
-      ) {
-        itemId = WIN_ITEM_ID;
-      }
+      const itemId = profile.specialty[Math.floor(Math.random() * profile.specialty.length)];
       const item = itemById[itemId];
       if (!item) continue;
       const fair = marketPrice(itemId);
@@ -1947,14 +1852,10 @@ export function tickBots() {
       const live = db
         .prepare("SELECT COALESCE(SUM(remaining), 0) AS n FROM orders WHERE user_id = ? AND remaining > 0")
         .get(user.id) as { n: number };
-      if (live.n >= 8 && itemId !== WIN_ITEM_ID) continue;
-      const quote =
-        itemId === WIN_ITEM_ID ? relicRestQuote(spread, fair) : botQuoteMultipliers(spread, fair);
+      if (live.n >= 8) continue;
+      const quote = botQuoteMultipliers(spread, fair);
       const qty =
-        itemId === WIN_ITEM_ID ||
-        quote.kind !== "rest" ||
-        profile.style === "thin" ||
-        profile.style === "wild"
+        quote.kind !== "rest" || profile.style === "thin" || profile.style === "wild"
           ? 1
           : 1 + Math.floor(Math.random() * 3);
       const quoteBoth = live.n <= 4 && Math.random() < 0.22;

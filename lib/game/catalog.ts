@@ -1,6 +1,5 @@
 import type { Cosmetic, Item, Location, Recipe } from "@/lib/game/types";
 
-export const WIN_ITEM_ID = "celestial-relic";
 export const STARTING_GOLD = 140;
 
 export const locations: Location[] = [
@@ -41,7 +40,7 @@ export const locations: Location[] = [
     emoji: "🌾",
     name: "Golden Fields",
     region: "East Road",
-    blurb: "Wheat, flax, and stubborn bees. Bring patience for honey.",
+    blurb: "Wheat and stubborn bees. Bring patience for honey.",
     searchEnergy: 4,
   },
 ];
@@ -52,7 +51,7 @@ export const items: Item[] = [
     emoji: "🪵",
     name: "Wood",
     kind: "material",
-    purpose: "Craft planks (2 wood) or a basket (with flax).",
+    purpose: "Craft planks (2 wood).",
     description: "Fallen timber from the woods.",
     basePrice: 5,
     mine: { locationId: "woods", seconds: 12, yieldMin: 2, yieldMax: 3 },
@@ -72,7 +71,7 @@ export const items: Item[] = [
     emoji: "🌿",
     name: "Herbs",
     kind: "material",
-    purpose: "Craft salve (with mushrooms) or stew (with fish and salt).",
+    purpose: "Trade on the board.",
     description: "Bitter greens from under the roots.",
     basePrice: 7,
     mine: { locationId: "woods", seconds: 18, yieldMin: 1, yieldMax: 2 },
@@ -82,8 +81,8 @@ export const items: Item[] = [
     emoji: "🍄",
     name: "Mushrooms",
     kind: "material",
-    purpose: "Eat: next search finds two things. Also crafts salve.",
-    description: "Spongy caps. Snack for a double pull, or grind with herbs.",
+    purpose: "Eat: next search finds two things.",
+    description: "Spongy caps. Snack for a double pull.",
     basePrice: 8,
     mine: { locationId: "woods", seconds: 22, yieldMin: 1, yieldMax: 2 },
   },
@@ -98,21 +97,11 @@ export const items: Item[] = [
     mine: { locationId: "ridge", seconds: 12, yieldMin: 2, yieldMax: 3 },
   },
   {
-    id: "iron",
-    emoji: "⛓️",
-    name: "Iron",
-    kind: "material",
-    purpose: "Craft a blade (2 iron + coal).",
-    description: "Heavy ore for the relic sword.",
-    basePrice: 12,
-    mine: { locationId: "ridge", seconds: 28, yieldMin: 1, yieldMax: 2 },
-  },
-  {
     id: "coal",
     emoji: "🔥",
     name: "Coal",
     kind: "material",
-    purpose: "Fires a blade or a brick at the kiln.",
+    purpose: "Fires a blade (2 coal) or a brick (with stone).",
     description: "The ridge's other currency.",
     basePrice: 9,
     mine: { locationId: "ridge", seconds: 24, yieldMin: 1, yieldMax: 2 },
@@ -132,7 +121,7 @@ export const items: Item[] = [
     emoji: "🐟",
     name: "Fish",
     kind: "material",
-    purpose: "Eat: +6 energy, or craft stew.",
+    purpose: "Eat: +6 energy.",
     description: "Silver from the tide.",
     basePrice: 6,
     mine: { locationId: "shore", seconds: 14, yieldMin: 1, yieldMax: 3 },
@@ -142,7 +131,7 @@ export const items: Item[] = [
     emoji: "🐚",
     name: "Shell",
     kind: "material",
-    purpose: "Listen: next search skips Commons. Also crafts a charm.",
+    purpose: "Listen: next search skips Commons.",
     description: "Polished by the surf.",
     basePrice: 7,
     mine: { locationId: "shore", seconds: 16, yieldMin: 1, yieldMax: 2 },
@@ -152,8 +141,8 @@ export const items: Item[] = [
     emoji: "🧂",
     name: "Salt",
     kind: "material",
-    purpose: "Craft stew (with fish and herbs).",
-    description: "Raked from the flats. Stew without salt is a dare.",
+    purpose: "Seasoning from the flats.",
+    description: "Raked from the tide line.",
     basePrice: 6,
     mine: { locationId: "shore", seconds: 18, yieldMin: 1, yieldMax: 2 },
   },
@@ -178,16 +167,6 @@ export const items: Item[] = [
     mine: { locationId: "fields", seconds: 11, yieldMin: 2, yieldMax: 3 },
   },
   {
-    id: "flax",
-    emoji: "🧵",
-    name: "Flax",
-    kind: "material",
-    purpose: "Craft a basket (with wood) or a candle (with honey).",
-    description: "Spun for wicks and weaves.",
-    basePrice: 7,
-    mine: { locationId: "fields", seconds: 16, yieldMin: 1, yieldMax: 2 },
-  },
-  {
     id: "honey",
     emoji: "🍯",
     name: "Honey",
@@ -202,7 +181,7 @@ export const items: Item[] = [
     emoji: "🌸",
     name: "Flower",
     kind: "material",
-    purpose: "Tuck: next search leans Rare+. Also crafts a charm.",
+    purpose: "Tuck: next search leans Rare+.",
     description: "Festival color from the east road.",
     basePrice: 6,
     mine: { locationId: "fields", seconds: 15, yieldMin: 1, yieldMax: 2 },
@@ -226,40 +205,13 @@ export const items: Item[] = [
     basePrice: 12,
   },
   {
-    id: "salve",
-    emoji: "🩹",
-    name: "Salve",
-    kind: "good",
-    purpose: "Rub: +8 energy and next search ignores crowd cost.",
-    description: "Woods medicine. Heal and keep pulling.",
-    basePrice: 18,
-  },
-  {
-    id: "basket",
-    emoji: "🧺",
-    name: "Basket",
-    kind: "good",
-    purpose: "Carry: next find comes with +1 extra.",
-    description: "Flax and wood. Foragers flip these to gem hunters.",
-    basePrice: 16,
-  },
-  {
     id: "candle",
     emoji: "🕯️",
     name: "Candle",
     kind: "good",
-    purpose: "Craft the Celestial Relic (with blade, jewel, stew).",
-    description: "Festival light.",
+    purpose: "Festival light. Honey and a flower.",
+    description: "Wick and scent.",
     basePrice: 28,
-  },
-  {
-    id: "stew",
-    emoji: "🍲",
-    name: "Stew",
-    kind: "good",
-    purpose: "Eat: refill all 20 energy, or craft the relic.",
-    description: "A feast. Eating it means it cannot go on the altar.",
-    basePrice: 24,
   },
   {
     id: "brick",
@@ -275,36 +227,18 @@ export const items: Item[] = [
     emoji: "🗡️",
     name: "Blade",
     kind: "good",
-    purpose: "Craft the Celestial Relic (with jewel, candle, stew).",
-    description: "Forged iron.",
+    purpose: "A forged edge. Two coal at the kiln.",
+    description: "Tempered on coal.",
     basePrice: 40,
-  },
-  {
-    id: "charm",
-    emoji: "📿",
-    name: "Charm",
-    kind: "good",
-    purpose: "Wear: strong luck. Rare and Legendary show up more.",
-    description: "Shell plus flower. Better than a raw bloom.",
-    basePrice: 16,
   },
   {
     id: "jewel",
     emoji: "💍",
     name: "Jewel",
     kind: "good",
-    purpose: "Craft the Celestial Relic (with blade, candle, stew).",
-    description: "Gem set in coral. The slow relic piece.",
+    purpose: "Gem set in coral.",
+    description: "Slow work. The dear piece on the board.",
     basePrice: 58,
-  },
-  {
-    id: WIN_ITEM_ID,
-    emoji: "🌟",
-    name: "Celestial Relic",
-    kind: "relic",
-    purpose: "The festival prize. Trade it on the board; only the treasury can mint more.",
-    description: "Blade, jewel, candle, and stew bound at the altar.",
-    basePrice: 200,
   },
 ];
 
@@ -312,40 +246,12 @@ export const recipes: Recipe[] = [
   { id: "bread", outputId: "bread", outputQty: 1, inputs: [{ itemId: "wheat", qty: 2 }] },
   { id: "planks", outputId: "planks", outputQty: 1, inputs: [{ itemId: "wood", qty: 2 }] },
   {
-    id: "salve",
-    outputId: "salve",
-    outputQty: 1,
-    inputs: [
-      { itemId: "herbs", qty: 1 },
-      { itemId: "mushrooms", qty: 1 },
-    ],
-  },
-  {
-    id: "basket",
-    outputId: "basket",
-    outputQty: 1,
-    inputs: [
-      { itemId: "flax", qty: 1 },
-      { itemId: "wood", qty: 1 },
-    ],
-  },
-  {
     id: "candle",
     outputId: "candle",
     outputQty: 1,
     inputs: [
       { itemId: "honey", qty: 1 },
-      { itemId: "flax", qty: 1 },
-    ],
-  },
-  {
-    id: "stew",
-    outputId: "stew",
-    outputQty: 1,
-    inputs: [
-      { itemId: "fish", qty: 1 },
-      { itemId: "herbs", qty: 1 },
-      { itemId: "salt", qty: 1 },
+      { itemId: "flower", qty: 1 },
     ],
   },
   {
@@ -361,19 +267,7 @@ export const recipes: Recipe[] = [
     id: "blade",
     outputId: "blade",
     outputQty: 1,
-    inputs: [
-      { itemId: "iron", qty: 2 },
-      { itemId: "coal", qty: 1 },
-    ],
-  },
-  {
-    id: "charm",
-    outputId: "charm",
-    outputQty: 1,
-    inputs: [
-      { itemId: "shell", qty: 1 },
-      { itemId: "flower", qty: 1 },
-    ],
+    inputs: [{ itemId: "coal", qty: 2 }],
   },
   {
     id: "jewel",
@@ -382,17 +276,6 @@ export const recipes: Recipe[] = [
     inputs: [
       { itemId: "gem", qty: 1 },
       { itemId: "coral", qty: 1 },
-    ],
-  },
-  {
-    id: WIN_ITEM_ID,
-    outputId: WIN_ITEM_ID,
-    outputQty: 1,
-    inputs: [
-      { itemId: "blade", qty: 1 },
-      { itemId: "jewel", qty: 1 },
-      { itemId: "candle", qty: 1 },
-      { itemId: "stew", qty: 1 },
     ],
   },
 ];
@@ -436,7 +319,7 @@ export const cosmetics: Cosmetic[] = [
     name: "Gilded Circlet",
     slot: "hat",
     price: 220,
-    description: "Not the relic. Just enough gold to look like you won already.",
+    description: "Enough gold to look like you already won.",
   },
   {
     id: "vest",
@@ -539,14 +422,16 @@ export const STARTING_ENERGY = 20;
 export const FORAGE_ENERGY = 4;
 export const FORAGE_STRAIN_ID = "grounds";
 export const VP_TO_WIN = 20;
-export const FOOD_ITEM_IDS = ["berries", "fish", "honey", "bread", "stew"] as const;
-export const LEGENDARY_ITEM_IDS = [
-  "coral",
-  "gem",
-  "candle",
-  "blade",
-  "jewel",
-  WIN_ITEM_ID,
+export const FOOD_ITEM_IDS = ["berries", "fish", "honey", "bread"] as const;
+export const LEGENDARY_ITEM_IDS = ["coral", "gem", "candle", "blade", "jewel"] as const;
+export const RETIRED_ITEM_IDS = [
+  "flax",
+  "stew",
+  "basket",
+  "charm",
+  "salve",
+  "celestial-relic",
+  "iron",
 ] as const;
 
 export function isFoodItem(itemId: string) {

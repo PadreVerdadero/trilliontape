@@ -59,10 +59,10 @@ export const stalls: StallDef[] = [
     emoji: "⚒️",
     name: "Old Ket",
     role: "Smith",
-    blurb: "Buys iron, coal, and stone. Sells bricks. Coal pays better on forge weekdays.",
+    blurb: "Buys coal and stone. Sells bricks. Coal pays better on forge weekdays.",
     hoursLabel: `Weekdays ${formatMilitaryRange(13, 17)}.`,
     windows: [{ days: [1, 2, 3, 4, 5], startHour: 13, endHour: 17 }],
-    buyIds: ["iron", "coal", "stone"],
+    buyIds: ["coal", "stone"],
     sellIds: ["brick"],
     baseBuyRate: 0.8,
     chalkRate: 1.3,
@@ -88,11 +88,11 @@ export const stalls: StallDef[] = [
     emoji: "🌿",
     name: "Nim",
     role: "Herbalist",
-    blurb: "Buys herbs, mushrooms, and berries. Sells salve when the fever story is running.",
+    blurb: "Buys herbs, mushrooms, and berries.",
     hoursLabel: `Mon, Wed, Fri ${formatMilitaryRange(17, 21)}.`,
     windows: [{ days: [1, 3, 5], startHour: 17, endHour: 21 }],
     buyIds: ["herbs", "mushrooms", "berries"],
-    sellIds: ["salve"],
+    sellIds: [],
     baseBuyRate: 0.8,
     chalkRate: 1.3,
   },
@@ -101,11 +101,11 @@ export const stalls: StallDef[] = [
     emoji: "🌸",
     name: "Lark",
     role: "Florist",
-    blurb: "Buys flowers and flax. Sells charms for the evening lanterns.",
+    blurb: "Buys flowers. Sells candles for the evening lanterns.",
     hoursLabel: `Nightly ${formatMilitaryRange(18, 23)}.`,
     windows: [{ days: [0, 1, 2, 3, 4, 5, 6], startHour: 18, endHour: 23 }],
-    buyIds: ["flower", "flax"],
-    sellIds: ["charm"],
+    buyIds: ["flower"],
+    sellIds: ["candle"],
     baseBuyRate: 0.8,
     chalkRate: 1.3,
   },
@@ -291,13 +291,13 @@ export const CONTRACT_TEMPLATES = [
   {
     id: "sick-week",
     stallId: "nim",
-    itemId: "salve",
+    itemId: "herbs",
     quantity: 3,
     vp: 3,
     gold: 50,
     hours: 48,
     title: "Fever going around",
-    detail: "Nim will take three finished salves while the story lasts.",
+    detail: "Nim will take three herbs while the story lasts.",
   },
   {
     id: "night-jewel",
@@ -319,7 +319,7 @@ export const CONTRACT_TEMPLATES = [
     gold: 35,
     hours: 48,
     title: "Feed the night market",
-    detail: "Any mix of berries, fish, honey, bread, or stew — ten bites total.",
+    detail: "Any mix of berries, fish, honey, or bread — ten bites total.",
   },
   {
     id: "han-fish",
@@ -343,25 +343,11 @@ export const CONTRACT_TEMPLATES = [
     title: "Lantern garlands",
     detail: "Lark is short four flowers for the evening strings.",
   },
-  {
-    id: "relic",
-    stallId: "broker",
-    itemId: "celestial-relic",
-    quantity: 1,
-    vp: 8,
-    gold: 0,
-    hours: 168,
-    title: "Light the relic",
-    detail: "Craft the Celestial Relic. Eight points, and the lanterns remember you.",
-  },
 ] as const;
 
 export function contractsForWeek(week: string) {
-  const rotating = CONTRACT_TEMPLATES.filter((row) => row.id !== "relic");
-  const offset = hashString(week) % rotating.length;
-  const picked = Array.from({ length: 5 }, (_, index) => rotating[(offset + index) % rotating.length]);
-  const relic = CONTRACT_TEMPLATES.find((row) => row.id === "relic")!;
-  return [relic, ...picked];
+  const offset = hashString(week) % CONTRACT_TEMPLATES.length;
+  return Array.from({ length: 5 }, (_, index) => CONTRACT_TEMPLATES[(offset + index) % CONTRACT_TEMPLATES.length]);
 }
 
 export function donationCost(donateCount: number) {

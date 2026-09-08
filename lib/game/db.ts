@@ -2,12 +2,11 @@ import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
-import { ENERGY_MAX, STARTING_ENERGY, STARTING_GOLD, WIN_ITEM_ID, itemById } from "@/lib/game/catalog";
+import { ENERGY_MAX, RETIRED_ITEM_IDS, STARTING_ENERGY, STARTING_GOLD, itemById } from "@/lib/game/catalog";
 import { BOT_PROFILES } from "@/lib/game/bots";
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: Database.Database;
-  bazaarRelicSweep?: boolean;
 };
 
 function rotateIds(ids: number[], salt: string) {
@@ -332,7 +331,7 @@ function createPlayerWithDb(db: Database.Database, userId: number) {
     ENERGY_MAX,
     "You arrive with a light pack and a place at the desk."
   );
-  const starter: Record<string, number> = { wheat: 3, wood: 2, flax: 1, berries: 3 };
+  const starter: Record<string, number> = { wheat: 3, wood: 2, berries: 3 };
   const insert = db.prepare(
     "INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)"
   );
@@ -341,20 +340,23 @@ function createPlayerWithDb(db: Database.Database, userId: number) {
   }
 }
 
-function sweepBotRelicMints(db: Database.Database) {
-  if (globalForDb.bazaarRelicSweep) return;
-  globalForDb.bazaarRelicSweep = true;
-  db.prepare(
-    `DELETE FROM inventory
-     WHERE item_id = ?
-       AND user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)`
-  ).run(WIN_ITEM_ID);
-  db.prepare(
-    `UPDATE orders
-     SET remaining = 0
-     WHERE item_id = ? AND side = 'sell' AND remaining > 0
-       AND user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)`
-  ).run(WIN_ITEM_ID);
+function purgeRetiredItems(db: Database.Database) {
+  const retired = [...RETIRED_ITEM_IDS];
+  if (retired.length === 0) return;
+  const slots = retired.map(() => "?").join(", ");
+  db.transaction(() => {
+    const offerIds = db
+      .prepare(`SELECT DISTINCT offer_id FROM swap_legs WHERE item_id IN (${slots})`)
+      .all(...retired) as { offer_id: number }[];
+    for (const row of offerIds) {
+      db.prepare("DELETE FROM swap_legs WHERE offer_id = ?").run(row.offer_id);
+      db.prepare("DELETE FROM swap_offers WHERE id = ?").run(row.offer_id);
+    }
+    db.prepare(`DELETE FROM inventory WHERE item_id IN (${slots})`).run(...retired);
+    db.prepare(`DELETE FROM orders WHERE item_id IN (${slots})`).run(...retired);
+    db.prepare(`DELETE FROM trades WHERE item_id IN (${slots})`).run(...retired);
+    db.prepare(`DELETE FROM festival_contracts WHERE item_id IN (${slots})`).run(...retired);
+  })();
 }
 
 function seedBots(db: Database.Database) {
@@ -386,7 +388,7 @@ function seedBots(db: Database.Database) {
       db.prepare("UPDATE users SET is_bot = 1 WHERE id = ?").run(userId);
     }
     for (const itemId of bot.specialty) {
-      if (!itemById[itemId] || itemId === WIN_ITEM_ID) continue;
+      if (!itemById[itemId]) continue;
       insertInv.run(userId, itemId, bot.style === "thin" ? 6 : 22);
     }
   }
@@ -403,14 +405,14 @@ export function getDb() {
     clearBankerBook(db);
     seedGuest(db);
     seedBots(db);
-    sweepBotRelicMints(db);
+    purgeRetiredItems(db);
     shareBankerHoldings(db);
     globalForDb.bazaarDb = db;
   } else {
     migrate(globalForDb.bazaarDb);
     clearBankerBook(globalForDb.bazaarDb);
     seedBots(globalForDb.bazaarDb);
-    sweepBotRelicMints(globalForDb.bazaarDb);
+    purgeRetiredItems(globalForDb.bazaarDb);
     shareBankerHoldings(globalForDb.bazaarDb);
   }
   return globalForDb.bazaarDb;
