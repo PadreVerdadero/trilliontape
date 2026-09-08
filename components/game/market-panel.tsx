@@ -206,7 +206,7 @@ export function MarketPanel({
 
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
-              <p className="mb-2 font-heading text-lg text-emerald-100">People buying</p>
+              <p className="mb-2 font-heading text-lg text-emerald-100">Bids</p>
               <p className="mb-3 text-xs text-muted-foreground">Tap a row to sell them 1.</p>
               <OrderList
                 empty="No bids. Post one above if you want this."
@@ -221,7 +221,7 @@ export function MarketPanel({
               />
             </div>
             <div className="rounded-xl bg-rose-950/20 p-3 ring-1 ring-rose-400/20">
-              <p className="mb-2 font-heading text-lg text-rose-100">People selling</p>
+              <p className="mb-2 font-heading text-lg text-rose-100">Asks</p>
               <p className="mb-3 text-xs text-muted-foreground">Tap a row to buy 1 from them.</p>
               <OrderList
                 empty="No asks. Post your own, or wait for a regular."
