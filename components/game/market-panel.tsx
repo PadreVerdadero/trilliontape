@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { itemById } from "@/lib/game/catalog";
-import { formatCoins, formatNumber } from "@/lib/game/format";
+import { formatCoins, formatCompact, formatNumber } from "@/lib/game/format";
 import type { MarketSort, SortColumn, SortDir } from "@/lib/game/market-sort";
 import {
   rarityClass,
@@ -505,7 +505,12 @@ export function MarketPanel({
                           <ul className="space-y-1 text-xs">
                             {slice.map((trade) => (
                               <li key={trade.id} className="flex min-w-0 items-baseline gap-1.5">
-                                <span className="shrink-0 tabular-nums">{formatCoins(trade.price)}</span>
+                                <span
+                                  className="shrink-0 tabular-nums"
+                                  title={formatCoins(trade.price)}
+                                >
+                                  {formatCompact(trade.price)}
+                                </span>
                                 <span className="min-w-0 truncate">
                                   <span className="text-emerald-200">{trade.buyUsername}</span>
                                   <span className="text-muted-foreground"> – </span>
