@@ -182,9 +182,8 @@ function migrate(db: Database.Database) {
   ensureColumn(db, "players", "gold_donated", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "players", "donate_count", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "players", "wardrobe_vp", "INTEGER NOT NULL DEFAULT 0");
-  if (ensureColumn(db, "inventory", "cost_basis", "INTEGER NOT NULL DEFAULT 0")) {
-    seedInventoryCostBasis(db);
-  }
+  ensureColumn(db, "inventory", "cost_basis", "INTEGER NOT NULL DEFAULT 0");
+  seedInventoryCostBasis(db);
 }
 
 function ensureColumn(db: Database.Database, table: string, column: string, sql: string) {
@@ -209,8 +208,11 @@ function seedInventoryCostBasis(db: Database.Database) {
       .map((row) => [`${row.buy_user_id}:${row.item_id}`, row.paid / row.qty])
   );
   const stacks = db
-    .prepare("SELECT user_id, item_id, quantity FROM inventory WHERE quantity > 0")
+    .prepare(
+      "SELECT user_id, item_id, quantity FROM inventory WHERE quantity > 0 AND COALESCE(cost_basis, 0) = 0"
+    )
     .all() as { user_id: number; item_id: string; quantity: number }[];
+  if (stacks.length === 0) return;
   const upd = db.prepare(
     "UPDATE inventory SET cost_basis = ? WHERE user_id = ? AND item_id = ?"
   );
