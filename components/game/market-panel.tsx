@@ -108,6 +108,13 @@ function nudgeWhole(raw: string, delta: number, fallback: number) {
   return String(Math.max(1, base + delta));
 }
 
+const NUDGE_STEP_MAX = 1_000_000;
+
+function nextNudgeStep(step: number, dir: 1 | -1) {
+  if (dir > 0) return Math.min(NUDGE_STEP_MAX, step * 10);
+  return Math.max(1, Math.floor(step / 10));
+}
+
 function orderFieldFocused(
   priceEl: HTMLInputElement | null,
   qtyEl: HTMLInputElement | null
@@ -192,6 +199,7 @@ export function MarketPanel({
   const { book, reloadBook } = useOrderBook(selectedItemId);
   const [priceInput, setPriceInput] = useState("");
   const [qtyInput, setQtyInput] = useState("1");
+  const [nudgeStep, setNudgeStep] = useState(1);
   const priceRef = useRef<HTMLInputElement>(null);
   const qtyRef = useRef<HTMLInputElement>(null);
   const focusAfter = useRef<"px" | "qty" | null>(null);
@@ -289,11 +297,21 @@ export function MarketPanel({
         prepareOrderField("qty", "1");
         return;
       }
+      if (key === "z") {
+        event.preventDefault();
+        setNudgeStep((prev) => nextNudgeStep(prev, 1));
+        return;
+      }
+      if (key === "c") {
+        event.preventDefault();
+        setNudgeStep((prev) => nextNudgeStep(prev, -1));
+        return;
+      }
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         const field = orderFieldFocused(priceRef.current, qtyRef.current);
         if (!field) return;
         event.preventDefault();
-        const delta = event.key === "ArrowUp" ? 1 : -1;
+        const delta = (event.key === "ArrowUp" ? 1 : -1) * nudgeStep;
         if (field === "px") {
           setPriceInput((prev) => nudgeWhole(prev, delta, mvCoins));
         } else {
@@ -334,7 +352,7 @@ export function MarketPanel({
           <p className="text-xs text-muted-foreground">
             Crossing bids fill at the ask. Bid/Ask is units on the book. Volume is stock in packs.
             Tap a column to sort. Bid/Ask: two taps on bids, then two on asks. Pack on the left
-            follows this order. W/S select · A fills MV · D qty 1 · arrows nudge · V buy · X sell · Q take bid · E take ask.
+            follows this order. W/S select · A fills MV · D qty 1 · arrows nudge · Z/C step place · V buy · X sell · Q take bid · E take ask.
           </p>
         </div>
         {state.recentTrades[0] ? (
@@ -399,7 +417,8 @@ export function MarketPanel({
             <div className="rounded-lg bg-background/40 p-2 ring-1 ring-foreground/10">
               <p className="mb-1 font-heading text-sm">Post your own order</p>
               <p className="mb-1 text-[10px] leading-4 text-muted-foreground">
-                <kbd className="text-foreground">A</kbd> MV · arrows nudge ·{" "}
+                <kbd className="text-foreground">A</kbd> MV · arrows ±{formatNumber(nudgeStep)} ·{" "}
+                <kbd className="text-foreground">Z</kbd>/<kbd className="text-foreground">C</kbd> place ·{" "}
                 <kbd className="text-foreground">D</kbd> qty 1 · <kbd className="text-foreground">V</kbd> buy
                 · <kbd className="text-foreground">X</kbd> sell
               </p>
