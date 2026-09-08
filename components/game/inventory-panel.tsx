@@ -1,129 +1,59 @@
-import { Button } from "@/components/ui/button";
 import { itemById } from "@/lib/game/catalog";
-import { formatNumber } from "@/lib/game/format";
-import { usableById } from "@/lib/game/consumables";
-import { rarityClass, rarityLabel, rarityOf, rarityText } from "@/lib/game/rarity";
+import { formatCoins, formatNumber } from "@/lib/game/format";
+import { rarityClass } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
-import type { PlayerState } from "@/lib/game/types";
+import type { MarketPrice, PlayerState } from "@/lib/game/types";
 
 export function InventoryPanel({
   player,
-  pending,
+  prices,
   onSelect,
-  onUse,
-  layout = "grid",
+  selectedItemId,
 }: {
   player: PlayerState;
-  pending?: boolean;
+  prices: MarketPrice[];
   onSelect?: (itemId: string) => void;
-  onUse?: (itemId: string) => void;
-  layout?: "grid" | "rail";
+  selectedItemId?: string;
 }) {
   if (player.inventory.length === 0) {
     return (
-      <p className="text-sm leading-6 text-muted-foreground">
-        Your pack is empty. Forage the grounds, fill a bid on the board, or bake the wheat you
-        arrived with.
+      <p className="px-2 py-3 text-xs leading-5 text-muted-foreground">
+        Empty pack. Buy on the board or take a deal.
       </p>
     );
   }
 
-  if (layout === "rail") {
-    return (
-      <div className="space-y-1.5">
-        {player.inventory.map((row) => {
-          const item = itemById[row.itemId];
-          const reserved = player.reservedItems[row.itemId] ?? 0;
-          const free = row.quantity - reserved;
-          const rarity = rarityOf(row.itemId);
-          const usable = usableById(row.itemId);
-          return (
-            <div
-              key={row.itemId}
-              className={cn("rounded-xl bg-background/40 p-2 ring-1", rarityClass(row.itemId))}
-            >
-              <button
-                type="button"
-                onClick={() => onSelect?.(row.itemId)}
-                className="flex w-full items-start gap-2 text-left"
-                title={item?.purpose}
-              >
-                <span className="text-xl leading-none">{item?.emoji}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{item?.name}</span>
-                  <span className={cn("text-[10px] uppercase tracking-wide", rarityText[rarity])}>
-                    {rarityLabel[rarity]}
-                  </span>
-                  <span className="block text-xs text-muted-foreground">
-                    {formatNumber(free)}
-                    {reserved ? ` · ${formatNumber(reserved)} listed` : ""}
-                  </span>
-                </span>
-              </button>
-              {usable && free > 0 ? (
-                <Button
-                  size="xs"
-                  variant="secondary"
-                  className="mt-1.5 h-9 w-full md:h-7"
-                  disabled={pending}
-                  title={usable.blurb}
-                  onClick={() => onUse?.(row.itemId)}
-                >
-                  {usable.verb}
-                </Button>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+    <div>
       {player.inventory.map((row) => {
         const item = itemById[row.itemId];
         const reserved = player.reservedItems[row.itemId] ?? 0;
-        const free = row.quantity - reserved;
-        const rarity = rarityOf(row.itemId);
-        const usable = usableById(row.itemId);
+        const mv =
+          prices.find((quote) => quote.itemId === row.itemId)?.vwap ?? item?.basePrice ?? 0;
+        const active = selectedItemId === row.itemId;
         return (
-          <div
+          <button
             key={row.itemId}
+            type="button"
+            onClick={() => onSelect?.(row.itemId)}
+            title={`${item?.name ?? row.itemId} · ${formatNumber(row.quantity)} × ${formatCoins(mv)}${
+              reserved ? ` · ${formatNumber(reserved)} listed` : ""
+            }`}
             className={cn(
-              "rounded-xl bg-background/40 p-2 text-left ring-1",
+              "grid w-full grid-cols-[1.25rem_minmax(0,1fr)_auto_auto] items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-sm hover:bg-background/70 sm:px-2 sm:py-1.5",
+              active && "bg-primary/15",
               rarityClass(row.itemId)
             )}
           >
-            <button
-              type="button"
-              onClick={() => onSelect?.(row.itemId)}
-              className="w-full text-left"
-            >
-              <div className="text-2xl">{item?.emoji}</div>
-              <div className="truncate text-sm font-medium">{item?.name}</div>
-              <div className={cn("text-[10px] uppercase tracking-wide", rarityText[rarity])}>
-                {rarityLabel[rarity]}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {formatNumber(free)}
-                {reserved ? ` free · ${formatNumber(reserved)} listed` : ""}
-              </div>
-              <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{item?.purpose}</p>
-            </button>
-            {usable && free > 0 ? (
-              <Button
-                size="xs"
-                variant="secondary"
-                className="mt-2 h-11 w-full md:h-6"
-                disabled={pending}
-                title={usable.blurb}
-                onClick={() => onUse?.(row.itemId)}
-              >
-                {usable.verb}
-              </Button>
-            ) : null}
-          </div>
+            <span className="text-base leading-none">{item?.emoji}</span>
+            <span className="truncate text-xs font-medium sm:text-sm">{item?.name}</span>
+            <span className="tabular-nums text-xs text-muted-foreground">
+              ×{formatNumber(row.quantity)}
+            </span>
+            <span className="tabular-nums text-xs font-medium text-sky-200 sm:text-sm">
+              {formatCoins(mv)}
+            </span>
+          </button>
         );
       })}
     </div>

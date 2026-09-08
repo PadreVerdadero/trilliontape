@@ -90,9 +90,8 @@ export function MarketPanel({
         <div>
           <p className="font-heading text-2xl sm:text-3xl">Player market</p>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            Pick an item, post a buy or sell at any whole-coin price of 1 or more, then tap a listing
-            to take one. Crossing trades clear at the ask. Market value is the simple average of the
-            last 100 board trades. Listed is how many units are for sale on the book right now.
+            Post a buy or sell at any whole-coin price of 1 or more. Tap a listing to take one.
+            MV is the average of the last 100 board trades. Listed is how many units are for sale.
           </p>
         </div>
         {state.recentTrades[0] ? (
@@ -106,24 +105,6 @@ export function MarketPanel({
         )}
       </div>
 
-      <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
-        {itemsByCommonness.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            title={item.name}
-            onClick={() => pick(item.id)}
-            className={cn(
-              "grid size-12 shrink-0 place-items-center rounded-xl text-xl ring-1 hover:bg-card",
-              item.id === selectedItemId ? "bg-primary/20" : "bg-card/60",
-              rarityClass(item.id)
-            )}
-          >
-            {item.emoji}
-          </button>
-        ))}
-      </div>
-
       {selected ? (
         <div className="space-y-4 rounded-2xl bg-card p-4 ring-1 ring-foreground/10 sm:p-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -131,8 +112,6 @@ export function MarketPanel({
               <p className="font-heading text-2xl">
                 {selected.emoji} {selected.name}
               </p>
-              <p className="text-sm text-foreground">{selected.purpose}</p>
-              <p className="text-sm text-muted-foreground">{selected.description}</p>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:min-w-[22rem] sm:grid-cols-4">
               <Stat
@@ -242,7 +221,7 @@ export function MarketPanel({
               <p className="mb-2 font-heading text-lg text-rose-100">People selling</p>
               <p className="mb-3 text-xs text-muted-foreground">Tap a row to buy 1 from them.</p>
               <OrderList
-                empty="No asks. Gather it, craft it, or post your own."
+                empty="No asks. Post your own, or wait for a regular."
                 rows={book?.asks ?? []}
                 selfId={state.player.id}
                 pending={pending}
@@ -265,7 +244,7 @@ export function MarketPanel({
           <span className="text-sky-200/90">MV</span>
           <span className="text-amber-200/90">Listed</span>
         </div>
-        <div className="max-h-[min(40vh,22rem)] overflow-auto">
+        <div className="max-h-[min(72vh,40rem)] overflow-auto">
           {itemsByCommonness.map((item) => {
             const quote = state.prices.find((row) => row.itemId === item.id);
             const active = item.id === selectedItemId;

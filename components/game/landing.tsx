@@ -3,24 +3,24 @@ import { items } from "@/lib/game/catalog";
 
 const highlights = [
   {
-    emoji: "🏪",
-    title: "Stalls keep real hours",
-    body: "Mira, Ket, Han, Nim, Lark, and the night broker buy at a markup only while their door is open. Hours are military time on your phone clock. Sunday 10:00–14:00 opens everyone.",
-  },
-  {
-    emoji: "⛏️",
-    title: "Forage the grounds",
-    body: "One energy pull, mixed loot. Eat to refill. Optional QR codes lean the next find toward woods, ridge, shore, or fields.",
-  },
-  {
     emoji: "📒",
-    title: "A real order book",
-    body: "The player market never closes, and you can post any whole-coin price. Bundle several items plus gold in a direct deal with another traveler — those swaps stay off the tape.",
+    title: "A live order book",
+    body: "Post a bid or ask at any whole-coin price. Crossing trades clear at the ask. Market value is the average of the last 100 prints.",
   },
   {
-    emoji: "🏆",
-    title: "Victory points",
-    body: "First to 20 VP lights the festival. Contracts, chalkboard hours, donations, and the relic (8 VP) all score. Titles track the baker, the purse, and the board ghost.",
+    emoji: "🤝",
+    title: "Direct deals",
+    body: "Bundle several different goods plus gold and send the offer to one traveler, or leave it open for anyone. Those swaps stay off the tape.",
+  },
+  {
+    emoji: "🎒",
+    title: "Your pack, priced",
+    body: "The left rail shows how many you hold and each item’s current market value. Coin sits at the top. Net worth is at the bottom.",
+  },
+  {
+    emoji: "🤖",
+    title: "Plaza regulars",
+    body: "Computer traders keep the book moving so you are never the only name on the tape.",
   },
 ];
 
@@ -49,17 +49,14 @@ export function Landing({ error, next }: { error?: string; next?: string }) {
         <div className="grid items-start gap-10 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-6">
             <p className="text-sm font-medium tracking-[0.2em] text-primary uppercase">
-              Harvest of Lanterns
+              Night market
             </p>
             <h1 className="font-heading max-w-xl text-4xl leading-tight text-balance sm:text-6xl">
-              Catch the open stall. Light the festival.
+              Trade the tape. Watch the pack.
             </h1>
             <p className="max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
-              You are a traveling crafter in a night market of shop owners with real hours. Forage
-              the grounds, craft what they want, and flip goods on the player board while they
-              sleep. First to{" "}
-              <span className="text-foreground">20 victory points</span> wins — contracts, chalkboard
-              hours, or the <span className="text-foreground">🌟 Celestial Relic</span>.
+              A player order book of emoji goods. Buy and sell at any price, swap bundles with
+              other travelers, and track coin, market value, and net worth as you go.
             </p>
             <div className="flex flex-wrap gap-2">
               {items
@@ -78,10 +75,9 @@ export function Landing({ error, next }: { error?: string; next?: string }) {
 
           <Card className="overflow-visible bg-card/90 backdrop-blur">
             <CardHeader>
-              <CardTitle>Return to the plaza</CardTitle>
+              <CardTitle>Open a stall on the board</CardTitle>
               <CardDescription>
-                Use the Guest stall or create your own. Pack, gold, and energy are saved when
-                you leave.
+                Use Guest or create your own traveler. Pack and gold are saved when you leave.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -97,7 +93,7 @@ export function Landing({ error, next }: { error?: string; next?: string }) {
                   Play as Guest
                 </button>
                 <p className="text-center text-xs text-muted-foreground">
-                  Opens the demo stall · Guest / play
+                  Opens the demo book · Guest / play
                 </p>
               </form>
 

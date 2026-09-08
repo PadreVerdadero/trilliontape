@@ -16,7 +16,7 @@ const fraunces = Fraunces({
 export const metadata: Metadata = {
   title: "Lantern Bazaar",
   description:
-    "A traveler's market of emoji goods. Check in at real-world stops, search the wilds, and craft the Celestial Relic.",
+    "A player market of emoji goods. Trade the board, watch market value, and track net worth.",
 };
 
 export const viewport: Viewport = {

@@ -1,48 +1,23 @@
 # Lantern Bazaar
 
-A traveler’s market of emoji goods. Forage the grounds, flip stock on a player order book, and sell to **shop owners who keep real hours**. First to **20 victory points** lights the festival. The **🌟 Celestial Relic** is an 8-point contract, not the only win.
+A player market of emoji goods. Post bids and asks, swap bundles with other travelers, and watch coin, market value, and net worth.
 
 The UI is built for a phone in the pocket and a computer at the desk.
 
 ## How to play
 
 1. Create a traveler name and password, or press **Play as Guest** (Guest / play).
-2. **Forage** the grounds. Each pull costs energy and happens instantly. Eat berries, bread, fish, honey, or stew to refill. Crowds on the grounds raise the next cost until the area sits quiet for 45 seconds.
-3. Optional: scan a QR at a real stop (or open `/codes`) so the next forage leans woods, ridge, shore, or fields.
-4. On **Stalls**, sell to whoever is open. Hours follow your phone’s clock in military time. The chalkboard item pays more. Sunday 10:00–14:00 opens everyone.
-5. The **player market** never closes. Post a bid or ask at any whole-coin price of 1 or more. Crossing trades clear at the ask. **Market value** is the simple average of the last 100 board trades (catalog price if none). Each item tracks how many units are **listed** on the book. Direct **bundle deals** let two travelers swap several different items plus gold; those swaps do not print and do not move MV. Twelve plaza regulars (computer traders) keep the book lively.
-6. Score VP from contracts, chalkboard hours, first daily board trade, lantern donations, and the relic.
+2. Your **pack** is the left rail: how many you hold, and each item’s current **market value**.
+3. **Coin** sits at the top. **Net worth** (coin plus goods at MV) sits at the bottom.
+4. The **player market** never closes. Post a bid or ask at any whole-coin price of 1 or more. Crossing trades clear at the ask. MV is the simple average of the last 100 board trades (catalog starting price if none). **Listed** is how many units are for sale.
+5. **Direct deals** let two travelers swap several different items plus gold. Those swaps do not print and do not move MV.
+6. Twelve plaza regulars (computer traders) keep the book lively.
 
 You start with a little gold, wheat, wood, flax, and berries.
 
-## Stalls
-
-| Owner | Hours (your local clock) | Buys | Sells |
-| --- | --- | --- | --- |
-| 🍞 Mira the baker | Daily 07:00–10:00, weekends until 12:00 | Wheat, honey | Bread |
-| ⚒️ Old Ket the smith | Weekdays 13:00–17:00 | Iron, coal, stone | Bricks |
-| 🐟 Tide Han | Daily 05:00–08:00, Saturday until 12:00 | Fish, salt, shells, coral | — |
-| 🌿 Nim the herbalist | Mon / Wed / Fri 17:00–21:00 | Herbs, mushrooms, berries | Salve |
-| 🌸 Lark the florist | Nightly 18:00–23:00 | Flowers, flax | Charms |
-| 🌙 Night broker | Friday 18:00–21:00 | Gems, coral, blades, jewels | — |
-
-Sunday market (10:00–14:00) opens every stall. Pay 15🪙 for tomorrow’s chalkboard rumor. Rent a 25🪙 crate to bump your payout 10% for that window.
-
-## Victory
-
-First to **20 VP** (or the relic) lights the lantern. Titles:
-
-- **Champion** — most VP
-- **Purse** — most coin from stalls plus donations
-- **Baker’s friend** — most food delivered
-- **Night broker** — most legendary turn-ins
-- **Board ghost** — most player-board fills
-
-Lantern donations convert gold to VP with a doubling cost (50, then 100, then 200…).
-
 ## The catalog
 
-**16 materials**, **10 crafted goods**, and **1 relic**. Every item has one job — eat it, use it, craft it, or sell it to a stall that wants it.
+**16 materials**, **10 crafted goods**, and **1 relic**. Trade them on the board.
 
 ## Run locally
 
