@@ -435,7 +435,7 @@ function Stat({
       title={title}
       className={cn(
         "rounded-xl px-3 py-2 ring-1 ring-foreground/10",
-        tone === "value" && "bg-zinc-400 text-zinc-950 ring-zinc-500",
+        tone === "value" && "bg-black text-white ring-white/50",
         tone === "bid" && "bg-emerald-950/30",
         tone === "ask" && "bg-rose-950/25",
         tone === "mv" && "bg-sky-950/30",
@@ -446,7 +446,7 @@ function Stat({
       <p
         className={cn(
           "text-[11px] tracking-wide uppercase",
-          tone === "value" ? "text-zinc-700" : "text-muted-foreground"
+          tone === "value" ? "text-white/70" : "text-muted-foreground"
         )}
       >
         {label}
@@ -454,7 +454,7 @@ function Stat({
       <p
         className={cn(
           "font-heading text-lg tabular-nums",
-          tone === "value" && "text-zinc-950",
+          tone === "value" && "text-white",
           tone === "bid" && "text-emerald-200",
           tone === "ask" && "text-rose-200",
           tone === "mv" && "text-sky-200",
