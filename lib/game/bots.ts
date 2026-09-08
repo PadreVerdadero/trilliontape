@@ -292,7 +292,7 @@ export function chaseBidPrice(oldPrice: number, fair: number, slack: number, ste
 }
 
 export function chaseAskPrice(oldPrice: number, fair: number, slack: number, steps: number) {
-  const cut = Math.max(1, steps);
-  const target = Math.max(1, Math.round(fair - slack * (0.35 + steps * 0.22)));
+  const cut = Math.max(1, Math.ceil(steps / 3));
+  const target = Math.max(1, Math.round(fair - slack));
   return Math.max(1, Math.min(oldPrice - cut, target));
 }

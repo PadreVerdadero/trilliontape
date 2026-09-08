@@ -1749,9 +1749,7 @@ function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: num
   const spread = botSpread(style);
   const slack = chaseSlack(spread, fair, waitMs);
   const impatient =
-    oldest.side === "buy"
-      ? steps >= 2 || Math.random() < Math.min(0.97, botLossChance(spread, fair) + steps * 0.1)
-      : steps >= 2 || Math.random() < botLossChance(spread, fair) + Math.min(steps, 8) * 0.22;
+    steps >= 2 || Math.random() < Math.min(0.97, botLossChance(spread, fair) + steps * 0.1);
   const db = getDb();
 
   if (oldest.side === "buy") {
@@ -1803,6 +1801,7 @@ function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: num
     botWillTake(spread, fair, "hitBid", bid.price, true, slack)
   ) {
     cancelOrders(userId, [oldest.id]);
+    if (availableItem(userId, itemId) < 1) addItem(userId, itemId, 1);
     if (availableItem(userId, itemId) >= 1) {
       takeOrder(userId, bid.id, 1);
       return true;
@@ -1810,11 +1809,9 @@ function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: num
   }
   const next = chaseAskPrice(oldest.price, fair, slack, steps);
   if (next < oldest.price) {
-    cancelOrders(userId, [oldest.id]);
-    if (availableItem(userId, itemId) >= 1) {
-      placeOrder(userId, itemId, "sell", next, 1);
-      return true;
-    }
+    db.prepare("UPDATE orders SET price = ? WHERE id = ?").run(next, oldest.id);
+    matchItem(itemId);
+    return true;
   }
   return false;
 }
@@ -1824,9 +1821,6 @@ export function tickBots() {
   if (botClock.bazaarBotTick && now - botClock.bazaarBotTick < 3500) return;
   botClock.bazaarBotTick = now;
   const db = getDb();
-  db.prepare(
-    "DELETE FROM orders WHERE created_at < ? AND side = 'sell' AND user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)"
-  ).run(now - 150_000);
   for (const profile of shufflePick(BOT_PROFILES, 14)) {
     const user = db
       .prepare("SELECT id FROM users WHERE username = ? AND COALESCE(is_bot, 0) = 1")
