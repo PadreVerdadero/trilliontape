@@ -1714,37 +1714,97 @@ function shufflePick<T>(list: T[], count: number) {
 
 const botClock = globalThis as unknown as { bazaarBotTick?: number };
 
-function restockBot(userId: number, gold: number, specialty: string[], thin: boolean) {
-  if (availableGold(userId) < 350) {
-    getDb()
-      .prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?")
-      .run(Math.max(400, Math.round(gold * 0.35)), userId);
-  }
-  for (const itemId of specialty) {
-    if (!itemById[itemId]) continue;
-    if (availableItem(userId, itemId) < 3) addItem(userId, itemId, thin ? 4 : 10);
-  }
+function fundBotGold(userId: number, need: number) {
+  const free = availableGold(userId);
+  if (free >= need) return;
+  getDb()
+    .prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?")
+    .run(need - free + 20, userId);
 }
 
-function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: number) {
-  const oldest = getDb()
-    .prepare(
-      `SELECT id, item_id, side, price, created_at
-       FROM orders
-       WHERE user_id = ? AND remaining > 0
-       ORDER BY created_at ASC
-       LIMIT 1`
-    )
-    .get(userId) as
-    | { id: number; item_id: string; side: "buy" | "sell"; price: number; created_at: number }
-    | undefined;
-  if (!oldest) return false;
-  const waitMs = now - oldest.created_at;
+function restockBot(userId: number, gold: number, specialty: string[], thin: boolean) {
+  let purseFloor = Math.max(350, Math.round(gold * 0.12));
+  for (const itemId of specialty) {
+    if (!itemById[itemId]) continue;
+    const fair = marketPrice(itemId);
+    purseFloor = Math.max(
+      purseFloor,
+      Math.round(fair * (itemId === WIN_ITEM_ID ? 3 : 1.25))
+    );
+    if (itemId === WIN_ITEM_ID) {
+      const owned = inventoryMap(userId).get(itemId) ?? 0;
+      if (owned < 1) addItem(userId, itemId, 1);
+    } else if (availableItem(userId, itemId) < 3) {
+      addItem(userId, itemId, thin ? 4 : 10);
+    }
+  }
+  fundBotGold(userId, purseFloor);
+}
+
+type BotQuoteRow = {
+  id: number;
+  item_id: string;
+  side: "buy" | "sell";
+  price: number;
+  created_at: number;
+};
+
+function botSideCount(userId: number, itemId: string, side: "buy" | "sell") {
+  return (
+    getDb()
+      .prepare(
+        `SELECT COALESCE(SUM(remaining), 0) AS n
+         FROM orders
+         WHERE user_id = ? AND item_id = ? AND side = ? AND remaining > 0`
+      )
+      .get(userId, itemId, side) as { n: number }
+  ).n;
+}
+
+function relicRestQuote(spread: ReturnType<typeof botSpread>, fair: number) {
+  const quote = botQuoteMultipliers(spread, fair);
+  if (quote.kind !== "rest") return quote;
+  return {
+    ...quote,
+    bid: Math.max(quote.bid, 0.78),
+    ask: Math.min(quote.ask, 1.32),
+  };
+}
+
+function ensureRelicBook(userId: number, style: BotProfile["style"], specialty: string[]) {
+  if (!specialty.includes(WIN_ITEM_ID)) return false;
+  const fair = marketPrice(WIN_ITEM_ID);
+  const spread = botSpread(style);
+  const quote = relicRestQuote(spread, fair);
+  let acted = false;
+  if (botSideCount(userId, WIN_ITEM_ID, "buy") < 1) {
+    const bidPx = Math.max(1, Math.round(fair * quote.bid));
+    fundBotGold(userId, bidPx);
+    if (availableGold(userId) >= bidPx) {
+      placeOrder(userId, WIN_ITEM_ID, "buy", bidPx, 1);
+      acted = true;
+    }
+  }
+  if (botSideCount(userId, WIN_ITEM_ID, "sell") < 1 && availableItem(userId, WIN_ITEM_ID) >= 1) {
+    const askPx = Math.max(1, Math.round(fair * quote.ask));
+    placeOrder(userId, WIN_ITEM_ID, "sell", askPx, 1);
+    acted = true;
+  }
+  return acted;
+}
+
+function chaseOneBotQuote(
+  userId: number,
+  style: BotProfile["style"],
+  now: number,
+  quote: BotQuoteRow
+) {
+  const waitMs = now - quote.created_at;
   const steps = waitSteps(waitMs);
   if (steps < 1) return false;
-  if (steps === 1 && Math.random() < 0.35) return false;
+  if (steps === 1 && quote.item_id !== WIN_ITEM_ID && Math.random() < 0.35) return false;
 
-  const itemId = oldest.item_id;
+  const itemId = quote.item_id;
   const fair = marketPrice(itemId);
   const spread = botSpread(style);
   const slack = chaseSlack(spread, fair, waitMs);
@@ -1752,7 +1812,7 @@ function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: num
     steps >= 2 || Math.random() < Math.min(0.97, botLossChance(spread, fair) + steps * 0.1);
   const db = getDb();
 
-  if (oldest.side === "buy") {
+  if (quote.side === "buy") {
     const ask = db
       .prepare(
         `SELECT id, price FROM orders
@@ -1765,23 +1825,17 @@ function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: num
       impatient &&
       botWillTake(spread, fair, "liftAsk", ask.price, true, slack)
     ) {
-      cancelOrders(userId, [oldest.id]);
+      cancelOrders(userId, [quote.id]);
+      fundBotGold(userId, ask.price);
       if (availableGold(userId) >= ask.price) {
         takeOrder(userId, ask.id, 1);
         return true;
       }
     }
-    const next = chaseBidPrice(oldest.price, fair, slack, steps);
-    if (next > oldest.price) {
-      const extra = next - oldest.price;
-      const free = availableGold(userId);
-      if (extra > free) {
-        db.prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?").run(
-          extra - free + 20,
-          userId
-        );
-      }
-      db.prepare("UPDATE orders SET price = ? WHERE id = ?").run(next, oldest.id);
+    const next = chaseBidPrice(quote.price, fair, slack, steps);
+    if (next > quote.price) {
+      fundBotGold(userId, next - quote.price);
+      db.prepare("UPDATE orders SET price = ? WHERE id = ?").run(next, quote.id);
       matchItem(itemId);
       return true;
     }
@@ -1800,20 +1854,37 @@ function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: num
     impatient &&
     botWillTake(spread, fair, "hitBid", bid.price, true, slack)
   ) {
-    cancelOrders(userId, [oldest.id]);
+    cancelOrders(userId, [quote.id]);
     if (availableItem(userId, itemId) < 1) addItem(userId, itemId, 1);
     if (availableItem(userId, itemId) >= 1) {
       takeOrder(userId, bid.id, 1);
       return true;
     }
   }
-  const next = chaseAskPrice(oldest.price, fair, slack, steps);
-  if (next < oldest.price) {
-    db.prepare("UPDATE orders SET price = ? WHERE id = ?").run(next, oldest.id);
+  const next = chaseAskPrice(quote.price, fair, slack, steps);
+  if (next < quote.price) {
+    db.prepare("UPDATE orders SET price = ? WHERE id = ?").run(next, quote.id);
     matchItem(itemId);
     return true;
   }
   return false;
+}
+
+function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: number) {
+  const rows = getDb()
+    .prepare(
+      `SELECT id, item_id, side, price, created_at
+       FROM orders
+       WHERE user_id = ? AND remaining > 0
+       ORDER BY CASE WHEN item_id = ? THEN 0 ELSE 1 END, created_at ASC`
+    )
+    .all(userId, WIN_ITEM_ID) as BotQuoteRow[];
+  let chased = 0;
+  for (const quote of rows) {
+    if (chased >= 4) break;
+    if (chaseOneBotQuote(userId, style, now, quote)) chased += 1;
+  }
+  return chased > 0;
 }
 
 export function tickBots() {
@@ -1821,15 +1892,30 @@ export function tickBots() {
   if (botClock.bazaarBotTick && now - botClock.bazaarBotTick < 3500) return;
   botClock.bazaarBotTick = now;
   const db = getDb();
-  for (const profile of shufflePick(BOT_PROFILES, 14)) {
+  const picked = shufflePick(BOT_PROFILES, 14);
+  const seen = new Set(picked.map((bot) => bot.username));
+  for (const profile of BOT_PROFILES) {
+    if (profile.specialty.includes(WIN_ITEM_ID) && !seen.has(profile.username)) {
+      picked.push(profile);
+    }
+  }
+  for (const profile of picked) {
     const user = db
       .prepare("SELECT id FROM users WHERE username = ? AND COALESCE(is_bot, 0) = 1")
       .get(profile.username) as { id: number } | undefined;
     if (!user) continue;
     try {
       restockBot(user.id, profile.gold, profile.specialty, profile.style === "thin");
+      ensureRelicBook(user.id, profile.style, profile.specialty);
       if (chaseStaleBotQuote(user.id, profile.style, now)) continue;
-      const itemId = profile.specialty[Math.floor(Math.random() * profile.specialty.length)];
+      let itemId = profile.specialty[Math.floor(Math.random() * profile.specialty.length)];
+      if (
+        profile.specialty.includes(WIN_ITEM_ID) &&
+        (botSideCount(user.id, WIN_ITEM_ID, "buy") < 1 ||
+          botSideCount(user.id, WIN_ITEM_ID, "sell") < 1)
+      ) {
+        itemId = WIN_ITEM_ID;
+      }
       const item = itemById[itemId];
       if (!item) continue;
       const fair = marketPrice(itemId);
@@ -1868,16 +1954,21 @@ export function tickBots() {
       const live = db
         .prepare("SELECT COALESCE(SUM(remaining), 0) AS n FROM orders WHERE user_id = ? AND remaining > 0")
         .get(user.id) as { n: number };
-      if (live.n >= 8) continue;
-      const quote = botQuoteMultipliers(spread, fair);
+      if (live.n >= 8 && itemId !== WIN_ITEM_ID) continue;
+      const quote =
+        itemId === WIN_ITEM_ID ? relicRestQuote(spread, fair) : botQuoteMultipliers(spread, fair);
       const qty =
-        quote.kind !== "rest" || profile.style === "thin" || profile.style === "wild"
+        itemId === WIN_ITEM_ID ||
+        quote.kind !== "rest" ||
+        profile.style === "thin" ||
+        profile.style === "wild"
           ? 1
           : 1 + Math.floor(Math.random() * 3);
       const quoteBoth = live.n <= 4 && Math.random() < 0.22;
       const buySide = Math.random() < 0.5;
       if (quoteBoth || buySide) {
         const bidPx = Math.max(1, Math.round(fair * quote.bid));
+        fundBotGold(user.id, bidPx * qty);
         if (availableGold(user.id) >= bidPx * qty) placeOrder(user.id, itemId, "buy", bidPx, qty);
       }
       if (quoteBoth || !buySide) {

@@ -68,14 +68,14 @@ export const BOT_PROFILES: BotProfile[] = [
   },
   {
     username: "Magpie",
-    gold: 4200,
-    specialty: ["gem", "iron", "honey", "mushrooms", "jewel"],
+    gold: 9000,
+    specialty: ["celestial-relic", "gem", "iron", "honey", "mushrooms", "jewel"],
     style: "thin",
   },
   {
     username: "Wisp",
-    gold: 4800,
-    specialty: ["coral", "gem", "candle", "blade", "jewel"],
+    gold: 9800,
+    specialty: ["celestial-relic", "coral", "gem", "candle", "blade", "jewel"],
     style: "thin",
   },
   {
@@ -116,14 +116,14 @@ export const BOT_PROFILES: BotProfile[] = [
   },
   {
     username: "Knurl",
-    gold: 3400,
-    specialty: ["stone", "coal", "iron", "gem", "jewel"],
+    gold: 8200,
+    specialty: ["celestial-relic", "stone", "coal", "iron", "gem", "jewel"],
     style: "thin",
   },
   {
     username: "Dusk",
-    gold: 4000,
-    specialty: ["coral", "gem", "candle", "blade", "charm"],
+    gold: 8600,
+    specialty: ["celestial-relic", "coral", "gem", "candle", "blade", "charm"],
     style: "wild",
   },
   {
