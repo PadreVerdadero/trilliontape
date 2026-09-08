@@ -134,7 +134,13 @@ export function MarketPanel({
                 {selected.emoji} {selected.name}
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:min-w-[24rem] sm:grid-cols-3 lg:grid-cols-5">
+            <div className="grid grid-cols-2 gap-2 sm:min-w-[28rem] sm:grid-cols-3 lg:grid-cols-6">
+              <Stat
+                label="Value"
+                value={price?.last != null ? formatCoins(price.last) : "none"}
+                tone="value"
+                title="Last board print"
+              />
               <Stat
                 label="Best bid"
                 value={price?.bestBid != null ? formatCoins(price.bestBid) : "none"}
@@ -421,7 +427,7 @@ function Stat({
 }: {
   label: string;
   value: string;
-  tone?: "bid" | "ask" | "mv" | "vol" | "supply";
+  tone?: "value" | "bid" | "ask" | "mv" | "vol" | "supply";
   title?: string;
 }) {
   return (
@@ -429,6 +435,7 @@ function Stat({
       title={title}
       className={cn(
         "rounded-xl px-3 py-2 ring-1 ring-foreground/10",
+        tone === "value" && "bg-white text-zinc-950 ring-zinc-300",
         tone === "bid" && "bg-emerald-950/30",
         tone === "ask" && "bg-rose-950/25",
         tone === "mv" && "bg-sky-950/30",
@@ -436,10 +443,18 @@ function Stat({
         tone === "supply" && "bg-violet-950/30"
       )}
     >
-      <p className="text-[11px] tracking-wide text-muted-foreground uppercase">{label}</p>
+      <p
+        className={cn(
+          "text-[11px] tracking-wide uppercase",
+          tone === "value" ? "text-zinc-500" : "text-muted-foreground"
+        )}
+      >
+        {label}
+      </p>
       <p
         className={cn(
           "font-heading text-lg tabular-nums",
+          tone === "value" && "text-zinc-950",
           tone === "bid" && "text-emerald-200",
           tone === "ask" && "text-rose-200",
           tone === "mv" && "text-sky-200",
