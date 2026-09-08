@@ -29,6 +29,8 @@ import {
 } from "@/lib/game/consumables";
 import { rarityOf } from "@/lib/game/rarity";
 import { getDb } from "@/lib/game/db";
+import { BOT_PROFILES, botSpread } from "@/lib/game/bots";
+import { computeFairValue, orderCollar } from "@/lib/game/market";
 import {
   chalkboardItem,
   contractsForWeek,
@@ -368,16 +370,24 @@ function listAreas(playerLocationId = "town"): AreaCrowd[] {
   return [forage];
 }
 
-function marketPrice(itemId: string): number {
-  const row = getDb()
+function marketPrints(itemId: string) {
+  return getDb()
     .prepare(
-      "SELECT SUM(price * quantity) AS notional, SUM(quantity) AS volume FROM trades WHERE item_id = ?"
+      "SELECT price, quantity, created_at AS at FROM trades WHERE item_id = ? ORDER BY id ASC"
     )
-    .get(itemId) as { notional: number | null; volume: number | null };
-  if (row.volume && row.notional) {
-    return Math.max(1, Math.round(row.notional / row.volume));
-  }
-  return itemById[itemId]?.basePrice ?? 1;
+    .all(itemId) as { price: number; quantity: number; at: number }[];
+}
+
+function marketPrice(itemId: string): number {
+  const base = itemById[itemId]?.basePrice ?? 1;
+  return computeFairValue(base, marketPrints(itemId), nowMs());
+}
+
+function isBot(userId: number) {
+  const row = getDb()
+    .prepare("SELECT COALESCE(is_bot, 0) AS is_bot FROM users WHERE id = ?")
+    .get(userId) as { is_bot: number } | undefined;
+  return Boolean(row?.is_bot);
 }
 
 function recordTrade(
@@ -420,11 +430,13 @@ function executeFill(
   else db.prepare("UPDATE orders SET remaining = ? WHERE id = ?").run(sellLeft, sell.id);
   recordTrade(itemId, price, quantity, buy.user_id, sell.user_id);
   if (buy.user_id !== sell.user_id) {
-    awardFirstTradeVp(buy.user_id);
-    awardFirstTradeVp(sell.user_id);
-    getDb()
-      .prepare("UPDATE players SET board_fills = COALESCE(board_fills, 0) + 1 WHERE user_id = ?")
-      .run(sell.user_id);
+    if (!isBot(buy.user_id)) awardFirstTradeVp(buy.user_id);
+    if (!isBot(sell.user_id)) awardFirstTradeVp(sell.user_id);
+    if (!isBot(sell.user_id)) {
+      getDb()
+        .prepare("UPDATE players SET board_fills = COALESCE(board_fills, 0) + 1 WHERE user_id = ?")
+        .run(sell.user_id);
+    }
   }
 }
 
@@ -486,7 +498,7 @@ function touchDaily(userId: number, dayKey: string) {
 }
 
 function awardVp(userId: number, amount: number) {
-  if (amount <= 0) return;
+  if (amount <= 0 || isBot(userId)) return;
   const db = getDb();
   db.prepare("UPDATE players SET vp = COALESCE(vp, 0) + ? WHERE user_id = ?").run(amount, userId);
   const row = loadPlayerRow(userId);
@@ -781,6 +793,13 @@ export function placeOrder(
   if (!item) throw new Error("Unknown item.");
   if (!Number.isInteger(price) || price < 1 || price > 9999) {
     throw new Error("Price must be a whole number from 1 to 9999.");
+  }
+  const fair = marketPrice(itemId);
+  const band = orderCollar(fair, item.basePrice);
+  if (price < band.min || price > band.max) {
+    throw new Error(
+      `Price must sit inside the collar (${formatCoins(band.min)}–${formatCoins(band.max)}) around MV ${formatCoins(fair)}.`
+    );
   }
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) {
     throw new Error("Quantity must be a whole number from 1 to 99.");
@@ -1398,7 +1417,8 @@ function listTitles(): FestivalTitle[] {
     .prepare(
       `SELECT u.username, p.vp, p.gold_from_stalls, p.gold_donated, p.food_delivered,
               p.legendary_turnins, p.board_fills
-       FROM players p JOIN users u ON u.id = p.user_id`
+       FROM players p JOIN users u ON u.id = p.user_id
+       WHERE COALESCE(u.is_bot, 0) = 0`
     )
     .all() as {
     username: string;
@@ -1511,10 +1531,8 @@ function priceSheet(): MarketPrice[] {
         "SELECT MIN(price) AS p FROM orders WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')"
       )
       .get(itemId) as { p: number | null };
-    const vwap =
-      stats.volume && stats.notional
-        ? Math.max(1, Math.round(stats.notional / stats.volume))
-        : itemById[itemId].basePrice;
+    const vwap = computeFairValue(itemById[itemId].basePrice, marketPrints(itemId), nowMs());
+    const band = orderCollar(vwap, itemById[itemId].basePrice);
     return {
       itemId,
       vwap,
@@ -1522,11 +1540,105 @@ function priceSheet(): MarketPrice[] {
       volume: stats.volume ?? 0,
       bestBid: bid.p,
       bestAsk: ask.p,
+      bandMin: band.min,
+      bandMax: band.max,
     };
   });
 }
 
+function clampInt(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function shufflePick<T>(list: T[], count: number) {
+  const copy = [...list];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(0, count);
+}
+
+const botClock = globalThis as unknown as { bazaarBotTick?: number };
+
+function restockBot(userId: number, gold: number, specialty: string[], thin: boolean) {
+  if (availableGold(userId) < 350) {
+    getDb()
+      .prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?")
+      .run(Math.max(400, Math.round(gold * 0.35)), userId);
+  }
+  for (const itemId of specialty) {
+    if (!itemById[itemId]) continue;
+    if (availableItem(userId, itemId) < 3) addItem(userId, itemId, thin ? 4 : 10);
+  }
+}
+
+export function tickBots() {
+  const now = nowMs();
+  if (botClock.bazaarBotTick && now - botClock.bazaarBotTick < 3500) return;
+  botClock.bazaarBotTick = now;
+  const db = getDb();
+  db.prepare(
+    "DELETE FROM orders WHERE created_at < ? AND user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)"
+  ).run(now - 150_000);
+  for (const profile of shufflePick(BOT_PROFILES, 8)) {
+    const user = db
+      .prepare("SELECT id FROM users WHERE username = ? AND COALESCE(is_bot, 0) = 1")
+      .get(profile.username) as { id: number } | undefined;
+    if (!user) continue;
+    try {
+      restockBot(user.id, profile.gold, profile.specialty, profile.style === "thin");
+      const itemId = profile.specialty[Math.floor(Math.random() * profile.specialty.length)];
+      const item = itemById[itemId];
+      if (!item) continue;
+      const fair = marketPrice(itemId);
+      const band = orderCollar(fair, item.basePrice);
+      const spread = botSpread(profile.style);
+      const ask = db
+        .prepare(
+          `SELECT id, price FROM orders
+           WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND user_id != ?
+           ORDER BY price ASC, id ASC LIMIT 1`
+        )
+        .get(itemId, user.id) as { id: number; price: number } | undefined;
+      if (ask && ask.price <= Math.round(fair * (1 - spread.take)) && availableGold(user.id) >= ask.price) {
+        takeOrder(user.id, ask.id, 1);
+        continue;
+      }
+      const bid = db
+        .prepare(
+          `SELECT id, price FROM orders
+           WHERE item_id = ? AND side = 'buy' AND remaining > 0 AND user_id != ?
+           ORDER BY price DESC, id ASC LIMIT 1`
+        )
+        .get(itemId, user.id) as { id: number; price: number } | undefined;
+      if (bid && bid.price >= Math.round(fair * (1 + spread.take)) && availableItem(user.id, itemId) >= 1) {
+        takeOrder(user.id, bid.id, 1);
+        continue;
+      }
+      const live = db
+        .prepare("SELECT COUNT(*) AS n FROM orders WHERE user_id = ? AND remaining > 0")
+        .get(user.id) as { n: number };
+      if (live.n >= 6) continue;
+      const jitter = 0.96 + Math.random() * 0.08;
+      const qty = profile.style === "thin" ? 1 : 1 + Math.floor(Math.random() * 3);
+      if (Math.random() < 0.55) {
+        const price = clampInt(fair * spread.bid * jitter, band.min, band.max);
+        if (availableGold(user.id) >= price * qty) placeOrder(user.id, itemId, "buy", price, qty);
+      } else {
+        const price = clampInt(fair * spread.ask * jitter, band.min, Math.max(band.min + 1, band.max));
+        if (price <= band.max && availableItem(user.id, itemId) >= qty) {
+          placeOrder(user.id, itemId, "sell", price, qty);
+        }
+      }
+    } catch {
+      // One noisy step should not stall the plaza.
+    }
+  }
+}
+
 export function getGameState(userId: number, timeZone?: string): GameState {
+  tickBots();
   resolveBusy(userId);
   const clock = festivalClock(timeZone);
   const player = loadPlayerRow(userId);
@@ -1651,6 +1763,7 @@ export function getGameState(userId: number, timeZone?: string): GameState {
         .prepare(
           `SELECT u.username, COALESCE(p.vp, 0) AS vp
            FROM players p JOIN users u ON u.id = p.user_id
+           WHERE COALESCE(u.is_bot, 0) = 0
            ORDER BY p.vp DESC, p.won_at ASC, u.username ASC
            LIMIT 8`
         )

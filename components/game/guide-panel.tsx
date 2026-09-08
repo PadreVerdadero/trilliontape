@@ -33,6 +33,16 @@ export function GuidePanel() {
         </p>
       </section>
       <section className="space-y-2">
+        <h3 className="font-heading text-foreground">Market value</h3>
+        <p>
+          MV is not the last print. It starts from the catalog price, then blends in a volume
+          average of recent trades (about 45 minutes). Extreme prints outside a band around the
+          catalog are ignored, and MV itself cannot wander far from that catalog. New bids and
+          asks must sit inside a collar around MV. Plaza regulars (Piper, Reed, Anvil, and the
+          rest) keep a live book so one traveler cannot own the tape.
+        </p>
+      </section>
+      <section className="space-y-2">
         <h3 className="font-heading text-foreground">Stall hours</h3>
         <ul className="space-y-1">
           {stalls.map((stall) => (

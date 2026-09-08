@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { useOrderBook } from "@/hooks/use-game";
 import { ItemChip } from "@/components/game/item-chip";
 import { PriceChart } from "@/components/game/price-chart";
+import { isBotUsername } from "@/lib/game/bots";
 import type { GameState, OrderSide } from "@/lib/game/types";
 
 export function MarketPanel({
@@ -43,7 +44,10 @@ export function MarketPanel({
   const [qtyInput, setQtyInput] = useState("1");
 
   const suggested = useMemo(() => {
-    return String(price?.bestAsk ?? price?.vwap ?? selected?.basePrice ?? 5);
+    const raw = Number(price?.bestAsk ?? price?.vwap ?? selected?.basePrice ?? 5);
+    const min = price?.bandMin ?? 1;
+    const max = price?.bandMax ?? 9999;
+    return String(Math.min(max, Math.max(min, raw)));
   }, [price, selected]);
   const draftQty = Number(qtyInput);
   const draftPrice = Number(priceInput || suggested);
@@ -75,7 +79,8 @@ export function MarketPanel({
           <p className="font-heading text-2xl sm:text-3xl">Player market</p>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
             Pick an item, post a buy or sell at the top, then tap a listing to take one. Crossing
-            trades clear at the ask — the lower price.
+            trades clear at the ask. MV is a catalog-anchored average of recent prints — not a
+            single flash trade — and new orders must sit inside the collar.
           </p>
         </div>
         {state.recentTrades[0] ? (
@@ -130,6 +135,11 @@ export function MarketPanel({
               />
               <Stat label="MV" value={formatCoins(price?.vwap ?? selected.basePrice)} tone="mv" />
             </div>
+            {price?.bandMin != null ? (
+              <p className="text-xs text-muted-foreground lg:text-right">
+                Collar {formatCoins(price.bandMin)}–{formatCoins(price.bandMax)}
+              </p>
+            ) : null}
           </div>
 
           <div className="rounded-xl bg-background/40 p-3 ring-1 ring-foreground/10">
@@ -404,7 +414,11 @@ function OrderList({
                   {formatNumber(row.remaining)} @ {formatCoins(row.price)}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {yours ? "your order" : row.username}
+                  {yours
+                    ? "your order"
+                    : isBotUsername(row.username)
+                      ? `${row.username} · regular`
+                      : row.username}
                   {row.remaining > 1 ? ` · ${formatCoins(row.remaining * row.price)} total` : ""}
                 </span>
               </span>

@@ -2,7 +2,8 @@ import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
-import { ENERGY_MAX, STARTING_ENERGY, STARTING_GOLD } from "@/lib/game/catalog";
+import { ENERGY_MAX, STARTING_ENERGY, STARTING_GOLD, itemById } from "@/lib/game/catalog";
+import { BOT_PROFILES } from "@/lib/game/bots";
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: Database.Database;
@@ -138,6 +139,7 @@ function migrate(db: Database.Database) {
       PRIMARY KEY (user_id, day_key)
     );
   `);
+  ensureColumn(db, "users", "is_bot", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "players", "energy", `INTEGER NOT NULL DEFAULT ${ENERGY_MAX}`);
   ensureColumn(db, "players", "energy_max", `INTEGER NOT NULL DEFAULT ${ENERGY_MAX}`);
   ensureColumn(db, "players", "vp", "INTEGER NOT NULL DEFAULT 0");
@@ -170,9 +172,7 @@ function seedGuest(db: Database.Database) {
   if (existing) return;
   const now = Date.now();
   const info = db
-    .prepare(
-      "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)"
-    )
+    .prepare("INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)")
     .run("Guest", bcrypt.hashSync("play", 10), now);
   createPlayerWithDb(db, Number(info.lastInsertRowid));
 }
@@ -196,6 +196,41 @@ function createPlayerWithDb(db: Database.Database, userId: number) {
   }
 }
 
+function seedBots(db: Database.Database) {
+  const already = db.prepare("SELECT COUNT(*) AS n FROM users WHERE COALESCE(is_bot, 0) = 1").get() as {
+    n: number;
+  };
+  if (already.n >= BOT_PROFILES.length) return;
+  const hash = bcrypt.hashSync("bot-not-for-login", 6);
+  const now = Date.now();
+  const insertUser = db.prepare(
+    "INSERT INTO users (username, password_hash, created_at, is_bot) VALUES (?, ?, ?, 1)"
+  );
+  const insertInv = db.prepare(
+    `INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)
+     ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = MAX(quantity, excluded.quantity)`
+  );
+  for (const bot of BOT_PROFILES) {
+    const existing = db
+      .prepare("SELECT id FROM users WHERE username = ?")
+      .get(bot.username) as { id: number } | undefined;
+    let userId = existing?.id;
+    if (!userId) {
+      const info = insertUser.run(bot.username, hash, now);
+      userId = Number(info.lastInsertRowid);
+      db.prepare(
+        "INSERT INTO players (user_id, gold, location_id, energy, energy_max, last_event) VALUES (?, ?, 'town', ?, ?, ?)"
+      ).run(userId, bot.gold, ENERGY_MAX, ENERGY_MAX, "A plaza regular keeping the board honest.");
+    } else {
+      db.prepare("UPDATE users SET is_bot = 1 WHERE id = ?").run(userId);
+    }
+    for (const itemId of bot.specialty) {
+      if (!itemById[itemId]) continue;
+      insertInv.run(userId, itemId, bot.style === "thin" ? 6 : 22);
+    }
+  }
+}
+
 export function getDb() {
   if (!globalForDb.bazaarDb) {
     const dir = path.join(process.cwd(), "data");
@@ -206,10 +241,12 @@ export function getDb() {
     migrate(db);
     clearBankerBook(db);
     seedGuest(db);
+    seedBots(db);
     globalForDb.bazaarDb = db;
   } else {
     migrate(globalForDb.bazaarDb);
     clearBankerBook(globalForDb.bazaarDb);
+    seedBots(globalForDb.bazaarDb);
   }
   return globalForDb.bazaarDb;
 }

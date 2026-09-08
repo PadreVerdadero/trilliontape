@@ -10,7 +10,7 @@ The UI is built for a phone in the pocket and a computer at the desk.
 2. **Forage** the grounds. Each pull costs energy and happens instantly. Eat berries, bread, fish, honey, or stew to refill. Crowds on the grounds raise the next cost until the area sits quiet for 45 seconds.
 3. Optional: scan a QR at a real stop (or open `/codes`) so the next forage leans woods, ridge, shore, or fields.
 4. On **Stalls**, sell to whoever is open. Hours follow your phone’s clock in military time. The chalkboard item pays more. Sunday 10:00–14:00 opens everyone.
-5. The **player market** never closes. Post a bid or ask. Crossing trades clear at the ask.
+5. The **player market** never closes. Post a bid or ask inside the MV collar. Crossing trades clear at the ask. MV is a catalog-anchored average of recent prints, not a single flash trade. Twelve plaza regulars (computer traders) keep the book lively.
 6. The **bank** always buys at **50% of MV** — the dump window when stalls are shut.
 7. Score VP from contracts, chalkboard hours, first daily board trade, wardrobe slots, lantern donations, and the relic.
 

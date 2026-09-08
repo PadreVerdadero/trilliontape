@@ -118,6 +118,8 @@ export type MarketPrice = {
   volume: number;
   bestBid: number | null;
   bestAsk: number | null;
+  bandMin: number;
+  bandMax: number;
 };
 
 export type AreaCrowd = {
