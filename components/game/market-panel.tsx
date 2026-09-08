@@ -160,7 +160,7 @@ export function MarketPanel({
             <p className="text-xs text-muted-foreground lg:max-w-[12rem] lg:text-right">
               {price?.prints
                 ? `Average of the last ${formatNumber(price.prints)} board trade${price.prints === 1 ? "" : "s"}.`
-                : "No board trades yet — catalog price."}
+                : "No board trades yet — using the catalog starting price."}
             </p>
           </div>
 

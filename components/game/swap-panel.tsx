@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { itemById, itemsByCommonness } from "@/lib/game/catalog";
 import { formatCoins, formatNumber } from "@/lib/game/format";
+import { rarityClass } from "@/lib/game/rarity";
+import { cn } from "@/lib/utils";
 import type { InventoryRow, SwapOffer, TravelerRow } from "@/lib/game/types";
 
 type LegDraft = { itemId: string; quantity: number };
@@ -18,6 +20,20 @@ function cleanLegs(rows: LegDraft[]) {
   return rows
     .filter((leg) => leg.itemId && leg.quantity > 0)
     .map((leg) => ({ itemId: leg.itemId, quantity: Math.floor(leg.quantity) }));
+}
+
+function pickLeg(rows: LegDraft[], itemId: string) {
+  const existing = rows.findIndex((row) => row.itemId === itemId);
+  if (existing >= 0) {
+    return rows.map((row, index) =>
+      index === existing ? { ...row, quantity: row.quantity + 1 } : row
+    );
+  }
+  const empty = rows.findIndex((row) => !row.itemId);
+  if (empty >= 0) {
+    return rows.map((row, index) => (index === empty ? { ...row, itemId, quantity: 1 } : row));
+  }
+  return [...rows, { itemId, quantity: 1 }];
 }
 
 export function SwapPanel({
@@ -129,8 +145,10 @@ export function SwapPanel({
           goldHint={`You have ${formatCoins(gold)} free.`}
           legs={giveLegs}
           itemChoices={owned}
+          onPick={(itemId) =>
+            setGiveLegs((rows) => pickLeg(rows, itemId))
+          }
           onChange={(index, patch) => updateLeg("give", index, patch)}
-          onAdd={() => setGiveLegs((rows) => [...rows, emptyLeg()])}
           onRemove={(index) =>
             setGiveLegs((rows) => (rows.length <= 1 ? [emptyLeg()] : rows.filter((_, i) => i !== index)))
           }
@@ -142,8 +160,8 @@ export function SwapPanel({
           goldHint="Gold they must send you."
           legs={wantLegs}
           itemChoices={itemsByCommonness.map((item) => ({ itemId: item.id, name: item.name }))}
+          onPick={(itemId) => setWantLegs((rows) => pickLeg(rows, itemId))}
           onChange={(index, patch) => updateLeg("want", index, patch)}
-          onAdd={() => setWantLegs((rows) => [...rows, emptyLeg()])}
           onRemove={(index) =>
             setWantLegs((rows) => (rows.length <= 1 ? [emptyLeg()] : rows.filter((_, i) => i !== index)))
           }
@@ -187,8 +205,8 @@ function LegEditor({
   goldHint,
   legs,
   itemChoices,
+  onPick,
   onChange,
-  onAdd,
   onRemove,
 }: {
   title: string;
@@ -197,10 +215,11 @@ function LegEditor({
   goldHint: string;
   legs: LegDraft[];
   itemChoices: { itemId: string; name: string; quantity?: number }[];
+  onPick: (itemId: string) => void;
   onChange: (index: number, patch: Partial<LegDraft>) => void;
-  onAdd: () => void;
   onRemove: (index: number) => void;
 }) {
+  const selected = new Set(legs.map((leg) => leg.itemId).filter(Boolean));
   return (
     <div className="space-y-2 rounded-xl bg-background/40 p-3 ring-1 ring-foreground/10">
       <p className="text-sm font-medium">{title}</p>
@@ -209,44 +228,63 @@ function LegEditor({
         <Input inputMode="numeric" min={0} value={gold} onChange={(event) => onGold(event.target.value)} />
         <p className="text-[11px] text-muted-foreground">{goldHint}</p>
       </div>
+      {itemChoices.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nothing free in your pack.</p>
+      ) : (
+        <div className="-mx-1 flex flex-wrap gap-1 px-1">
+          {itemChoices.map((item) => {
+            const catalog = itemById[item.itemId];
+            const active = selected.has(item.itemId);
+            return (
+              <button
+                key={item.itemId}
+                type="button"
+                title={`${item.name}${item.quantity != null ? ` ×${item.quantity}` : ""}`}
+                onClick={() => onPick(item.itemId)}
+                className={cn(
+                  "grid size-11 place-items-center rounded-xl text-lg ring-1 hover:bg-card md:size-10",
+                  active ? "bg-primary/25 ring-primary" : "bg-background/70",
+                  rarityClass(item.itemId)
+                )}
+              >
+                {catalog?.emoji ?? "?"}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <p className="text-[11px] text-muted-foreground">Tap an item to add it. Tap again to add another.</p>
       <div className="space-y-2">
-        {legs.map((leg, index) => (
-          <div key={`${title}-${index}`} className="flex gap-2">
-            <select
-              className="h-11 min-w-0 flex-1 rounded-lg border border-input bg-transparent px-2 text-sm md:h-8"
-              value={leg.itemId}
-              onChange={(event) => onChange(index, { itemId: event.target.value })}
-            >
-              <option value="">Item…</option>
-              {itemChoices.map((item) => (
-                <option key={`${item.itemId}-${index}`} value={item.itemId}>
-                  {item.name}
-                  {item.quantity != null ? ` ×${item.quantity}` : ""}
-                </option>
-              ))}
-            </select>
-            <Input
-              className="w-20"
-              inputMode="numeric"
-              min={1}
-              value={leg.quantity}
-              onChange={(event) => onChange(index, { quantity: Number(event.target.value) || 0 })}
-            />
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              className="h-11 w-11 md:h-8 md:w-8"
-              onClick={() => onRemove(index)}
-            >
-              ×
-            </Button>
-          </div>
-        ))}
+        {legs
+          .map((leg, index) => ({ leg, index }))
+          .filter(({ leg }) => leg.itemId)
+          .map(({ leg, index }) => {
+            const catalog = itemById[leg.itemId];
+            return (
+              <div key={`${title}-${leg.itemId}-${index}`} className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm">
+                  {catalog?.emoji} {catalog?.name ?? leg.itemId}
+                </span>
+                <Input
+                  className="w-20"
+                  inputMode="numeric"
+                  min={1}
+                  value={leg.quantity}
+                  onChange={(event) => onChange(index, { quantity: Number(event.target.value) || 0 })}
+                />
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  className="h-11 w-11 md:h-8 md:w-8"
+                  onClick={() => onRemove(index)}
+                >
+                  ×
+                </Button>
+              </div>
+            );
+          })}
       </div>
-      <Button type="button" size="sm" variant="outline" className="h-10 md:h-8" onClick={onAdd}>
-        Add item
-      </Button>
     </div>
   );
 }

@@ -36,8 +36,8 @@ export function GuidePanel() {
         <h3 className="font-heading text-foreground">Market value</h3>
         <p>
           MV is the simple average of the last 100 board trades for that item. Each print counts
-          equally. If nobody has traded it yet, MV is the catalog price. You may post a bid or ask
-          at any whole-coin price of 1 or more — there is no collar. Each item shows how many units
+          equally. If nobody has traded it yet, MV uses the catalog starting price. You may post a
+          bid or ask at any whole-coin price of 1 or more. Each item shows how many units
           are listed for sale, how many sit on bids, and how many live in packs. Direct bundle deals
           (several items plus gold, named or open) do not print on the tape, so they do not move MV.
           Plaza regulars (Piper, Reed, Anvil, and the rest) keep a live book so the plaza is never empty.
