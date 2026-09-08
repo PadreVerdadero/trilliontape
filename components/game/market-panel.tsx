@@ -200,6 +200,21 @@ export function MarketPanel({
     setPriceInput("");
   }
 
+  function firstTakeable(side: "buy" | "ask") {
+    const rows = side === "buy" ? book?.bids ?? [] : book?.asks ?? [];
+    return rows.find((row) => row.isGov || row.playerId !== state.player.id) ?? null;
+  }
+
+  async function takeBest(side: "buy" | "ask") {
+    const row = firstTakeable(side);
+    if (!row) return;
+    const shot = snapshotScrolls();
+    await onTake(row.id);
+    await reloadBook();
+    restoreScrolls(shot);
+    requestAnimationFrame(() => restoreScrolls(shot));
+  }
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -236,6 +251,16 @@ export function MarketPanel({
       if (key === "x") {
         event.preventDefault();
         if (!pending) void place("sell");
+        return;
+      }
+      if (key === "q") {
+        event.preventDefault();
+        if (!pending) void takeBest("buy");
+        return;
+      }
+      if (key === "e") {
+        event.preventDefault();
+        if (!pending) void takeBest("ask");
       }
     }
     window.addEventListener("keydown", onKey);
@@ -250,7 +275,7 @@ export function MarketPanel({
           <p className="text-xs text-muted-foreground">
             Crossing bids fill at the ask. Bid/Ask is units on the book. Volume is stock in packs.
             Tap a column to sort. Bid/Ask: two taps on bids, then two on asks. Pack on the left
-            follows this order. W/S select · A price · D qty · V buy · X sell.
+            follows this order. W/S select · A price · D qty · V buy · X sell · Q take bid · E take ask.
           </p>
         </div>
         {state.recentTrades[0] ? (
@@ -428,7 +453,8 @@ export function MarketPanel({
             <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
               <p className="mb-2 font-heading text-lg text-emerald-100">Bids</p>
               <p className="mb-2 text-[11px] text-muted-foreground">
-                Tap a row to sell 1. Tap yours to cancel 1.
+                Tap a row to sell 1. Tap yours to cancel 1. <kbd className="text-foreground">Q</kbd> takes
+                the best bid.
               </p>
               <OrderList
                 empty="No bids. Post one above if you want this."
@@ -449,7 +475,8 @@ export function MarketPanel({
             <div className="rounded-xl bg-rose-950/20 p-3 ring-1 ring-rose-400/20">
               <p className="mb-2 font-heading text-lg text-rose-100">Asks</p>
               <p className="mb-2 text-[11px] text-muted-foreground">
-                Tap a row to buy 1. Tap yours to cancel 1.
+                Tap a row to buy 1. Tap yours to cancel 1. <kbd className="text-foreground">E</kbd> takes
+                the best ask.
               </p>
               <OrderList
                 empty="No asks. Post your own, or wait for a regular."
