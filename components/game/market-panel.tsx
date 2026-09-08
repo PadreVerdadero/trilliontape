@@ -272,8 +272,22 @@ export function MarketPanel({
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (shortcutTargetIsText(event.target)) return;
+      if (event.key === "Shift") {
+        if (!event.repeat) {
+          event.preventDefault();
+          setNudgeStep((prev) => nextNudgeStep(prev, 1));
+        }
+        return;
+      }
+      if (event.key === "Control") {
+        if (!event.repeat) {
+          event.preventDefault();
+          setNudgeStep((prev) => nextNudgeStep(prev, -1));
+        }
+        return;
+      }
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
       const key = event.key.toLowerCase();
       if (key === "w" || key === "s") {
         event.preventDefault();
@@ -295,16 +309,6 @@ export function MarketPanel({
       if (key === "d") {
         event.preventDefault();
         prepareOrderField("qty", "1");
-        return;
-      }
-      if (key === "z") {
-        event.preventDefault();
-        setNudgeStep((prev) => nextNudgeStep(prev, 1));
-        return;
-      }
-      if (key === "c") {
-        event.preventDefault();
-        setNudgeStep((prev) => nextNudgeStep(prev, -1));
         return;
       }
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
@@ -352,7 +356,7 @@ export function MarketPanel({
           <p className="text-xs text-muted-foreground">
             Crossing bids fill at the ask. Bid/Ask is units on the book. Volume is stock in packs.
             Tap a column to sort. Bid/Ask: two taps on bids, then two on asks. Pack on the left
-            follows this order. W/S select · A fills MV · D qty 1 · arrows nudge · Z/C step place · V buy · X sell · Q take bid · E take ask.
+            follows this order. W/S select · A fills MV · D qty 1 · arrows nudge · Shift/Ctrl step place · V buy · X sell · Q take bid · E take ask.
           </p>
         </div>
         {state.recentTrades[0] ? (
@@ -417,10 +421,9 @@ export function MarketPanel({
             <div className="rounded-lg bg-background/40 p-2 ring-1 ring-foreground/10">
               <p className="mb-1 font-heading text-sm">Post your own order</p>
               <p className="mb-1 text-[10px] leading-4 text-muted-foreground">
-                <kbd className="text-foreground">A</kbd> MV · arrows ±{formatNumber(nudgeStep)} ·{" "}
-                <kbd className="text-foreground">Z</kbd>/<kbd className="text-foreground">C</kbd> place ·{" "}
-                <kbd className="text-foreground">D</kbd> qty 1 · <kbd className="text-foreground">V</kbd> buy
-                · <kbd className="text-foreground">X</kbd> sell
+                <kbd className="text-foreground">A</kbd> MV · arrows ±{formatNumber(nudgeStep)} · Shift/Ctrl
+                place · <kbd className="text-foreground">D</kbd> qty 1 ·{" "}
+                <kbd className="text-foreground">V</kbd> buy · <kbd className="text-foreground">X</kbd> sell
               </p>
               {state.player.isGov ? (
                 <p className="mb-1 text-[10px] leading-4 text-amber-100/90">
