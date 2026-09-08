@@ -16,7 +16,6 @@ import {
 } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
 import { useOrderBook } from "@/hooks/use-game";
-import { ItemChip } from "@/components/game/item-chip";
 import { PriceChart } from "@/components/game/price-chart";
 import { SwapPanel } from "@/components/game/swap-panel";
 import type { GameState, OrderSide } from "@/lib/game/types";
@@ -349,52 +348,6 @@ export function MarketPanel({
             );
           })}
         </div>
-      </div>
-
-      <div className="rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
-        <p className="mb-3 font-heading text-lg">Your open orders</p>
-        {state.myOrders.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Nothing resting on the board. Post a buy or sell above.
-          </p>
-        ) : (
-          <ul className="max-h-[min(40vh,22rem)] space-y-2 overflow-y-auto">
-            {unitRows(state.myOrders).map((order) => {
-              const govAsk = order.isGov && order.side === "sell";
-              const govBid = order.isGov && order.side === "buy";
-              return (
-              <li
-                key={`${order.id}-${order.unit}`}
-                className={cn(
-                  "flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm",
-                  govAsk && "bg-white text-zinc-950 ring-2 ring-white",
-                  govBid && "bg-black text-white ring-2 ring-white/70",
-                  !order.isGov && order.itemId === selectedItemId && "bg-primary/25 ring-2 ring-primary",
-                  !order.isGov && order.itemId !== selectedItemId && "bg-background/40"
-                )}
-              >
-                <span>
-                  {order.side === "buy" ? "Buying" : "Selling"}{" "}
-                  <ItemChip itemId={order.itemId} qty={1} rarityMap={rarityMap} /> @ {formatCoins(order.price)}
-                </span>
-                <Button
-                  size="sm"
-                  className={cn(
-                    "h-10 md:h-8",
-                    govAsk && "text-zinc-950 hover:bg-zinc-200",
-                    govBid && "text-white hover:bg-white/15"
-                  )}
-                  variant="ghost"
-                  disabled={pending}
-                  onClick={() => void onCancel(order.id)}
-                >
-                  Cancel 1
-                </Button>
-              </li>
-              );
-            })}
-          </ul>
-        )}
       </div>
 
       <div className="rounded-2xl bg-card p-4 ring-1 ring-foreground/10">

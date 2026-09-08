@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { AdminPanel } from "@/components/game/admin-panel";
 import { InventoryPanel } from "@/components/game/inventory-panel";
 import { MarketPanel } from "@/components/game/market-panel";
+import { OpenOrdersPanel } from "@/components/game/open-orders-panel";
 import { useGame } from "@/hooks/use-game";
 import { itemById } from "@/lib/game/catalog";
 import { formatCoins, formatNumber } from "@/lib/game/format";
@@ -53,12 +54,12 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
       <header className="z-20 shrink-0 border-b border-border/80 bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur">
-        <div className="mx-auto flex w-full max-w-[90rem] items-center justify-between gap-3 px-3 py-2 sm:px-4">
+        <div className="flex w-full items-center justify-between gap-3 px-3 py-2 sm:px-4">
           <div className="flex min-w-0 items-center gap-3">
             <p className="font-heading text-lg">🏮 Lantern Bazaar</p>
             <span className="hidden truncate text-sm text-muted-foreground sm:inline">
               {player.username}
-            {player.isGov ? " · treasury ∞" : ""}
+              {player.isGov ? " · treasury ∞" : ""}
               {player.isAdmin ? " · admin" : ""}
             </span>
           </div>
@@ -101,13 +102,13 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
           />
         ) : null}
         {player.lastEvent ? (
-          <p className="mx-auto w-full max-w-[90rem] truncate px-3 pb-2 text-sm text-muted-foreground sm:px-4">
+          <p className="w-full truncate px-3 pb-2 text-sm text-muted-foreground sm:px-4">
             {player.lastEvent}
           </p>
         ) : null}
         {error ? (
-          <div className="border-t border-destructive/30 bg-destructive/15 px-4 py-2">
-            <div className="mx-auto flex w-full max-w-[90rem] items-start justify-between gap-3 text-sm text-destructive">
+          <div className="border-t border-destructive/30 bg-destructive/15 px-3 py-2 sm:px-4">
+            <div className="flex w-full items-start justify-between gap-3 text-sm text-destructive">
               <p>{error}</p>
               <button type="button" onClick={() => setError(null)}>
                 Dismiss
@@ -117,8 +118,8 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
         ) : null}
       </header>
 
-      <div className="mx-auto flex min-h-0 w-full max-w-[90rem] flex-1 overflow-hidden">
-        <aside className="flex w-[13.5rem] shrink-0 flex-col overflow-hidden border-r border-border/70 bg-card/40 sm:w-[18rem] lg:w-[20rem]">
+      <div className="flex min-h-0 w-full flex-1 overflow-hidden">
+        <aside className="flex w-[12.5rem] shrink-0 flex-col overflow-hidden border-r border-border/70 bg-card/40 sm:w-[16rem] lg:w-[18rem]">
           <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto_auto_auto] items-center gap-1.5 border-b border-border/60 px-2 py-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase sm:px-3">
             <span />
             <span>Item</span>
@@ -135,7 +136,7 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
             />
           </div>
         </aside>
-        <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4">
+        <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 sm:px-3">
           <MarketPanel
             state={state}
             pending={pending}
@@ -149,11 +150,29 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
             onCancelSwap={(offerId) => run({ action: "swapCancel", offerId })}
             onDeclineSwap={(offerId) => run({ action: "swapDecline", offerId })}
           />
+          <div className="mt-4 md:hidden">
+            <OpenOrdersPanel
+              orders={state.myOrders}
+              prices={state.prices}
+              selectedItemId={itemId}
+              pending={pending}
+              onCancel={(orderId) => void run({ action: "cancel", orderId })}
+            />
+          </div>
         </main>
+        <aside className="hidden w-[15rem] shrink-0 flex-col overflow-hidden border-l border-border/70 bg-card/40 md:flex lg:w-[17rem]">
+          <OpenOrdersPanel
+            orders={state.myOrders}
+            prices={state.prices}
+            selectedItemId={itemId}
+            pending={pending}
+            onCancel={(orderId) => void run({ action: "cancel", orderId })}
+          />
+        </aside>
       </div>
 
       <footer className="shrink-0 border-t border-border/80 bg-background/95 pb-[env(safe-area-inset-bottom)]">
-        <div className="mx-auto flex w-full max-w-[90rem] flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 py-2 text-sm sm:px-4">
+        <div className="flex w-full flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 py-2 text-sm sm:px-4">
           <p className="font-heading text-base">
             Net worth {formatCoins(net)}
           </p>

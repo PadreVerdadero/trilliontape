@@ -35,7 +35,7 @@ export function AdminPanel({
 
   return (
     <div className="border-b border-amber-400/30 bg-amber-950/25 px-3 py-2 sm:px-4">
-      <div className="mx-auto flex w-full max-w-[90rem] flex-col gap-3 sm:flex-row sm:items-end">
+      <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-end">
         <p className="font-heading text-sm text-amber-100">Admin</p>
         <div className="grid flex-1 gap-2 sm:grid-cols-2">
           <div className="flex items-end gap-2">
