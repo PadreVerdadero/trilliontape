@@ -6,7 +6,6 @@ import {
   itemById,
   locationById,
   materialsAt,
-  recipeByOutput,
   ENERGY_MAX,
   SEARCH_COOLDOWN_MS,
   searchEnergyCost,
@@ -546,10 +545,6 @@ function requireIdle(userId: number) {
   }
 }
 
-function requireTown(userId: number) {
-  requireIdle(userId);
-}
-
 function utcDayKey(now = nowMs()) {
   return new Date(now).toISOString().slice(0, 10);
 }
@@ -790,23 +785,6 @@ export function startSearch(userId: number) {
 
 export function startMine(userId: number) {
   startSearch(userId);
-}
-
-export function craftItem(userId: number, outputId: string) {
-  requireTown(userId);
-  const recipe = recipeByOutput[outputId];
-  if (!recipe) throw new Error("No recipe for that.");
-  for (const input of recipe.inputs) {
-    if (availableItem(userId, input.itemId) < input.qty) {
-      throw new Error(`Need more ${itemById[input.itemId].name}.`);
-    }
-  }
-  for (const input of recipe.inputs) {
-    removeItem(userId, input.itemId, input.qty);
-  }
-  addItem(userId, recipe.outputId, recipe.outputQty);
-  const output = itemById[recipe.outputId];
-  setEvent(userId, `Crafted ${output.emoji} ${output.name} ×${formatNumber(recipe.outputQty)}.`);
 }
 
 function insertLiveOrder(

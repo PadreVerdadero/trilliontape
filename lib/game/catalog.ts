@@ -1,4 +1,4 @@
-import type { Cosmetic, Item, Location, Recipe } from "@/lib/game/types";
+import type { Cosmetic, Item, Location } from "@/lib/game/types";
 
 export const STARTING_GOLD = 140;
 
@@ -9,7 +9,7 @@ export const locations: Location[] = [
     name: "Lantern Plaza",
     region: "The Bazaar",
     blurb:
-      "Workshops and the public board. Craft and trade happen here.",
+      "The public board. Trade happens here.",
   },
   {
     id: "woods",
@@ -51,7 +51,7 @@ export const items: Item[] = [
     emoji: "🪵",
     name: "Wood",
     kind: "material",
-    purpose: "Craft planks (2 wood).",
+    purpose: "Fallen timber. Trade it on the board.",
     description: "Fallen timber from the woods.",
     basePrice: 5,
     mine: { locationId: "woods", seconds: 12, yieldMin: 2, yieldMax: 3 },
@@ -91,7 +91,7 @@ export const items: Item[] = [
     emoji: "🪨",
     name: "Stone",
     kind: "material",
-    purpose: "Craft a brick (2 stone + coal).",
+    purpose: "Rough blocks. Trade them on the board.",
     description: "Rough blocks from the ridge.",
     basePrice: 5,
     mine: { locationId: "ridge", seconds: 12, yieldMin: 2, yieldMax: 3 },
@@ -101,7 +101,7 @@ export const items: Item[] = [
     emoji: "🔥",
     name: "Coal",
     kind: "material",
-    purpose: "Fires a blade (2 coal) or a brick (with stone).",
+    purpose: "Ridge fuel. Trade it on the board.",
     description: "The ridge's other currency.",
     basePrice: 9,
     mine: { locationId: "ridge", seconds: 24, yieldMin: 1, yieldMax: 2 },
@@ -111,7 +111,7 @@ export const items: Item[] = [
     emoji: "💎",
     name: "Gem",
     kind: "material",
-    purpose: "Craft a jewel (with coral).",
+    purpose: "A long chisel job. Trade it on the board.",
     description: "A long chisel job. Legendary pull.",
     basePrice: 28,
     mine: { locationId: "ridge", seconds: 48, yieldMin: 1, yieldMax: 1 },
@@ -151,7 +151,7 @@ export const items: Item[] = [
     emoji: "🪸",
     name: "Coral",
     kind: "material",
-    purpose: "Craft a jewel (with a gem).",
+    purpose: "Slow diving. Trade it on the board.",
     description: "Slow diving. Legendary pull.",
     basePrice: 22,
     mine: { locationId: "shore", seconds: 40, yieldMin: 1, yieldMax: 1 },
@@ -161,7 +161,7 @@ export const items: Item[] = [
     emoji: "🌾",
     name: "Wheat",
     kind: "material",
-    purpose: "Craft bread (2 wheat).",
+    purpose: "The fields' staple. Trade it on the board.",
     description: "The fields' staple.",
     basePrice: 4,
     mine: { locationId: "fields", seconds: 11, yieldMin: 2, yieldMax: 3 },
@@ -171,7 +171,7 @@ export const items: Item[] = [
     emoji: "🍯",
     name: "Honey",
     kind: "material",
-    purpose: "Eat: +8 energy, or craft a candle.",
+    purpose: "Eat: +8 energy.",
     description: "The bees do not hurry.",
     basePrice: 16,
     mine: { locationId: "fields", seconds: 36, yieldMin: 1, yieldMax: 1 },
@@ -209,7 +209,7 @@ export const items: Item[] = [
     emoji: "🕯️",
     name: "Candle",
     kind: "good",
-    purpose: "Festival light. Honey and a flower.",
+    purpose: "Festival light.",
     description: "Wick and scent.",
     basePrice: 28,
   },
@@ -227,8 +227,8 @@ export const items: Item[] = [
     emoji: "🗡️",
     name: "Blade",
     kind: "good",
-    purpose: "A forged edge. Two coal at the kiln.",
-    description: "Tempered on coal.",
+    purpose: "A forged edge.",
+    description: "Tempered steel.",
     basePrice: 40,
   },
   {
@@ -236,47 +236,9 @@ export const items: Item[] = [
     emoji: "💍",
     name: "Jewel",
     kind: "good",
-    purpose: "Gem set in coral.",
-    description: "Slow work. The dear piece on the board.",
+    purpose: "The dear piece on the board.",
+    description: "A set gem.",
     basePrice: 58,
-  },
-];
-
-export const recipes: Recipe[] = [
-  { id: "bread", outputId: "bread", outputQty: 1, inputs: [{ itemId: "wheat", qty: 2 }] },
-  { id: "planks", outputId: "planks", outputQty: 1, inputs: [{ itemId: "wood", qty: 2 }] },
-  {
-    id: "candle",
-    outputId: "candle",
-    outputQty: 1,
-    inputs: [
-      { itemId: "honey", qty: 1 },
-      { itemId: "flower", qty: 1 },
-    ],
-  },
-  {
-    id: "brick",
-    outputId: "brick",
-    outputQty: 1,
-    inputs: [
-      { itemId: "stone", qty: 2 },
-      { itemId: "coal", qty: 1 },
-    ],
-  },
-  {
-    id: "blade",
-    outputId: "blade",
-    outputQty: 1,
-    inputs: [{ itemId: "coal", qty: 2 }],
-  },
-  {
-    id: "jewel",
-    outputId: "jewel",
-    outputQty: 1,
-    inputs: [
-      { itemId: "gem", qty: 1 },
-      { itemId: "coral", qty: 1 },
-    ],
   },
 ];
 
@@ -391,9 +353,6 @@ export const itemById = Object.fromEntries(items.map((item) => [item.id, item]))
 export const itemsByCommonness = [...items].sort((a, b) => a.name.localeCompare(b.name));
 export const locationById = Object.fromEntries(
   locations.map((location) => [location.id, location])
-);
-export const recipeByOutput = Object.fromEntries(
-  recipes.map((recipe) => [recipe.outputId, recipe])
 );
 export const cosmeticById = Object.fromEntries(
   cosmetics.map((cosmetic) => [cosmetic.id, cosmetic])

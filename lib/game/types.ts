@@ -29,13 +29,6 @@ export type Location = {
   searchEnergy?: number;
 };
 
-export type Recipe = {
-  id: string;
-  outputId: string;
-  outputQty: number;
-  inputs: { itemId: string; qty: number }[];
-};
-
 export type Cosmetic = {
   id: string;
   emoji: string;

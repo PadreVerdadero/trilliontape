@@ -19,7 +19,7 @@ You start with a little gold, wheat, wood, and berries.
 
 ## The catalog
 
-**14 materials** and **6 crafted goods**. Trade them on the board.
+**20 goods**. Trade them on the board. There is no crafting — every item stands on its own.
 
 ## Run locally
 

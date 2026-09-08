@@ -50,7 +50,7 @@ export const foods: Food[] = [
     itemId: "honey",
     energy: 8,
     verb: "Eat",
-    blurb: "A spoon of gold. +8 energy, or save it for a candle.",
+    blurb: "A spoon of gold. +8 energy.",
   },
 ];
 

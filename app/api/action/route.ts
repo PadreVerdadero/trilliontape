@@ -60,7 +60,6 @@ export async function POST(request: Request) {
       case "arrive":
       case "search":
       case "mine":
-      case "craft":
       case "stallSell":
       case "stallBuy":
       case "rumor":
@@ -68,6 +67,8 @@ export async function POST(request: Request) {
       case "contract":
       case "donate":
         throw new Error("The stalls are gone. Trade on the board.");
+      case "craft":
+        throw new Error("Items are not combined. Trade them on the board.");
       case "order":
         placeOrder(userId, body.itemId, body.side, Number(body.price), Number(body.quantity));
         break;
