@@ -959,23 +959,38 @@ export function takeOrder(userId: number, orderId: number, quantity = 1) {
 }
 
 export function cancelOrder(userId: number, orderId: number, quantity = 1) {
+  cancelOrders(userId, [orderId], quantity);
+}
+
+export function cancelOrders(userId: number, orderIds: number[], quantity = Infinity) {
   resolveBusy(userId);
-  const order = getDb()
-    .prepare("SELECT id, user_id, remaining FROM orders WHERE id = ?")
-    .get(orderId) as { id: number; user_id: number; remaining: number } | undefined;
-  if (!order || order.user_id !== userId) throw new Error("You cannot cancel that.");
-  if (!Number.isInteger(quantity) || quantity < 1) {
+  const ids = [...new Set(orderIds.filter((id) => Number.isInteger(id) && id > 0))];
+  if (!ids.length) throw new Error("Choose what to pull.");
+  let left = Number.isFinite(quantity) ? quantity : Number.POSITIVE_INFINITY;
+  if (Number.isFinite(quantity) && (!Number.isInteger(quantity) || quantity < 1)) {
     throw new Error("Choose how many to cancel.");
   }
-  const pull = Math.min(quantity, order.remaining);
-  if (pull >= order.remaining) {
-    getDb().prepare("DELETE FROM orders WHERE id = ?").run(orderId);
-  } else {
-    getDb()
-      .prepare("UPDATE orders SET remaining = remaining - ? WHERE id = ?")
-      .run(pull, orderId);
+  let pulled = 0;
+  for (const orderId of ids) {
+    if (left < 1) break;
+    const order = getDb()
+      .prepare("SELECT id, user_id, remaining FROM orders WHERE id = ?")
+      .get(orderId) as { id: number; user_id: number; remaining: number } | undefined;
+    if (!order || order.user_id !== userId) continue;
+    const pull = Math.min(order.remaining, left);
+    if (pull < 1) continue;
+    if (pull >= order.remaining) {
+      getDb().prepare("DELETE FROM orders WHERE id = ?").run(orderId);
+    } else {
+      getDb()
+        .prepare("UPDATE orders SET remaining = remaining - ? WHERE id = ?")
+        .run(pull, orderId);
+    }
+    pulled += pull;
+    left -= pull;
   }
-  setEvent(userId, pull === 1 ? "Pulled 1 from the board." : `Pulled ${formatNumber(pull)} from the board.`);
+  if (pulled < 1) throw new Error("You cannot cancel that.");
+  setEvent(userId, pulled === 1 ? "Pulled 1 from the board." : `Pulled ${formatNumber(pulled)} from the board.`);
 }
 
 export function setGovernment(userId: number, on: boolean) {

@@ -3,7 +3,7 @@ import {
   acceptSwap,
   buyFromStall,
   buyRumor,
-  cancelOrder,
+  cancelOrders,
   cancelSwap,
   completeContract,
   craftItem,
@@ -36,7 +36,7 @@ type ActionBody = {
   | { action: "craft"; outputId: string }
   | { action: "order"; itemId: string; side: "buy" | "sell"; price: number; quantity: number }
   | { action: "take"; orderId: number; quantity?: number }
-  | { action: "cancel"; orderId: number }
+  | { action: "cancel"; orderId?: number; orderIds?: number[] }
   | { action: "use"; itemId: string }
   | { action: "stallSell"; stallId: string; itemId: string; quantity: number }
   | { action: "stallBuy"; stallId: string; itemId: string; quantity: number }
@@ -88,9 +88,13 @@ export async function POST(request: Request) {
       case "take":
         takeOrder(userId, Number(body.orderId), Number(body.quantity ?? 1));
         break;
-      case "cancel":
-        cancelOrder(userId, Number(body.orderId));
+      case "cancel": {
+        const ids = Array.isArray(body.orderIds)
+          ? body.orderIds.map(Number)
+          : [Number(body.orderId)];
+        cancelOrders(userId, ids);
         break;
+      }
       case "use":
         consumeItem(userId, body.itemId);
         break;

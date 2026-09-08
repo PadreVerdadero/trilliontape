@@ -123,7 +123,9 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
           <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto_auto_auto] items-center gap-1.5 border-b border-border/60 px-2 py-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase sm:px-3">
             <span />
             <span>Item</span>
-            <span className="text-right">Qty</span>
+            <span className="text-right" title="Free to trade — not sitting on a bid or ask">
+              Free
+            </span>
             <span className="text-right">MV</span>
             <span className="text-right">Total</span>
           </div>
@@ -156,7 +158,7 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
               prices={state.prices}
               selectedItemId={itemId}
               pending={pending}
-              onCancel={(orderId) => void run({ action: "cancel", orderId })}
+              onCancel={(orderIds) => void run({ action: "cancel", orderIds })}
             />
           </div>
         </main>
@@ -166,7 +168,7 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
             prices={state.prices}
             selectedItemId={itemId}
             pending={pending}
-            onCancel={(orderId) => void run({ action: "cancel", orderId })}
+            onCancel={(orderIds) => void run({ action: "cancel", orderIds })}
           />
         </aside>
       </div>
