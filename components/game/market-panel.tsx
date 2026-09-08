@@ -242,6 +242,7 @@ export function MarketPanel({
           <PriceChart
             history={book?.history ?? []}
             basePrice={selected.basePrice}
+            mv={price?.vwap ?? selected.basePrice}
             bestBid={price?.bestBid}
             bestAsk={price?.bestAsk}
           />

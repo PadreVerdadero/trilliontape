@@ -4,11 +4,13 @@ import type { PricePoint } from "@/lib/game/types";
 export function PriceChart({
   history,
   basePrice,
+  mv,
   bestBid,
   bestAsk,
 }: {
   history: PricePoint[];
   basePrice: number;
+  mv?: number | null;
   bestBid?: number | null;
   bestAsk?: number | null;
 }) {
@@ -20,7 +22,7 @@ export function PriceChart({
           { at: 1, price: basePrice },
         ];
   const prices = points.map((point) => point.price);
-  const extras = [bestBid, bestAsk].filter((value): value is number => value != null);
+  const extras = [bestBid, bestAsk, mv].filter((value): value is number => value != null);
   const min = Math.min(...prices, ...extras);
   const max = Math.max(...prices, ...extras);
   const span = Math.max(1, max - min);
@@ -48,14 +50,19 @@ export function PriceChart({
   const startX = pad.left + innerW * 0.62;
   let bidLabelY = bestBid != null ? yFor(bestBid) : 0;
   let askLabelY = bestAsk != null ? yFor(bestAsk) : 0;
-  if (bestBid != null && bestAsk != null && Math.abs(bidLabelY - askLabelY) < 14) {
-    if (bidLabelY >= askLabelY) {
-      bidLabelY += 8;
-      askLabelY -= 8;
-    } else {
-      bidLabelY -= 8;
-      askLabelY += 8;
-    }
+  let mvLabelY = mv != null ? yFor(mv) : 0;
+  const nudge = (a: number, b: number) => {
+    if (Math.abs(a - b) >= 14) return [a, b] as const;
+    return a >= b ? ([a + 8, b - 8] as const) : ([a - 8, b + 8] as const);
+  };
+  if (bestBid != null && bestAsk != null) {
+    [bidLabelY, askLabelY] = nudge(bidLabelY, askLabelY);
+  }
+  if (mv != null && bestBid != null) {
+    [mvLabelY, bidLabelY] = nudge(mvLabelY, bidLabelY);
+  }
+  if (mv != null && bestAsk != null) {
+    [mvLabelY, askLabelY] = nudge(mvLabelY, askLabelY);
   }
 
   return (
@@ -65,7 +72,7 @@ export function PriceChart({
           <p className="font-heading text-lg">Price</p>
           <p className="text-xs text-muted-foreground">
             {traded ? "Each trade is a point, oldest to newest." : "No trades yet. The line sits at the starting price."}{" "}
-            Dashed marks on the right are the best bid and ask.
+            Dashed marks on the right are MV, best bid, and best ask.
           </p>
         </div>
         <p className={up ? "text-sm text-emerald-200" : "text-sm text-rose-200"}>
@@ -91,6 +98,28 @@ export function PriceChart({
             className={up ? "fill-emerald-200" : "fill-rose-200"}
           />
         ))}
+        {mv != null ? (
+          <>
+            <line
+              x1={startX}
+              x2={endX}
+              y1={yFor(mv)}
+              y2={yFor(mv)}
+              strokeWidth="2"
+              strokeDasharray="5 4"
+              className="stroke-sky-300"
+            />
+            <text
+              x={width - 4}
+              y={mvLabelY + 3}
+              textAnchor="end"
+              fill="currentColor"
+              className="fill-sky-200 text-[11px]"
+            >
+              MV {formatCoins(mv)}
+            </text>
+          </>
+        ) : null}
         {bestBid != null ? (
           <>
             <line
