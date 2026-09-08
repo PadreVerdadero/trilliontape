@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { formatCoins } from "@/lib/game/format";
+import { formatCoins, formatNumber } from "@/lib/game/format";
 import { MV_PRINTS } from "@/lib/game/market";
 import { cn } from "@/lib/utils";
 import type { TradeRow } from "@/lib/game/types";
@@ -95,12 +95,13 @@ export function PriceChart({
           )}
           title={
             traded
-              ? `Last print vs the leftmost dot — the oldest of these ${prints.length} prints.`
+              ? `Change from the leftmost dot (oldest of these ${prints.length} prints) to the last print.`
               : "Starting price — no prints yet."
           }
         >
-          {formatCoins(lastPrice)}
-          {traded ? ` ${up ? "▲" : down ? "▼" : "–"} vs ${formatCoins(firstPrice)}` : ""}
+          {traded
+            ? `${up ? "▲" : down ? "▼" : "–"} ${formatNumber(Math.abs(delta))}`
+            : null}
         </p>
       </div>
       <div className="relative" onMouseLeave={() => setHover(null)}>
