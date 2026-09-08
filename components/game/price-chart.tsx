@@ -81,7 +81,14 @@ export function PriceChart({
             Dashed marks on the right are MV, best bid, and best ask.
           </p>
         </div>
-        <p className={up ? "text-sm text-emerald-200" : "text-sm text-rose-200"}>
+        <p
+          className={up ? "text-sm text-emerald-200" : "text-sm text-rose-200"}
+          title={
+            traded
+              ? `Last print. The arrow compares it to the oldest of these ${MV_PRINTS} prints.`
+              : "Starting price — no prints yet."
+          }
+        >
           {formatCoins(lastPrice)} {traded ? (up ? "▲" : "▼") : ""}
         </p>
       </div>
