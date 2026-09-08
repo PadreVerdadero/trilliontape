@@ -134,3 +134,39 @@
     font-family: var(--font-display), ui-serif, Georgia, serif;
   }
 }
+
+@keyframes leader-ticker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.leader-ticker-track {
+  animation: leader-ticker 36s linear infinite;
+}
+
+.leader-ticker {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 0.7rem,
+    #000 calc(100% - 0.7rem),
+    transparent
+  );
+}
+
+.leader-ticker:hover .leader-ticker-track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .leader-ticker-track {
+    animation: none;
+  }
+  .leader-ticker {
+    overflow-x: auto;
+  }
+}

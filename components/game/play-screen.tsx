@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { AdminPanel } from "@/components/game/admin-panel";
 import { InventoryPanel } from "@/components/game/inventory-panel";
+import { LeaderTicker } from "@/components/game/leader-ticker";
 import { MarketPanel } from "@/components/game/market-panel";
 import { OpenOrdersPanel } from "@/components/game/open-orders-panel";
 import { useGame } from "@/hooks/use-game";
@@ -56,6 +57,7 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
       <header className="z-20 shrink-0 border-b border-border/80 bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur">
+        <LeaderTicker leaders={state.leaders ?? []} you={player.username} />
         <div className="flex w-full items-center justify-between gap-3 px-3 py-2 sm:px-4">
           <div className="flex min-w-0 items-center gap-3">
             <p className="font-heading text-lg">🏮 Lantern Bazaar</p>

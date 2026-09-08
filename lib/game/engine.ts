@@ -64,6 +64,7 @@ import type {
   FestivalTitle,
   GameState,
   InventoryRow,
+  LeaderRow,
   MarketPrice,
   OrderBook,
   OrderRow,
@@ -1609,6 +1610,38 @@ function packTotals() {
   return Object.fromEntries(rows.map((row) => [row.item_id, row.qty])) as Record<string, number>;
 }
 
+function netWorthLeaders(prices: MarketPrice[]): LeaderRow[] {
+  const db = getDb();
+  const mv = new Map(prices.map((row) => [row.itemId, row.vwap]));
+  const purses = db
+    .prepare(
+      `SELECT u.id, u.username, p.gold
+       FROM players p JOIN users u ON u.id = p.user_id
+       WHERE u.username != 'Banker'`
+    )
+    .all() as { id: number; username: string; gold: number }[];
+  const stacks = db
+    .prepare("SELECT user_id, item_id, quantity FROM inventory WHERE quantity > 0")
+    .all() as { user_id: number; item_id: string; quantity: number }[];
+  const goods = new Map<number, number>();
+  for (const row of stacks) {
+    const unit = mv.get(row.item_id) ?? itemById[row.item_id]?.basePrice ?? 0;
+    goods.set(row.user_id, (goods.get(row.user_id) ?? 0) + row.quantity * unit);
+  }
+  return purses
+    .map((row) => ({
+      username: row.username,
+      netWorth: row.gold + (goods.get(row.id) ?? 0),
+    }))
+    .sort((a, b) => b.netWorth - a.netWorth || a.username.localeCompare(b.username))
+    .slice(0, 40)
+    .map((row, index) => ({
+      place: index + 1,
+      username: row.username,
+      netWorth: row.netWorth,
+    }));
+}
+
 function priceSheet(): MarketPrice[] {
   const db = getDb();
   const depth = bookDepth();
@@ -2199,6 +2232,7 @@ export function getGameState(userId: number, timeZone?: string): GameState {
     .all() as { username: string; wonAt: number }[];
 
   const prices = priceSheet();
+  const leaders = netWorthLeaders(prices);
   const coinVolume = (
     getDb()
       .prepare(
@@ -2242,5 +2276,6 @@ export function getGameState(userId: number, timeZone?: string): GameState {
     swaps: listSwaps(userId),
     travelers: listTravelers(userId),
     coinVolume,
+    leaders,
   };
 }

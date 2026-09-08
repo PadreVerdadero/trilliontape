@@ -230,6 +230,12 @@ export type FestivalState = {
   leaders: { username: string; vp: number }[];
 };
 
+export type LeaderRow = {
+  place: number;
+  username: string;
+  netWorth: number;
+};
+
 export type GameState = {
   now: number;
   player: PlayerState;
@@ -242,6 +248,7 @@ export type GameState = {
   swaps: SwapOffer[];
   travelers: TravelerRow[];
   coinVolume: number;
+  leaders: LeaderRow[];
 };
 
 export type PricePoint = {
