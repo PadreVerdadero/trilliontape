@@ -18,7 +18,55 @@ import { cn } from "@/lib/utils";
 import { useOrderBook } from "@/hooks/use-game";
 import { PriceChart } from "@/components/game/price-chart";
 import { SwapPanel } from "@/components/game/swap-panel";
-import type { GameState, OrderSide } from "@/lib/game/types";
+import type { GameState, MarketPrice, OrderSide } from "@/lib/game/types";
+
+type MarketSort = "item" | "bid" | "ask" | "mv" | "book" | "volume";
+
+function quoteOf(prices: MarketPrice[], itemId: string) {
+  return prices.find((row) => row.itemId === itemId);
+}
+
+function cmpMissingLast(a: number | null | undefined, b: number | null | undefined, dir: 1 | -1) {
+  const aMissing = a == null;
+  const bMissing = b == null;
+  if (aMissing && bMissing) return 0;
+  if (aMissing) return 1;
+  if (bMissing) return -1;
+  return (a - b) * dir;
+}
+
+function SortHead({
+  label,
+  column,
+  sort,
+  dir,
+  onSort,
+  className,
+}: {
+  label: string;
+  column: MarketSort;
+  sort: MarketSort;
+  dir: "asc" | "desc";
+  onSort: (column: MarketSort) => void;
+  className?: string;
+}) {
+  const active = sort === column;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(column)}
+      aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}
+      className={cn(
+        "-mx-1 rounded-md px-1 text-left uppercase tracking-wide transition-colors hover:text-foreground",
+        className,
+        active && "text-foreground"
+      )}
+    >
+      {label}
+      {active ? (dir === "desc" ? " ↓" : " ↑") : ""}
+    </button>
+  );
+}
 
 function unitRows<T extends { remaining: number }>(rows: T[]) {
   return rows.flatMap((row) =>
@@ -72,10 +120,39 @@ export function MarketPanel({
     () => rarityMapFromPrices(items.map((item) => item.id), state.prices),
     [state.prices]
   );
-  const rankedItems = useMemo(
-    () => [...items].sort((a, b) => compareByCommonness(a, b, rarityMap)),
-    [rarityMap]
-  );
+  const [sort, setSort] = useState<MarketSort>("item");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const rankedItems = useMemo(() => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...items].sort((a, b) => {
+      const qa = quoteOf(state.prices, a.id);
+      const qb = quoteOf(state.prices, b.id);
+      let cmp = 0;
+      if (sort === "bid") cmp = cmpMissingLast(qa?.bestBid, qb?.bestBid, dir);
+      else if (sort === "ask") cmp = cmpMissingLast(qa?.bestAsk, qb?.bestAsk, dir);
+      else if (sort === "mv") {
+        const ma = qa?.vwap ?? a.basePrice;
+        const mb = qb?.vwap ?? b.basePrice;
+        cmp = (ma - mb) * dir;
+      } else if (sort === "book") {
+        const da = (qa?.wanted ?? 0) + (qa?.listed ?? 0);
+        const db = (qb?.wanted ?? 0) + (qb?.listed ?? 0);
+        cmp = (da - db) * dir || ((qa?.wanted ?? 0) - (qb?.wanted ?? 0)) * dir;
+      } else if (sort === "volume") cmp = ((qa?.held ?? 0) - (qb?.held ?? 0)) * dir;
+      else cmp = compareByCommonness(a, b, rarityMap) * dir;
+      if (cmp !== 0) return cmp;
+      return a.name.localeCompare(b.name);
+    });
+  }, [rarityMap, sort, sortDir, state.prices]);
+
+  function cycleSort(column: MarketSort) {
+    if (sort === column) {
+      setSortDir((prev) => (prev === "desc" ? "asc" : "desc"));
+      return;
+    }
+    setSort(column);
+    setSortDir(column === "item" || column === "ask" ? "asc" : "desc");
+  }
   const { book, reloadBook } = useOrderBook(selectedItemId);
   const [priceInput, setPriceInput] = useState("");
   const [qtyInput, setQtyInput] = useState("1");
@@ -113,6 +190,7 @@ export function MarketPanel({
           <p className="font-heading text-xl sm:text-2xl">Player market</p>
           <p className="text-xs text-muted-foreground">
             Crossing bids fill at the ask. Bid/Ask is units on the book. Volume is stock in packs.
+            Tap a column to sort.
           </p>
         </div>
         {state.recentTrades[0] ? (
@@ -328,13 +406,48 @@ export function MarketPanel({
       ) : null}
 
       <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
-        <div className="grid grid-cols-[minmax(0,1.3fr)_1fr_1fr_0.85fr_0.9fr_0.7fr] gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase sm:px-4">
-          <span>Item</span>
-          <span className="text-emerald-200/90">Best bid</span>
-          <span className="text-rose-200/90">Best ask</span>
-          <span className="text-sky-200/90">MV</span>
-          <span className="text-amber-200/90">Bid/Ask</span>
-          <span className="text-violet-200/90">Volume</span>
+        <div className="grid grid-cols-[minmax(0,1.3fr)_1fr_1fr_0.85fr_0.9fr_0.7fr] gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium tracking-wide text-muted-foreground sm:px-4">
+          <SortHead label="Item" column="item" sort={sort} dir={sortDir} onSort={cycleSort} />
+          <SortHead
+            label="Best bid"
+            column="bid"
+            sort={sort}
+            dir={sortDir}
+            onSort={cycleSort}
+            className="text-emerald-200/90"
+          />
+          <SortHead
+            label="Best ask"
+            column="ask"
+            sort={sort}
+            dir={sortDir}
+            onSort={cycleSort}
+            className="text-rose-200/90"
+          />
+          <SortHead
+            label="MV"
+            column="mv"
+            sort={sort}
+            dir={sortDir}
+            onSort={cycleSort}
+            className="text-sky-200/90"
+          />
+          <SortHead
+            label="Bid/Ask"
+            column="book"
+            sort={sort}
+            dir={sortDir}
+            onSort={cycleSort}
+            className="text-amber-200/90"
+          />
+          <SortHead
+            label="Volume"
+            column="volume"
+            sort={sort}
+            dir={sortDir}
+            onSort={cycleSort}
+            className="text-violet-200/90"
+          />
         </div>
         <div className="max-h-[min(72vh,40rem)] overflow-auto">
           {rankedItems.map((item) => {
