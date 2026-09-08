@@ -10,6 +10,14 @@ const globalForDb = globalThis as unknown as {
   bazaarRelicSweep?: boolean;
 };
 
+function rotateIds(ids: number[], salt: string) {
+  if (ids.length === 0) return ids;
+  let hash = 0;
+  for (let i = 0; i < salt.length; i += 1) hash = (hash * 31 + salt.charCodeAt(i)) >>> 0;
+  const start = hash % ids.length;
+  return [...ids.slice(start), ...ids.slice(0, start)];
+}
+
 function migrate(db: Database.Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -189,6 +197,50 @@ function clearBankerBook(db: Database.Database) {
   ).run("Banker");
 }
 
+function shareBankerHoldings(db: Database.Database) {
+  const banker = db.prepare("SELECT id FROM users WHERE username = ?").get("Banker") as
+    | { id: number }
+    | undefined;
+  if (!banker) return;
+  const stacks = db
+    .prepare("SELECT item_id, quantity FROM inventory WHERE user_id = ? AND quantity > 0")
+    .all(banker.id) as { item_id: string; quantity: number }[];
+  if (stacks.length === 0) return;
+
+  const bots = db
+    .prepare("SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1 ORDER BY username COLLATE NOCASE")
+    .all() as { id: number }[];
+  const guest = db.prepare("SELECT id FROM users WHERE username = ?").get("Guest") as
+    | { id: number }
+    | undefined;
+  const recipients = [...bots.map((row) => row.id), ...(guest ? [guest.id] : [])];
+  if (recipients.length === 0) return;
+
+  const grant = db.prepare(
+    `INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)
+     ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = quantity + excluded.quantity`
+  );
+
+  db.transaction(() => {
+    for (const stack of stacks) {
+      const order = rotateIds(recipients, stack.item_id);
+      const each = Math.floor(stack.quantity / order.length);
+      let leftover = stack.quantity % order.length;
+      for (let i = 0; i < order.length; i += 1) {
+        const qty = each + (leftover > 0 ? 1 : 0);
+        if (leftover > 0) leftover -= 1;
+        if (qty > 0) grant.run(order[i], stack.item_id, qty);
+      }
+    }
+    db.prepare("DELETE FROM inventory WHERE user_id = ?").run(banker.id);
+    db.prepare("UPDATE players SET last_event = ? WHERE user_id = ?").run(
+      "The bank closed. Remaining stock was split across the desk.",
+      banker.id
+    );
+  })();
+  clearBankerBook(db);
+}
+
 function seedGuest(db: Database.Database) {
   const existing = db
     .prepare("SELECT id FROM users WHERE username = ?")
@@ -283,12 +335,14 @@ export function getDb() {
     seedGuest(db);
     seedBots(db);
     sweepBotRelicMints(db);
+    shareBankerHoldings(db);
     globalForDb.bazaarDb = db;
   } else {
     migrate(globalForDb.bazaarDb);
     clearBankerBook(globalForDb.bazaarDb);
     seedBots(globalForDb.bazaarDb);
     sweepBotRelicMints(globalForDb.bazaarDb);
+    shareBankerHoldings(globalForDb.bazaarDb);
   }
   return globalForDb.bazaarDb;
 }
