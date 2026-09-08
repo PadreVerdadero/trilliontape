@@ -21,7 +21,7 @@ export const BOT_PROFILES: BotProfile[] = [
   {
     username: "Gossamer",
     gold: 2600,
-    specialty: ["herbs", "flower", "shell", "wheat"],
+    specialty: ["flower", "shell", "wheat", "berries"],
     style: "wide",
   },
   {
@@ -45,7 +45,7 @@ export const BOT_PROFILES: BotProfile[] = [
   {
     username: "Nettle",
     gold: 2400,
-    specialty: ["herbs", "mushrooms", "berries", "flower"],
+    specialty: ["mushrooms", "berries", "flower", "wood"],
     style: "wide",
   },
   {
@@ -81,7 +81,7 @@ export const BOT_PROFILES: BotProfile[] = [
   {
     username: "Finch",
     gold: 2100,
-    specialty: ["wheat", "berries", "flower", "herbs"],
+    specialty: ["wheat", "berries", "flower", "wood"],
     style: "wild",
   },
   {
@@ -93,7 +93,7 @@ export const BOT_PROFILES: BotProfile[] = [
   {
     username: "Vetch",
     gold: 2300,
-    specialty: ["herbs", "mushrooms", "flower", "berries"],
+    specialty: ["mushrooms", "flower", "berries", "wheat"],
     style: "wild",
   },
   {
@@ -111,7 +111,7 @@ export const BOT_PROFILES: BotProfile[] = [
   {
     username: "Yarrow",
     gold: 2700,
-    specialty: ["flower", "herbs", "wheat", "berries"],
+    specialty: ["flower", "wheat", "berries", "shell"],
     style: "wild",
   },
   {

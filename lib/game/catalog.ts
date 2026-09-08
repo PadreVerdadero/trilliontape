@@ -16,7 +16,7 @@ export const locations: Location[] = [
     emoji: "🌲",
     name: "Whispering Woods",
     region: "West Path",
-    blurb: "Damp shade and old timber. Herbs and mushrooms hide under the roots.",
+    blurb: "Damp shade and old timber. Mushrooms hide under the roots.",
     searchEnergy: 4,
   },
   {
@@ -65,16 +65,6 @@ export const items: Item[] = [
     description: "Sweet trail food. The cheapest refill.",
     basePrice: 4,
     mine: { locationId: "woods", seconds: 10, yieldMin: 2, yieldMax: 4 },
-  },
-  {
-    id: "herbs",
-    emoji: "🌿",
-    name: "Herbs",
-    kind: "material",
-    purpose: "Trade on the board.",
-    description: "Bitter greens from under the roots.",
-    basePrice: 7,
-    mine: { locationId: "woods", seconds: 18, yieldMin: 1, yieldMax: 2 },
   },
   {
     id: "mushrooms",
@@ -324,6 +314,7 @@ export const RETIRED_ITEM_IDS = [
   "blade",
   "candle",
   "jewel",
+  "herbs",
 ] as const;
 
 export function isFoodItem(itemId: string) {
