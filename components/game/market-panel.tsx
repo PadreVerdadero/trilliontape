@@ -173,75 +173,73 @@ export function MarketPanel({
             </p>
           </div>
 
-          <div className="rounded-xl bg-background/40 p-3 ring-1 ring-foreground/10">
-            <p className="mb-3 font-heading text-lg">Post your own order</p>
-            {state.player.isGov ? (
-              <p className="mb-3 text-xs leading-5 text-amber-100/90">
-                Treasury desk: unlimited, and it does not spend your purse. Posting does not change
-                volume yet. A white ask mints new units when someone buys it (volume up). A black
-                bid burns goods when someone sells into it (volume down). Those quotes stay on the
-                book after you leave office.
-              </p>
-            ) : null}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_auto]">
-              <div className="space-y-1">
-                <Label htmlFor="px">
-                  <span aria-hidden>🪙</span>
-                  <span className="sr-only">Price each</span>
-                </Label>
-                <Input
-                  id="px"
-                  inputMode="numeric"
-                  value={priceInput}
-                  placeholder={suggested}
-                  onChange={(event) => setPriceInput(event.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="qty">
-                  <span aria-hidden>#</span>
-                  <span className="sr-only">How many</span>
-                </Label>
-                <Input
-                  id="qty"
-                  inputMode="numeric"
-                  value={qtyInput}
-                  onChange={(event) => setQtyInput(event.target.value)}
-                />
-              </div>
-              <div className="flex flex-col justify-end gap-1 sm:col-span-2 lg:col-span-1">
-                <div className="flex gap-1">
-                  <Button
-                    className="h-11 flex-1 bg-emerald-600 text-white hover:bg-emerald-500 lg:min-w-24"
-                    disabled={pending}
-                    onClick={() => void place("buy")}
-                  >
-                    Buy
-                  </Button>
-                  <Button
-                    className="h-11 flex-1 bg-rose-600 text-white hover:bg-rose-500 lg:min-w-24"
-                    disabled={pending}
-                    onClick={() => void place("sell")}
-                  >
-                    Sell
-                  </Button>
+          <div className="grid gap-3 lg:grid-cols-[minmax(15rem,20rem)_minmax(0,1fr)] lg:items-stretch">
+            <div className="rounded-xl bg-background/40 p-2.5 ring-1 ring-foreground/10">
+              <p className="mb-2 font-heading text-base">Post your own order</p>
+              {state.player.isGov ? (
+                <p className="mb-2 text-[11px] leading-4 text-amber-100/90">
+                  Treasury is unlimited. Asks mint on fill, bids burn on fill.
+                </p>
+              ) : null}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-0.5">
+                  <Label htmlFor="px" className="text-xs">
+                    <span aria-hidden>🪙</span>
+                    <span className="sr-only">Price each</span>
+                  </Label>
+                  <Input
+                    id="px"
+                    className="h-9 md:h-8"
+                    inputMode="numeric"
+                    value={priceInput}
+                    placeholder={suggested}
+                    onChange={(event) => setPriceInput(event.target.value)}
+                  />
                 </div>
-                {draftTotal != null ? (
-                  <p className="text-center text-xs text-muted-foreground">
-                    {formatNumber(draftQty)} × {formatCoins(draftPrice)} = {formatCoins(draftTotal)}
-                  </p>
-                ) : null}
+                <div className="space-y-0.5">
+                  <Label htmlFor="qty" className="text-xs">
+                    <span aria-hidden>#</span>
+                    <span className="sr-only">How many</span>
+                  </Label>
+                  <Input
+                    id="qty"
+                    className="h-9 md:h-8"
+                    inputMode="numeric"
+                    value={qtyInput}
+                    onChange={(event) => setQtyInput(event.target.value)}
+                  />
+                </div>
+                <Button
+                  className="h-9 bg-emerald-600 text-white hover:bg-emerald-500"
+                  disabled={pending}
+                  onClick={() => void place("buy")}
+                >
+                  Buy
+                </Button>
+                <Button
+                  className="h-9 bg-rose-600 text-white hover:bg-rose-500"
+                  disabled={pending}
+                  onClick={() => void place("sell")}
+                >
+                  Sell
+                </Button>
               </div>
+              {draftTotal != null ? (
+                <p className="mt-1.5 text-center text-[11px] text-muted-foreground">
+                  {formatNumber(draftQty)} × {formatCoins(draftPrice)} = {formatCoins(draftTotal)}
+                </p>
+              ) : null}
             </div>
-          </div>
 
-          <PriceChart
-            history={book?.history ?? []}
-            basePrice={selected.basePrice}
-            mv={price?.vwap ?? selected.basePrice}
-            bestBid={price?.bestBid}
-            bestAsk={price?.bestAsk}
-          />
+            <PriceChart
+              compact
+              history={book?.history ?? []}
+              basePrice={selected.basePrice}
+              mv={price?.vwap ?? selected.basePrice}
+              bestBid={price?.bestBid}
+              bestAsk={price?.bestAsk}
+            />
+          </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
@@ -286,6 +284,28 @@ export function MarketPanel({
                 }}
               />
             </div>
+          </div>
+
+          <div className="rounded-xl bg-background/40 p-3 ring-1 ring-foreground/10">
+            <p className="mb-2 font-heading text-base">
+              Recent {selected.emoji} {selected.name} trades
+            </p>
+            {(book?.trades ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">No prints for this item yet.</p>
+            ) : (
+              <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
+                {(book?.trades ?? []).map((trade) => (
+                  <li key={trade.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                    <span>
+                      {formatNumber(trade.quantity)} @ {formatCoins(trade.price)}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {trade.buyUsername} bought from {trade.sellUsername}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       ) : null}

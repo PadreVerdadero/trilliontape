@@ -1081,6 +1081,50 @@ function mapOrder(row: {
   };
 }
 
+function mapTrade(row: {
+  id: number;
+  item_id: string;
+  price: number;
+  quantity: number;
+  created_at: number;
+  buy_name: string;
+  sell_name: string;
+}): TradeRow {
+  return {
+    id: row.id,
+    itemId: row.item_id,
+    price: row.price,
+    quantity: row.quantity,
+    createdAt: row.created_at,
+    buyUsername: row.buy_name,
+    sellUsername: row.sell_name,
+  };
+}
+
+function loadRecentTrades(limit: number, itemId?: string): TradeRow[] {
+  const sql = `SELECT t.id, t.item_id, t.price, t.quantity, t.created_at, b.username AS buy_name, s.username AS sell_name
+       FROM trades t
+       JOIN users b ON b.id = t.buy_user_id
+       JOIN users s ON s.id = t.sell_user_id
+       ${itemId ? "WHERE t.item_id = ?" : ""}
+       ORDER BY t.id DESC
+       LIMIT ?`;
+  const rows = (
+    itemId
+      ? getDb().prepare(sql).all(itemId, limit)
+      : getDb().prepare(sql).all(limit)
+  ) as {
+    id: number;
+    item_id: string;
+    price: number;
+    quantity: number;
+    created_at: number;
+    buy_name: string;
+    sell_name: string;
+  }[];
+  return rows.map(mapTrade);
+}
+
 function requireOpenStall(stallId: string, clock: FestivalClock) {
   const stall = stallById[stallId];
   if (!stall) throw new Error("That stall is not on the plaza.");
@@ -1557,6 +1601,7 @@ export function getOrderBook(itemId: string): OrderBook {
       .filter((row) => row.side === "sell")
       .sort((a, b) => a.price - b.price || a.createdAt - b.createdAt),
     history: getPriceHistory(itemId),
+    trades: loadRecentTrades(16, itemId),
   };
 }
 
@@ -2067,36 +2112,7 @@ export function getGameState(userId: number, timeZone?: string): GameState {
     }[]
   ).map(mapOrder);
 
-  const recentTrades = (
-    getDb()
-      .prepare(
-        `SELECT t.id, t.item_id, t.price, t.quantity, t.created_at, b.username AS buy_name, s.username AS sell_name
-         FROM trades t
-         JOIN users b ON b.id = t.buy_user_id
-         JOIN users s ON s.id = t.sell_user_id
-         ORDER BY t.id DESC
-         LIMIT 18`
-      )
-      .all() as {
-      id: number;
-      item_id: string;
-      price: number;
-      quantity: number;
-      created_at: number;
-      buy_name: string;
-      sell_name: string;
-    }[]
-  ).map(
-    (row): TradeRow => ({
-      id: row.id,
-      itemId: row.item_id,
-      price: row.price,
-      quantity: row.quantity,
-      createdAt: row.created_at,
-      buyUsername: row.buy_name,
-      sellUsername: row.sell_name,
-    })
-  );
+  const recentTrades = loadRecentTrades(18);
 
   const winners = getDb()
     .prepare(

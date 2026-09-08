@@ -259,4 +259,5 @@ export type OrderBook = {
   bids: OrderRow[];
   asks: OrderRow[];
   history: PricePoint[];
+  trades: TradeRow[];
 };
