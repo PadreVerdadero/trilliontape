@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { formatCoins, formatNumber } from "@/lib/game/format";
+import { formatCoins } from "@/lib/game/format";
 import { MV_PRINTS } from "@/lib/game/market";
 import { cn } from "@/lib/utils";
 import type { TradeRow } from "@/lib/game/types";
@@ -100,7 +100,7 @@ export function PriceChart({
           }
         >
           {traded
-            ? `${up ? "▲" : down ? "▼" : "–"} ${formatNumber(Math.abs(delta))}`
+            ? `${up ? "▲" : down ? "▼" : "–"} ${formatCoins(Math.abs(delta))}`
             : null}
         </p>
       </div>
