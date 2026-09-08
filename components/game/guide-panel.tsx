@@ -35,7 +35,7 @@ export function GuidePanel() {
       <section className="space-y-2">
         <h3 className="font-heading text-foreground">Market value</h3>
         <p>
-          MV is the simple average of the last 100 board trades for that item. Each print counts
+          MV is the simple average of the last 25 board trades for that item. Each print counts
           equally. If nobody has traded it yet, MV uses the catalog starting price. You may post a
           bid or ask at any whole-coin price of 1 or more. Each item shows how many units
           are listed for sale, how many sit on bids, and how many live in packs. Direct bundle deals

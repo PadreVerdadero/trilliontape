@@ -1,4 +1,4 @@
-export const MV_PRINTS = 100;
+export const MV_PRINTS = 25;
 
 export type Print = {
   price: number;

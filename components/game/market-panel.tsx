@@ -228,9 +228,9 @@ export function MarketPanel({
                   No prints for this item yet.
                 </p>
               ) : (
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {[0, 1, 2].map((column) => {
-                    const slice = (book?.trades ?? []).slice(column * 4, column * 4 + 4);
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  {[0, 1, 2, 3, 4].map((column) => {
+                    const slice = (book?.trades ?? []).slice(column * 5, column * 5 + 5);
                     return (
                       <div
                         key={column}
@@ -241,10 +241,12 @@ export function MarketPanel({
                         ) : (
                           <ul className="space-y-1 text-xs">
                             {slice.map((trade) => (
-                              <li key={trade.id}>
-                                <span className="tabular-nums">{formatCoins(trade.price)}</span>
-                                <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
-                                  {trade.buyUsername} bought from {trade.sellUsername}
+                              <li key={trade.id} className="flex min-w-0 items-baseline gap-1.5">
+                                <span className="shrink-0 tabular-nums">{formatCoins(trade.price)}</span>
+                                <span className="min-w-0 truncate">
+                                  <span className="text-emerald-200">{trade.buyUsername}</span>
+                                  <span className="text-muted-foreground"> – </span>
+                                  <span className="text-rose-200">{trade.sellUsername}</span>
                                 </span>
                               </li>
                             ))}

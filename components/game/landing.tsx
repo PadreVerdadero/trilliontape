@@ -5,7 +5,7 @@ const highlights = [
   {
     emoji: "📒",
     title: "A live order book",
-    body: "Post a bid or ask at any whole-coin price. Crossing trades clear at the ask. Market value is the average of the last 100 prints.",
+    body: "Post a bid or ask at any whole-coin price. Crossing trades clear at the ask. Market value is the average of the last 25 prints.",
   },
   {
     emoji: "🤝",

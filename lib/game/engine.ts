@@ -37,7 +37,7 @@ import {
   waitSteps,
   type BotProfile,
 } from "@/lib/game/bots";
-import { computeFairValue } from "@/lib/game/market";
+import { computeFairValue, MV_PRINTS } from "@/lib/game/market";
 import {
   chalkboardItem,
   contractsForWeek,
@@ -403,7 +403,7 @@ function listAreas(playerLocationId = "town"): AreaCrowd[] {
 
 function marketPrints(itemId: string) {
   return getDb()
-    .prepare("SELECT price, quantity FROM trades WHERE item_id = ? ORDER BY id DESC LIMIT 100")
+    .prepare(`SELECT price, quantity FROM trades WHERE item_id = ? ORDER BY id DESC LIMIT ${MV_PRINTS}`)
     .all(itemId) as { price: number; quantity: number }[];
 }
 
@@ -1612,7 +1612,7 @@ export function getOrderBook(itemId: string): OrderBook {
       .filter((row) => row.side === "sell")
       .sort((a, b) => a.price - b.price || a.createdAt - b.createdAt),
     history: getPriceHistory(itemId),
-    trades: loadRecentTrades(12, itemId),
+    trades: loadRecentTrades(25, itemId),
   };
 }
 
