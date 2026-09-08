@@ -747,7 +747,7 @@ export function startSearch(userId: number) {
   const max = player.energy_max ?? ENERGY_MAX;
   if (energy < cost) {
     throw new Error(
-      `You are too tired (${energy} energy). Eat berries, bread, fish, or honey.`
+      `You are too tired (${energy} energy). Eat berries or fish.`
     );
   }
   const nextEnergy = energy - cost;

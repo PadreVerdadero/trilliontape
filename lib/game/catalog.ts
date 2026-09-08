@@ -32,7 +32,7 @@ export const locations: Location[] = [
     emoji: "🏖️",
     name: "Sunshore",
     region: "South Tide",
-    blurb: "Salt air and tide pools. Coral is slow, fish are not.",
+    blurb: "Salt air and tide pools. Fish and shells turn up first.",
     searchEnergy: 4,
   },
   {
@@ -40,7 +40,7 @@ export const locations: Location[] = [
     emoji: "🌾",
     name: "Golden Fields",
     region: "East Road",
-    blurb: "Wheat and stubborn bees. Bring patience for honey.",
+    blurb: "Wheat and wildflowers along the east road.",
     searchEnergy: 4,
   },
 ];
@@ -137,44 +137,14 @@ export const items: Item[] = [
     mine: { locationId: "shore", seconds: 16, yieldMin: 1, yieldMax: 2 },
   },
   {
-    id: "salt",
-    emoji: "🧂",
-    name: "Salt",
-    kind: "material",
-    purpose: "Seasoning from the flats.",
-    description: "Raked from the tide line.",
-    basePrice: 6,
-    mine: { locationId: "shore", seconds: 18, yieldMin: 1, yieldMax: 2 },
-  },
-  {
-    id: "coral",
-    emoji: "🪸",
-    name: "Coral",
-    kind: "material",
-    purpose: "Slow diving. Trade it on the board.",
-    description: "Slow diving. Legendary pull.",
-    basePrice: 22,
-    mine: { locationId: "shore", seconds: 40, yieldMin: 1, yieldMax: 1 },
-  },
-  {
     id: "wheat",
-    emoji: "🌾",
+    emoji: "🌿",
     name: "Wheat",
     kind: "material",
     purpose: "The fields' staple. Trade it on the board.",
     description: "The fields' staple.",
     basePrice: 4,
     mine: { locationId: "fields", seconds: 11, yieldMin: 2, yieldMax: 3 },
-  },
-  {
-    id: "honey",
-    emoji: "🍯",
-    name: "Honey",
-    kind: "material",
-    purpose: "Eat: +8 energy.",
-    description: "The bees do not hurry.",
-    basePrice: 16,
-    mine: { locationId: "fields", seconds: 36, yieldMin: 1, yieldMax: 1 },
   },
   {
     id: "flower",
@@ -187,33 +157,6 @@ export const items: Item[] = [
     mine: { locationId: "fields", seconds: 15, yieldMin: 1, yieldMax: 2 },
   },
   {
-    id: "bread",
-    emoji: "🍞",
-    name: "Bread",
-    kind: "good",
-    purpose: "Eat: +10 energy.",
-    description: "A plaza loaf. Two or three searches.",
-    basePrice: 10,
-  },
-  {
-    id: "planks",
-    emoji: "🪜",
-    name: "Planks",
-    kind: "good",
-    purpose: "Lay: next 2 searches ignore crowd cost.",
-    description: "A boardwalk through busy ground.",
-    basePrice: 12,
-  },
-  {
-    id: "candle",
-    emoji: "🕯️",
-    name: "Candle",
-    kind: "good",
-    purpose: "Festival light.",
-    description: "Wick and scent.",
-    basePrice: 28,
-  },
-  {
     id: "brick",
     emoji: "🧱",
     name: "Brick",
@@ -221,24 +164,6 @@ export const items: Item[] = [
     purpose: "Brace: next search costs only 1 energy.",
     description: "Kiln-fired stone. Cheap pulls on a crowded ridge.",
     basePrice: 16,
-  },
-  {
-    id: "blade",
-    emoji: "🗡️",
-    name: "Blade",
-    kind: "good",
-    purpose: "A forged edge.",
-    description: "Tempered steel.",
-    basePrice: 40,
-  },
-  {
-    id: "jewel",
-    emoji: "💍",
-    name: "Jewel",
-    kind: "good",
-    purpose: "The dear piece on the board.",
-    description: "A set gem.",
-    basePrice: 58,
   },
 ];
 
@@ -381,8 +306,8 @@ export const STARTING_ENERGY = 20;
 export const FORAGE_ENERGY = 4;
 export const FORAGE_STRAIN_ID = "grounds";
 export const VP_TO_WIN = 20;
-export const FOOD_ITEM_IDS = ["berries", "fish", "honey", "bread"] as const;
-export const LEGENDARY_ITEM_IDS = ["coral", "gem", "candle", "blade", "jewel"] as const;
+export const FOOD_ITEM_IDS = ["berries", "fish"] as const;
+export const LEGENDARY_ITEM_IDS = ["gem"] as const;
 export const RETIRED_ITEM_IDS = [
   "flax",
   "stew",
@@ -391,6 +316,14 @@ export const RETIRED_ITEM_IDS = [
   "salve",
   "celestial-relic",
   "iron",
+  "coral",
+  "planks",
+  "honey",
+  "salt",
+  "bread",
+  "blade",
+  "candle",
+  "jewel",
 ] as const;
 
 export function isFoodItem(itemId: string) {

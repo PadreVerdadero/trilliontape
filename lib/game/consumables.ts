@@ -35,34 +35,14 @@ export const foods: Food[] = [
     blurb: "A handful. +4 energy — one quiet search.",
   },
   {
-    itemId: "bread",
-    energy: 10,
-    verb: "Eat",
-    blurb: "A plaza loaf. +10 energy.",
-  },
-  {
     itemId: "fish",
     energy: 6,
     verb: "Eat",
     blurb: "Raw shore snack. +6 energy.",
   },
-  {
-    itemId: "honey",
-    energy: 8,
-    verb: "Eat",
-    blurb: "A spoon of gold. +8 energy.",
-  },
 ];
 
 export const consumables: Consumable[] = [
-  {
-    itemId: "planks",
-    kind: "search_calm",
-    charges: 2,
-    power: 1,
-    verb: "Lay",
-    blurb: "Boardwalk: the next 2 searches ignore crowd cost.",
-  },
   {
     itemId: "mushrooms",
     kind: "search_double",
