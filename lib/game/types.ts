@@ -117,6 +117,9 @@ export type MarketPrice = {
   last: number | null;
   volume: number;
   prints: number;
+  listed: number;
+  wanted: number;
+  held: number;
   bestBid: number | null;
   bestAsk: number | null;
 };
@@ -158,14 +161,6 @@ export type AreaCrowd = {
   strain: number;
   cooldownMs: number;
   nextSearchCost: number;
-};
-
-export type BankQuote = {
-  itemId: string;
-  rate: number;
-  payEach: number;
-  glut: number;
-  cooldownMs: number;
 };
 
 export type StallQuote = {
@@ -246,7 +241,6 @@ export type GameState = {
   recentTrades: TradeRow[];
   winners: { username: string; wonAt: number }[];
   areas: AreaCrowd[];
-  bank: BankQuote[];
   festival: FestivalState;
   swaps: SwapOffer[];
   travelers: TravelerRow[];

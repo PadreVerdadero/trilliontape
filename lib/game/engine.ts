@@ -1,8 +1,4 @@
 import {
-  BANK_COOLDOWN_MS,
-  bankPayout,
-  bankRate,
-  cosmeticById,
   FOOD_ITEM_IDS,
   FORAGE_STRAIN_ID,
   isFoodItem,
@@ -52,7 +48,6 @@ import {
 } from "@/lib/game/stalls";
 import type {
   AreaCrowd,
-  BankQuote,
   BusyState,
   ContractView,
   Equipped,
@@ -540,15 +535,6 @@ function awardFirstTradeVp(userId: number) {
   awardVp(userId, 1);
 }
 
-function awardWardrobeVp(userId: number, slot: string) {
-  const bit = slot === "hat" ? 1 : slot === "outfit" ? 2 : 4;
-  const player = loadPlayerRow(userId);
-  const mask = player.wardrobe_vp ?? 0;
-  if (mask & bit) return;
-  getDb().prepare("UPDATE players SET wardrobe_vp = ? WHERE user_id = ?").run(mask | bit, userId);
-  awardVp(userId, 1);
-}
-
 function markRelicContract(userId: number) {
   const rows = getDb()
     .prepare("SELECT id FROM festival_contracts WHERE item_id = ? AND expires_at > ?")
@@ -903,100 +889,6 @@ export function cancelOrder(userId: number, orderId: number) {
   setEvent(userId, "Order pulled from the board.");
 }
 
-function readBankGlut(itemId: string) {
-  const row = getDb()
-    .prepare("SELECT units, cools_at FROM bank_intake WHERE item_id = ?")
-    .get(itemId) as { units: number; cools_at: number } | undefined;
-  if (!row || row.cools_at <= nowMs()) return 0;
-  return row.units;
-}
-
-function listBankQuotes(): BankQuote[] {
-  return Object.keys(itemById).map((itemId) => {
-    const glut = readBankGlut(itemId);
-    const mv = marketPrice(itemId);
-    const rate = bankRate(glut);
-    const row = getDb()
-      .prepare("SELECT cools_at FROM bank_intake WHERE item_id = ?")
-      .get(itemId) as { cools_at: number } | undefined;
-    return {
-      itemId,
-      rate,
-      payEach: Math.max(1, Math.round(mv * rate)),
-      glut,
-      cooldownMs: glut > 0 && row && row.cools_at > nowMs() ? row.cools_at - nowMs() : 0,
-    };
-  });
-}
-
-export function bankSell(userId: number, itemId: string, quantity: number) {
-  requireTown(userId);
-  const item = itemById[itemId];
-  if (!item) throw new Error("Unknown item.");
-  if (!Number.isInteger(quantity) || quantity < 1) throw new Error("Choose a quantity.");
-  if (availableItem(userId, itemId) < quantity) {
-    throw new Error("Not enough unbound stock to sell to the bank.");
-  }
-  const mv = marketPrice(itemId);
-  const glut = readBankGlut(itemId);
-  const payout = bankPayout(mv, glut, quantity);
-  removeItem(userId, itemId, quantity);
-  getDb().prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?").run(
-    payout.total,
-    userId
-  );
-  getDb()
-    .prepare(
-      `INSERT INTO bank_intake (item_id, units, cools_at) VALUES (?, ?, ?)
-       ON CONFLICT(item_id) DO UPDATE SET units = excluded.units, cools_at = excluded.cools_at`
-    )
-    .run(itemId, payout.nextGlut, nowMs() + BANK_COOLDOWN_MS);
-  const pct = Math.round(payout.startRate * 100);
-  setEvent(
-    userId,
-    `Bank bought ${item.emoji} ${item.name} ×${formatNumber(quantity)} for ${formatCoins(payout.total)} (${pct}% of MV). Dumping more drops the rate until the window cools.`
-  );
-}
-
-export function buyCosmetic(userId: number, cosmeticId: string) {
-  requireTown(userId);
-  const cosmetic = cosmeticById[cosmeticId];
-  if (!cosmetic) throw new Error("Unknown cosmetic.");
-  const owned = getDb()
-    .prepare("SELECT 1 FROM cosmetics WHERE user_id = ? AND cosmetic_id = ?")
-    .get(userId, cosmeticId);
-  if (owned) throw new Error("You already own that.");
-  if (availableGold(userId) < cosmetic.price) throw new Error("Not enough free coin.");
-  getDb().prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(
-    cosmetic.price,
-    userId
-  );
-  getDb()
-    .prepare("INSERT INTO cosmetics (user_id, cosmetic_id) VALUES (?, ?)")
-    .run(userId, cosmeticId);
-  const slot = cosmetic.slot === "hat" ? "hat" : cosmetic.slot === "outfit" ? "outfit" : "accessory";
-  getDb().prepare(`UPDATE players SET ${slot} = ? WHERE user_id = ?`).run(cosmeticId, userId);
-  awardWardrobeVp(userId, slot);
-  setEvent(userId, `Bought and equipped ${cosmetic.emoji} ${cosmetic.name}.`);
-}
-
-export function equipCosmetic(userId: number, cosmeticId: string | null, slot: string) {
-  resolveBusy(userId);
-  if (cosmeticId) {
-    const cosmetic = cosmeticById[cosmeticId];
-    if (!cosmetic || cosmetic.slot !== slot) throw new Error("That does not fit the slot.");
-    const owned = getDb()
-      .prepare("SELECT 1 FROM cosmetics WHERE user_id = ? AND cosmetic_id = ?")
-      .get(userId, cosmeticId);
-    if (!owned) throw new Error("Buy it at the wardrobe stall first.");
-  }
-  if (slot !== "hat" && slot !== "outfit" && slot !== "accessory") {
-    throw new Error("Unknown slot.");
-  }
-  getDb().prepare(`UPDATE players SET ${slot} = ? WHERE user_id = ?`).run(cosmeticId, userId);
-  if (cosmeticId) awardWardrobeVp(userId, slot);
-  setEvent(userId, cosmeticId ? "Look updated." : "You tucked that piece away.");
-}
 
 function mapOrder(row: {
   id: number;
@@ -1517,8 +1409,36 @@ export function getPriceHistory(itemId: string): PricePoint[] {
   ];
 }
 
+function bookDepth() {
+  const map: Record<string, { listed: number; wanted: number }> = {};
+  const rows = getDb()
+    .prepare(
+      `SELECT item_id, side, COALESCE(SUM(remaining), 0) AS qty
+       FROM orders
+       WHERE remaining > 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')
+       GROUP BY item_id, side`
+    )
+    .all() as { item_id: string; side: string; qty: number }[];
+  for (const row of rows) {
+    const cur = map[row.item_id] ?? { listed: 0, wanted: 0 };
+    if (row.side === "sell") cur.listed = row.qty;
+    else cur.wanted = row.qty;
+    map[row.item_id] = cur;
+  }
+  return map;
+}
+
+function packTotals() {
+  const rows = getDb()
+    .prepare("SELECT item_id, COALESCE(SUM(quantity), 0) AS qty FROM inventory GROUP BY item_id")
+    .all() as { item_id: string; qty: number }[];
+  return Object.fromEntries(rows.map((row) => [row.item_id, row.qty])) as Record<string, number>;
+}
+
 function priceSheet(): MarketPrice[] {
   const db = getDb();
+  const depth = bookDepth();
+  const packs = packTotals();
   return Object.keys(itemById).map((itemId) => {
     const stats = db
       .prepare(
@@ -1546,12 +1466,16 @@ function priceSheet(): MarketPrice[] {
       .get(itemId) as { p: number | null };
     const prints = marketPrints(itemId);
     const vwap = computeFairValue(itemById[itemId].basePrice, [...prints].reverse());
+    const book = depth[itemId] ?? { listed: 0, wanted: 0 };
     return {
       itemId,
       vwap,
       last: last?.price ?? null,
       volume: stats.volume ?? 0,
       prints: prints.length,
+      listed: book.listed,
+      wanted: book.wanted,
+      held: packs[itemId] ?? 0,
       bestBid: bid.p,
       bestAsk: ask.p,
     };
@@ -2031,7 +1955,6 @@ export function getGameState(userId: number, timeZone?: string): GameState {
     recentTrades,
     winners,
     areas: listAreas(player.location_id),
-    bank: listBankQuotes(),
     festival,
     swaps: listSwaps(userId),
     travelers: listTravelers(userId),

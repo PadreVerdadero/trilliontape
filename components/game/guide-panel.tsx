@@ -24,11 +24,11 @@ export function GuidePanel() {
         <p>
           Forage the grounds for energy. Eat food to refill. Craft in Plaza. The player market is
           open all day. Shop owners buy at a markup only while their door is open — hours follow
-          your phone clock. The bank is the 50% floor when nobody else is around.
+          your phone clock.
         </p>
         <p>
-          First to 20 victory points lights the festival. Contracts, chalkboard hours, wardrobe
-          slots, board trades, and lantern donations all score. The relic is 8 points when you
+          First to 20 victory points lights the festival. Contracts, chalkboard hours, board
+          trades, and lantern donations all score. The relic is 8 points when you
           craft it — a fat contract, not the only path.
         </p>
       </section>
@@ -37,9 +37,10 @@ export function GuidePanel() {
         <p>
           MV is the simple average of the last 100 board trades for that item. Each print counts
           equally. If nobody has traded it yet, MV is the catalog price. You may post a bid or ask
-          at any whole-coin price of 1 or more — there is no collar. Direct bundle deals (several
-          items plus gold, named or open) do not print on the tape, so they do not move MV. Plaza
-          regulars (Piper, Reed, Anvil, and the rest) keep a live book so the plaza is never empty.
+          at any whole-coin price of 1 or more — there is no collar. Each item shows how many units
+          are listed for sale, how many sit on bids, and how many live in packs. Direct bundle deals
+          (several items plus gold, named or open) do not print on the tape, so they do not move MV.
+          Plaza regulars (Piper, Reed, Anvil, and the rest) keep a live book so the plaza is never empty.
         </p>
       </section>
       <section className="space-y-2">

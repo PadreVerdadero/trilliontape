@@ -1,23 +1,14 @@
-import { cosmeticById, defaultBodyEmoji, locationById } from "@/lib/game/catalog";
+import { defaultBodyEmoji, locationById } from "@/lib/game/catalog";
 import { formatCoins, formatNumber } from "@/lib/game/format";
 import type { PlayerState } from "@/lib/game/types";
 
 export function CharacterCard({ player }: { player: PlayerState }) {
-  const hat = player.equipped.hat ? cosmeticById[player.equipped.hat] : null;
-  const outfit = player.equipped.outfit ? cosmeticById[player.equipped.outfit] : null;
-  const accessory = player.equipped.accessory
-    ? cosmeticById[player.equipped.accessory]
-    : null;
   const location = locationById[player.locationId];
 
   return (
     <div className="flex flex-col items-center gap-3 text-center">
-      <div className="relative grid size-36 place-items-center rounded-3xl bg-gradient-to-b from-amber-200/15 to-transparent ring-1 ring-foreground/10">
-        <div className="absolute top-3 text-3xl">{hat?.emoji ?? " "}</div>
-        <div className="flex items-end gap-1 text-4xl leading-none">
-          <span>{accessory?.emoji ?? ""}</span>
-          <span>{outfit?.emoji ?? defaultBodyEmoji()}</span>
-        </div>
+      <div className="grid size-36 place-items-center rounded-3xl bg-gradient-to-b from-amber-200/15 to-transparent text-5xl ring-1 ring-foreground/10">
+        {defaultBodyEmoji()}
       </div>
       <div>
         <p className="font-heading text-xl">{player.username}</p>
@@ -64,7 +55,7 @@ export function CharacterCard({ player }: { player: PlayerState }) {
       </div>
       {player.availableGold !== player.gold ? (
         <p className="text-xs text-muted-foreground">
-          Coin on open bids is reserved until those orders fill or cancel.
+          Coin on open bids and deals is reserved until those fill or cancel.
         </p>
       ) : null}
       {player.buffs?.length ? (

@@ -178,8 +178,7 @@ export function StallsPanel({
           <p className="text-sm text-muted-foreground">
             {openCount === 0
               ? "Nobody is buying right now. Forage, craft, or flip on the player market."
-              : `${openCount} stall${openCount === 1 ? "" : "s"} open. Chalkboard items pay more, and the first chalkboard sale of the day is +1 VP.`}{" "}
-            The bank in Plaza still buys anything at 50% of MV, any hour.
+              : `${openCount} stall${openCount === 1 ? "" : "s"} open. Chalkboard items pay more, and the first chalkboard sale of the day is +1 VP.`}
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">

@@ -1,8 +1,6 @@
 import { asJson, handleError, requireUser } from "@/lib/game/api";
 import {
   acceptSwap,
-  bankSell,
-  buyCosmetic,
   buyFromStall,
   buyRumor,
   cancelOrder,
@@ -11,7 +9,6 @@ import {
   craftItem,
   declineSwap,
   donateLanterns,
-  equipCosmetic,
   getGameState,
   placeOrder,
   proposeSwap,
@@ -36,9 +33,6 @@ type ActionBody = {
   | { action: "order"; itemId: string; side: "buy" | "sell"; price: number; quantity: number }
   | { action: "take"; orderId: number; quantity?: number }
   | { action: "cancel"; orderId: number }
-  | { action: "bank"; itemId: string; quantity: number }
-  | { action: "buyCosmetic"; cosmeticId: string }
-  | { action: "equip"; cosmeticId: string | null; slot: string }
   | { action: "use"; itemId: string }
   | { action: "stallSell"; stallId: string; itemId: string; quantity: number }
   | { action: "stallBuy"; stallId: string; itemId: string; quantity: number }
@@ -88,15 +82,6 @@ export async function POST(request: Request) {
         break;
       case "cancel":
         cancelOrder(userId, Number(body.orderId));
-        break;
-      case "bank":
-        bankSell(userId, body.itemId, Number(body.quantity));
-        break;
-      case "buyCosmetic":
-        buyCosmetic(userId, body.cosmeticId);
-        break;
-      case "equip":
-        equipCosmetic(userId, body.cosmeticId, body.slot);
         break;
       case "use":
         consumeItem(userId, body.itemId);

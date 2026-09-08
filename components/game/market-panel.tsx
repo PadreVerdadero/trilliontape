@@ -92,7 +92,7 @@ export function MarketPanel({
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
             Pick an item, post a buy or sell at any whole-coin price of 1 or more, then tap a listing
             to take one. Crossing trades clear at the ask. Market value is the simple average of the
-            last 100 board trades for that item — or the catalog price if nobody has printed yet.
+            last 100 board trades. Listed is how many units are for sale on the book right now.
           </p>
         </div>
         {state.recentTrades[0] ? (
@@ -134,7 +134,7 @@ export function MarketPanel({
               <p className="text-sm text-foreground">{selected.purpose}</p>
               <p className="text-sm text-muted-foreground">{selected.description}</p>
             </div>
-            <div className="grid grid-cols-3 gap-2 sm:min-w-[20rem]">
+            <div className="grid grid-cols-2 gap-2 sm:min-w-[22rem] sm:grid-cols-4">
               <Stat
                 label="Best bid"
                 value={price?.bestBid != null ? formatCoins(price.bestBid) : "none"}
@@ -146,6 +146,16 @@ export function MarketPanel({
                 tone="ask"
               />
               <Stat label="MV" value={formatCoins(price?.vwap ?? selected.basePrice)} tone="mv" />
+              <Stat
+                label="Listed"
+                value={formatNumber(price?.listed ?? 0)}
+                tone="vol"
+                hint={
+                  (price?.wanted ?? 0) > 0 || (price?.held ?? 0) > 0
+                    ? `${formatNumber(price?.wanted ?? 0)} on bids · ${formatNumber(price?.held ?? 0)} in packs`
+                    : "None on the book"
+                }
+              />
             </div>
             <p className="text-xs text-muted-foreground lg:max-w-[12rem] lg:text-right">
               {price?.prints
@@ -248,23 +258,25 @@ export function MarketPanel({
       ) : null}
 
       <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
-        <div className="grid grid-cols-[minmax(0,1.4fr)_1fr_1fr_1fr] gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase sm:px-4">
+        <div className="grid grid-cols-[minmax(0,1.4fr)_1fr_1fr_1fr_0.9fr] gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase sm:px-4">
           <span>Item</span>
           <span className="text-emerald-200/90">Best bid</span>
           <span className="text-rose-200/90">Best ask</span>
           <span className="text-sky-200/90">MV</span>
+          <span className="text-amber-200/90">Listed</span>
         </div>
         <div className="max-h-[min(40vh,22rem)] overflow-auto">
           {itemsByCommonness.map((item) => {
             const quote = state.prices.find((row) => row.itemId === item.id);
             const active = item.id === selectedItemId;
+            const listed = quote?.listed ?? 0;
             return (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => pick(item.id)}
                 className={cn(
-                  "grid w-full grid-cols-[minmax(0,1.4fr)_1fr_1fr_1fr] items-center gap-2 border-b border-border/40 px-3 py-2.5 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4 sm:py-3",
+                  "grid w-full grid-cols-[minmax(0,1.4fr)_1fr_1fr_1fr_0.9fr] items-center gap-2 border-b border-border/40 px-3 py-2.5 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4 sm:py-3",
                   active && "bg-primary/15"
                 )}
               >
@@ -285,6 +297,9 @@ export function MarketPanel({
                 </span>
                 <span className="font-medium text-sky-200">
                   {formatCoins(quote?.vwap ?? item.basePrice)}
+                </span>
+                <span className="font-medium text-amber-200" title={`${formatNumber(quote?.wanted ?? 0)} on bids · ${formatNumber(quote?.held ?? 0)} in packs`}>
+                  {listed > 0 ? formatNumber(listed) : "—"}
                 </span>
               </button>
             );
@@ -374,10 +389,12 @@ function Stat({
   label,
   value,
   tone,
+  hint,
 }: {
   label: string;
   value: string;
-  tone?: "bid" | "ask" | "mv";
+  tone?: "bid" | "ask" | "mv" | "vol";
+  hint?: string;
 }) {
   return (
     <div
@@ -385,7 +402,8 @@ function Stat({
         "rounded-xl px-3 py-2 ring-1 ring-foreground/10",
         tone === "bid" && "bg-emerald-950/30",
         tone === "ask" && "bg-rose-950/25",
-        tone === "mv" && "bg-sky-950/30"
+        tone === "mv" && "bg-sky-950/30",
+        tone === "vol" && "bg-amber-950/30"
       )}
     >
       <p className="text-[11px] tracking-wide text-muted-foreground uppercase">{label}</p>
@@ -394,11 +412,13 @@ function Stat({
           "font-heading text-lg",
           tone === "bid" && "text-emerald-200",
           tone === "ask" && "text-rose-200",
-          tone === "mv" && "text-sky-200"
+          tone === "mv" && "text-sky-200",
+          tone === "vol" && "text-amber-200"
         )}
       >
         {value}
       </p>
+      {hint ? <p className="text-[10px] leading-4 text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }

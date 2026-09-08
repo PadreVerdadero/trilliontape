@@ -5,13 +5,11 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BankPanel } from "@/components/game/bank-panel";
 import { CharacterCard } from "@/components/game/character-card";
 import { GuidePanel } from "@/components/game/guide-panel";
 import { InventoryPanel } from "@/components/game/inventory-panel";
 import { MarketPanel } from "@/components/game/market-panel";
 import { StallsPanel } from "@/components/game/stalls-panel";
-import { WardrobePanel } from "@/components/game/wardrobe-panel";
 import { WorkshopPanel } from "@/components/game/workshop-panel";
 import { useGame } from "@/hooks/use-game";
 import { locationById } from "@/lib/game/catalog";
@@ -107,8 +105,8 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
           </CardHeader>
           <CardContent className="text-sm leading-6">
             You reached the festival score
-            {player.titles.length ? ` · ${player.titles.join(" · ")}` : ""}. Keep trading, dress
-            the part, or help the next traveler with a fair ask.
+            {player.titles.length ? ` · ${player.titles.join(" · ")}` : ""}. Keep trading, or help
+            the next traveler with a fair ask.
           </CardContent>
         </Card>
       ) : null}
@@ -136,12 +134,6 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
         <TabsTrigger className="min-h-10 px-3" value="workshop">
           Craft
         </TabsTrigger>
-        <TabsTrigger className="min-h-10 px-3" value="bank">
-          Bank
-        </TabsTrigger>
-        <TabsTrigger className="min-h-10 px-3" value="wardrobe">
-          Looks
-        </TabsTrigger>
         <TabsTrigger className="min-h-10 px-3" value="guide">
           Guide
         </TabsTrigger>
@@ -154,21 +146,6 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
           player={player}
           pending={pending}
           onCraft={(outputId) => void run({ action: "craft", outputId })}
-        />
-      </TabsContent>
-      <TabsContent value="bank">
-        <BankPanel
-          state={state}
-          pending={pending}
-          onSell={(sellId, quantity) => void run({ action: "bank", itemId: sellId, quantity })}
-        />
-      </TabsContent>
-      <TabsContent value="wardrobe">
-        <WardrobePanel
-          player={player}
-          pending={pending}
-          onBuy={(cosmeticId) => void run({ action: "buyCosmetic", cosmeticId })}
-          onEquip={(cosmeticId, slot) => void run({ action: "equip", cosmeticId, slot })}
         />
       </TabsContent>
       <TabsContent value="guide">

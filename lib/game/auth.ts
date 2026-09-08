@@ -14,7 +14,7 @@ export function validateCredentials(username: string, password: string) {
     return "Use 3–20 letters, numbers, or underscores.";
   }
   if (username.toLowerCase() === "banker") {
-    return "That name is reserved for the plaza bank.";
+    return "That name is reserved.";
   }
   if (password.length < 4) {
     return "Password must be at least 4 characters.";

@@ -20,7 +20,7 @@ const highlights = [
   {
     emoji: "🏆",
     title: "Victory points",
-    body: "First to 20 VP lights the festival. Contracts, chalkboard hours, looks, donations, and the relic (8 VP) all score. Titles track the baker, the purse, and the board ghost.",
+    body: "First to 20 VP lights the festival. Contracts, chalkboard hours, donations, and the relic (8 VP) all score. Titles track the baker, the purse, and the board ghost.",
   },
 ];
 
