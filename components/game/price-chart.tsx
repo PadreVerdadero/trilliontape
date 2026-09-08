@@ -20,7 +20,10 @@ export function PriceChart({
   bestAsk?: number | null;
 }) {
   const prints = useMemo(
-    () => [...trades].slice(0, MV_PRINTS).reverse(),
+    () =>
+      [...trades]
+        .slice(0, MV_PRINTS)
+        .sort((a, b) => a.id - b.id || a.createdAt - b.createdAt),
     [trades]
   );
   const [hover, setHover] = useState<number | null>(null);
@@ -46,9 +49,11 @@ export function PriceChart({
   }));
   const line = coords.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
   const area = `${line} L ${coords[coords.length - 1].x} ${pad.top + innerH} L ${coords[0].x} ${pad.top + innerH} Z`;
-  const lastPrice = coords[coords.length - 1].print?.price ?? basePrice;
-  const firstPrice = coords[0].print?.price ?? basePrice;
-  const up = lastPrice >= firstPrice;
+  const lastPrice = prints[prints.length - 1]?.price ?? basePrice;
+  const firstPrice = prints[0]?.price ?? basePrice;
+  const delta = traded ? lastPrice - firstPrice : 0;
+  const up = delta > 0;
+  const down = delta < 0;
   const endX = pad.left + innerW;
   const startX = pad.left + innerW * 0.62;
   let bidLabelY = bestBid != null ? yFor(bestBid) : 0;
@@ -82,14 +87,20 @@ export function PriceChart({
           </p>
         </div>
         <p
-          className={up ? "text-sm text-emerald-200" : "text-sm text-rose-200"}
+          className={cn(
+            "text-sm tabular-nums",
+            up && "text-emerald-200",
+            down && "text-rose-200",
+            traded && !up && !down && "text-muted-foreground"
+          )}
           title={
             traded
-              ? `Last print. The arrow compares it to the oldest of these ${MV_PRINTS} prints.`
+              ? `Last print vs the leftmost dot — the oldest of these ${prints.length} prints.`
               : "Starting price — no prints yet."
           }
         >
-          {formatCoins(lastPrice)} {traded ? (up ? "▲" : "▼") : ""}
+          {formatCoins(lastPrice)}
+          {traded ? ` ${up ? "▲" : down ? "▼" : "–"} vs ${formatCoins(firstPrice)}` : ""}
         </p>
       </div>
       <div className="relative" onMouseLeave={() => setHover(null)}>
@@ -99,12 +110,12 @@ export function PriceChart({
           role="img"
           aria-label="Last 25 print prices"
         >
-          <path d={area} className={up ? "fill-emerald-400/15" : "fill-rose-400/15"} />
+          <path d={area} className={up ? "fill-emerald-400/15" : down ? "fill-rose-400/15" : "fill-zinc-400/15"} />
           <path
             d={line}
             fill="none"
             strokeWidth="2.5"
-            className={up ? "stroke-emerald-300" : "stroke-rose-300"}
+            className={up ? "stroke-emerald-300" : down ? "stroke-rose-300" : "stroke-zinc-400"}
             strokeLinejoin="round"
             strokeLinecap="round"
           />
@@ -114,8 +125,22 @@ export function PriceChart({
                   key={point.print?.id ?? index}
                   cx={point.x}
                   cy={point.y}
-                  r={hover === index ? 5 : index === coords.length - 1 ? 4 : 2.75}
-                  className={up ? "fill-emerald-200" : "fill-rose-200"}
+                  r={hover === index || index === 0 || index === coords.length - 1 ? 4 : 2.75}
+                  className={
+                    index === 0
+                      ? "fill-zinc-200"
+                      : index === coords.length - 1
+                        ? up
+                          ? "fill-emerald-200"
+                          : down
+                            ? "fill-rose-200"
+                            : "fill-zinc-200"
+                        : up
+                          ? "fill-emerald-200/80"
+                          : down
+                            ? "fill-rose-200/80"
+                            : "fill-zinc-300"
+                  }
                 />
               ))
             : null}

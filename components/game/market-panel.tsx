@@ -141,11 +141,9 @@ export function MarketPanel({
                 tone={
                   price?.last == null
                     ? "valueNone"
-                    : price.last > (price.vwap ?? selected.basePrice)
-                      ? "valueUp"
-                      : price.last < (price.vwap ?? selected.basePrice)
-                        ? "valueDown"
-                        : "value"
+                    : price.last < (price.vwap ?? selected.basePrice)
+                      ? "valueDown"
+                      : "valueUp"
                 }
                 title="Last board print"
               />
@@ -435,7 +433,7 @@ function Stat({
 }: {
   label: string;
   value: string;
-  tone?: "value" | "valueNone" | "valueUp" | "valueDown" | "bid" | "ask" | "mv" | "vol" | "supply";
+  tone?: "valueNone" | "valueUp" | "valueDown" | "bid" | "ask" | "mv" | "vol" | "supply";
   title?: string;
 }) {
   return (
@@ -445,7 +443,6 @@ function Stat({
         "rounded-xl px-3 py-2 ring-1 ring-foreground/10",
         tone === "valueDown" && "bg-black text-white ring-white/50",
         tone === "valueUp" && "bg-white text-zinc-950 ring-zinc-300",
-        tone === "value" && "bg-orange-500 text-zinc-950 ring-orange-400",
         tone === "valueNone" && "bg-zinc-700 text-zinc-100 ring-zinc-500",
         tone === "bid" && "bg-emerald-950/30",
         tone === "ask" && "bg-rose-950/25",
@@ -459,11 +456,9 @@ function Stat({
           "text-[11px] tracking-wide uppercase",
           tone === "valueDown" || tone === "valueNone"
             ? "text-white/70"
-            : tone === "value"
-              ? "text-orange-950/80"
-              : tone === "valueUp"
-                ? "text-zinc-500"
-                : "text-muted-foreground"
+            : tone === "valueUp"
+              ? "text-zinc-500"
+              : "text-muted-foreground"
         )}
       >
         {label}
@@ -473,7 +468,6 @@ function Stat({
           "font-heading text-lg tabular-nums",
           tone === "valueDown" && "text-white",
           tone === "valueUp" && "text-zinc-950",
-          tone === "value" && "text-zinc-950",
           tone === "valueNone" && "text-zinc-100",
           tone === "bid" && "text-emerald-200",
           tone === "ask" && "text-rose-200",
