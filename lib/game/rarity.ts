@@ -21,36 +21,6 @@ export const rarityText: Record<Rarity, string> = {
   legendary: "text-red-400",
 };
 
-const RARITY_BY_ID: Record<string, Rarity> = {
-  wood: "common",
-  berries: "common",
-  stone: "common",
-  wheat: "common",
-  fish: "common",
-  flower: "common",
-  herbs: "uncommon",
-  flax: "uncommon",
-  salt: "uncommon",
-  shell: "uncommon",
-  coal: "uncommon",
-  mushrooms: "rare",
-  iron: "rare",
-  honey: "rare",
-  coral: "legendary",
-  gem: "legendary",
-  bread: "common",
-  planks: "common",
-  basket: "uncommon",
-  brick: "uncommon",
-  charm: "uncommon",
-  salve: "rare",
-  stew: "rare",
-  candle: "legendary",
-  blade: "legendary",
-  jewel: "legendary",
-  "celestial-relic": "legendary",
-};
-
 export const rarityRank: Record<Rarity, number> = {
   common: 0,
   uncommon: 1,
@@ -58,19 +28,55 @@ export const rarityRank: Record<Rarity, number> = {
   legendary: 3,
 };
 
-export function rarityOf(itemId: string): Rarity {
-  return RARITY_BY_ID[itemId] ?? "common";
+const RARITY_BY_QUARTILE: Rarity[] = ["common", "uncommon", "rare", "legendary"];
+
+export type RarityMap = Record<string, Rarity>;
+
+export function rarityFromHeld(itemIds: string[], heldByItem: Record<string, number>): RarityMap {
+  const ranked = [...itemIds].sort((a, b) => {
+    const diff = (heldByItem[b] ?? 0) - (heldByItem[a] ?? 0);
+    if (diff !== 0) return diff;
+    return a.localeCompare(b);
+  });
+  const n = Math.max(1, ranked.length);
+  const map: RarityMap = {};
+  let i = 0;
+  while (i < ranked.length) {
+    const volume = heldByItem[ranked[i]] ?? 0;
+    let end = i + 1;
+    while (end < ranked.length && (heldByItem[ranked[end]] ?? 0) === volume) end += 1;
+    const quartile = Math.min(3, Math.floor((i * 4) / n));
+    const rarity = RARITY_BY_QUARTILE[quartile];
+    for (let k = i; k < end; k += 1) map[ranked[k]] = rarity;
+    i = end;
+  }
+  return map;
+}
+
+export function rarityMapFromPrices(
+  itemIds: string[],
+  prices: { itemId: string; held: number }[]
+): RarityMap {
+  const held: Record<string, number> = {};
+  for (const id of itemIds) held[id] = 0;
+  for (const row of prices) held[row.itemId] = row.held;
+  return rarityFromHeld(itemIds, held);
+}
+
+export function rarityOf(itemId: string, map?: RarityMap): Rarity {
+  return map?.[itemId] ?? "common";
 }
 
 export function compareByCommonness(
   a: { id: string; name?: string },
-  b: { id: string; name?: string }
+  b: { id: string; name?: string },
+  map?: RarityMap
 ) {
-  const rank = rarityRank[rarityOf(a.id)] - rarityRank[rarityOf(b.id)];
+  const rank = rarityRank[rarityOf(a.id, map)] - rarityRank[rarityOf(b.id, map)];
   if (rank !== 0) return rank;
   return (a.name ?? a.id).localeCompare(b.name ?? b.id);
 }
 
-export function rarityClass(itemId: string) {
-  return rarityRing[rarityOf(itemId)];
+export function rarityClass(itemId: string, map?: RarityMap) {
+  return rarityRing[rarityOf(itemId, map)];
 }

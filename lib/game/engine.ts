@@ -23,7 +23,7 @@ import {
   foodById,
   type BuffKind,
 } from "@/lib/game/consumables";
-import { rarityOf } from "@/lib/game/rarity";
+import { rarityFromHeld, rarityOf } from "@/lib/game/rarity";
 import { getDb } from "@/lib/game/db";
 import { BOT_PROFILES, botSpread } from "@/lib/game/bots";
 import { computeFairValue } from "@/lib/game/market";
@@ -307,14 +307,15 @@ function grantSearchLoot(
 
 function rollSearchLoot(locationId: string, luck = 1, skipCommon = false) {
   let pool = materialsAt(locationId);
+  const rarityMap = rarityFromHeld(Object.keys(itemById), packTotals());
   if (skipCommon) {
-    const filtered = pool.filter((item) => rarityOf(item.id) !== "common");
+    const filtered = pool.filter((item) => rarityOf(item.id, rarityMap) !== "common");
     if (filtered.length > 0) pool = filtered;
   }
   if (pool.length === 0) return { itemId: "", qty: 0 };
   const weights = pool.map((item) => {
     let weight = searchWeight(item);
-    const rarity = rarityOf(item.id);
+    const rarity = rarityOf(item.id, rarityMap);
     if (luck > 1 && rarity === "legendary") {
       weight *= luck;
     } else if (luck > 1 && rarity === "rare") {

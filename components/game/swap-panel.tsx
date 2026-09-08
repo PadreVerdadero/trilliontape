@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { itemById, itemsByCommonness } from "@/lib/game/catalog";
 import { formatCoins, formatNumber } from "@/lib/game/format";
-import { rarityClass } from "@/lib/game/rarity";
+import { rarityClass, type RarityMap } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
 import type { InventoryRow, SwapOffer, TravelerRow } from "@/lib/game/types";
 
@@ -42,6 +42,7 @@ export function SwapPanel({
   swaps,
   travelers,
   pending,
+  rarityMap,
   onPropose,
   onAccept,
   onCancel,
@@ -52,6 +53,7 @@ export function SwapPanel({
   swaps: SwapOffer[];
   travelers: TravelerRow[];
   pending: boolean;
+  rarityMap?: RarityMap;
   onPropose: (payload: {
     toUsername: string | null;
     giveGold: number;
@@ -145,6 +147,7 @@ export function SwapPanel({
           goldHint={`You have ${formatCoins(gold)} free.`}
           legs={giveLegs}
           itemChoices={owned}
+          rarityMap={rarityMap}
           onPick={(itemId) =>
             setGiveLegs((rows) => pickLeg(rows, itemId))
           }
@@ -160,6 +163,7 @@ export function SwapPanel({
           goldHint="Gold they must send you."
           legs={wantLegs}
           itemChoices={itemsByCommonness.map((item) => ({ itemId: item.id, name: item.name }))}
+          rarityMap={rarityMap}
           onPick={(itemId) => setWantLegs((rows) => pickLeg(rows, itemId))}
           onChange={(index, patch) => updateLeg("want", index, patch)}
           onRemove={(index) =>
@@ -205,6 +209,7 @@ function LegEditor({
   goldHint,
   legs,
   itemChoices,
+  rarityMap,
   onPick,
   onChange,
   onRemove,
@@ -215,6 +220,7 @@ function LegEditor({
   goldHint: string;
   legs: LegDraft[];
   itemChoices: { itemId: string; name: string; quantity?: number }[];
+  rarityMap?: RarityMap;
   onPick: (itemId: string) => void;
   onChange: (index: number, patch: Partial<LegDraft>) => void;
   onRemove: (index: number) => void;
@@ -244,7 +250,7 @@ function LegEditor({
                 className={cn(
                   "grid size-11 place-items-center rounded-xl text-lg ring-1 hover:bg-card md:size-10",
                   active ? "bg-primary/25 ring-primary" : "bg-background/70",
-                  rarityClass(item.itemId)
+                  rarityClass(item.itemId, rarityMap)
                 )}
               >
                 {catalog?.emoji ?? "?"}

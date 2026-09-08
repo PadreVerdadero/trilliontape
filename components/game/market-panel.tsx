@@ -4,15 +4,21 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { itemById, itemsByCommonness } from "@/lib/game/catalog";
+import { itemById, items } from "@/lib/game/catalog";
 import { formatCoins, formatNumber } from "@/lib/game/format";
-import { rarityClass, rarityLabel, rarityOf, rarityText } from "@/lib/game/rarity";
+import {
+  compareByCommonness,
+  rarityClass,
+  rarityLabel,
+  rarityMapFromPrices,
+  rarityOf,
+  rarityText,
+} from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
 import { useOrderBook } from "@/hooks/use-game";
 import { ItemChip } from "@/components/game/item-chip";
 import { PriceChart } from "@/components/game/price-chart";
 import { SwapPanel } from "@/components/game/swap-panel";
-import { isBotUsername } from "@/lib/game/bots";
 import type { GameState, OrderSide } from "@/lib/game/types";
 
 function unitRows<T extends { remaining: number }>(rows: T[]) {
@@ -63,6 +69,14 @@ export function MarketPanel({
 }) {
   const selected = itemById[selectedItemId];
   const price = state.prices.find((row) => row.itemId === selectedItemId);
+  const rarityMap = useMemo(
+    () => rarityMapFromPrices(items.map((item) => item.id), state.prices),
+    [state.prices]
+  );
+  const rankedItems = useMemo(
+    () => [...items].sort((a, b) => compareByCommonness(a, b, rarityMap)),
+    [rarityMap]
+  );
   const { book, reloadBook } = useOrderBook(selectedItemId);
   const [side, setSide] = useState<OrderSide>("buy");
   const [priceInput, setPriceInput] = useState("");
@@ -235,8 +249,8 @@ export function MarketPanel({
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
               <p className="mb-2 font-heading text-lg text-emerald-100">Bids</p>
-              <p className="mb-3 text-xs text-muted-foreground">
-                Each line is one unit. Tap to sell 1, or tap yours to cancel 1.
+              <p className="mb-2 text-[11px] text-muted-foreground">
+                Tap a row to sell 1. Tap yours to cancel 1.
               </p>
               <OrderList
                 empty="No bids. Post one above if you want this."
@@ -244,7 +258,6 @@ export function MarketPanel({
                 rows={book?.bids ?? []}
                 selfId={state.player.id}
                 pending={pending}
-                actionLabel="Sell 1"
                 onTake={async (id) => {
                   await onTake(id);
                   await reloadBook();
@@ -257,8 +270,8 @@ export function MarketPanel({
             </div>
             <div className="rounded-xl bg-rose-950/20 p-3 ring-1 ring-rose-400/20">
               <p className="mb-2 font-heading text-lg text-rose-100">Asks</p>
-              <p className="mb-3 text-xs text-muted-foreground">
-                Each line is one unit. Tap to buy 1, or tap yours to cancel 1.
+              <p className="mb-2 text-[11px] text-muted-foreground">
+                Tap a row to buy 1. Tap yours to cancel 1.
               </p>
               <OrderList
                 empty="No asks. Post your own, or wait for a regular."
@@ -266,7 +279,6 @@ export function MarketPanel({
                 rows={book?.asks ?? []}
                 selfId={state.player.id}
                 pending={pending}
-                actionLabel="Buy 1"
                 onTake={async (id) => {
                   await onTake(id);
                   await reloadBook();
@@ -291,12 +303,13 @@ export function MarketPanel({
           <span className="text-violet-200/90">Volume</span>
         </div>
         <div className="max-h-[min(72vh,40rem)] overflow-auto">
-          {itemsByCommonness.map((item) => {
+          {rankedItems.map((item) => {
             const quote = state.prices.find((row) => row.itemId === item.id);
             const active = item.id === selectedItemId;
             const wanted = quote?.wanted ?? 0;
             const listed = quote?.listed ?? 0;
             const volume = quote?.held ?? 0;
+            const rarity = rarityOf(item.id, rarityMap);
             return (
               <button
                 key={item.id}
@@ -308,11 +321,11 @@ export function MarketPanel({
                 )}
               >
                 <span className="flex min-w-0 items-center gap-2">
-                  <span className={cn("text-xl", rarityClass(item.id))}>{item.emoji}</span>
+                  <span className={cn("text-xl", rarityClass(item.id, rarityMap))}>{item.emoji}</span>
                   <span className="min-w-0">
                     <span className="block truncate font-medium">{item.name}</span>
-                    <span className={cn("text-[10px] uppercase tracking-wide", rarityText[rarityOf(item.id)])}>
-                      {rarityLabel[rarityOf(item.id)]}
+                    <span className={cn("text-[10px] uppercase tracking-wide", rarityText[rarity])}>
+                      {rarityLabel[rarity]}
                     </span>
                   </span>
                 </span>
@@ -361,7 +374,7 @@ export function MarketPanel({
               >
                 <span>
                   {order.side === "buy" ? "Buying" : "Selling"}{" "}
-                  <ItemChip itemId={order.itemId} qty={1} /> @ {formatCoins(order.price)}
+                  <ItemChip itemId={order.itemId} qty={1} rarityMap={rarityMap} /> @ {formatCoins(order.price)}
                 </span>
                 <Button
                   size="sm"
@@ -414,6 +427,7 @@ export function MarketPanel({
         swaps={state.swaps ?? []}
         travelers={state.travelers ?? []}
         pending={pending}
+        rarityMap={rarityMap}
         onPropose={onProposeSwap}
         onAccept={onAcceptSwap}
         onCancel={onCancelSwap}
@@ -469,7 +483,6 @@ function OrderList({
   selfId,
   pending,
   side,
-  actionLabel,
   onTake,
   onCancel,
 }: {
@@ -478,7 +491,6 @@ function OrderList({
   selfId: number;
   pending: boolean;
   side: OrderSide;
-  actionLabel: string;
   onTake: (id: number) => void;
   onCancel: (id: number) => void;
 }) {
@@ -487,11 +499,12 @@ function OrderList({
   }
   const units = unitRows(rows);
   return (
-    <ul className="max-h-[min(48vh,26rem)] space-y-2 overflow-y-auto pr-1">
+    <ul className="max-h-[min(56vh,34rem)] space-y-0.5 overflow-y-auto pr-0.5">
       {units.map((row) => {
         const yours = row.playerId === selfId;
         const govAsk = Boolean(row.isGov) && side === "sell";
         const govBid = Boolean(row.isGov) && side === "buy";
+        const name = row.isGov ? "Government" : yours ? "you" : row.username;
         return (
           <li key={`${row.id}-${row.unit}`}>
             <button
@@ -499,43 +512,23 @@ function OrderList({
               disabled={pending}
               onClick={() => (yours ? onCancel(row.id) : onTake(row.id))}
               className={cn(
-                "flex min-h-12 w-full items-center justify-between gap-3 rounded-xl px-3 py-3 text-left ring-1 disabled:opacity-100",
-                govAsk && "bg-white text-zinc-950 ring-2 ring-white hover:bg-zinc-100",
-                govBid && "bg-black text-white ring-2 ring-white/70 hover:bg-zinc-900",
-                !row.isGov && yours && "bg-primary/25 ring-2 ring-primary hover:bg-primary/35",
+                "flex h-7 w-full items-center justify-between gap-2 rounded-md px-2 text-left text-sm ring-1 disabled:opacity-100",
+                govAsk && "bg-white text-zinc-950 ring-zinc-300 hover:bg-zinc-100",
+                govBid && "bg-black text-white ring-white/50 hover:bg-zinc-900",
+                !row.isGov && yours && "bg-primary/25 ring-primary hover:bg-primary/35",
                 !row.isGov && !yours && "bg-background/60 ring-foreground/10 hover:bg-background"
               )}
             >
-              <span>
-                <span className="block text-base font-medium">{formatCoins(row.price)}</span>
-                <span
-                  className={cn(
-                    "text-xs",
-                    govAsk && "text-zinc-600",
-                    govBid && "text-white/70",
-                    !row.isGov && "text-muted-foreground"
-                  )}
-                >
-                  {row.isGov
-                    ? yours
-                      ? "treasury · tap to cancel 1"
-                      : "Government"
-                    : yours
-                      ? "your order"
-                      : isBotUsername(row.username)
-                        ? `${row.username} · regular`
-                        : row.username}
-                </span>
-              </span>
+              <span className="tabular-nums font-medium">{formatCoins(row.price)}</span>
               <span
                 className={cn(
-                  "shrink-0 text-sm font-medium",
-                  govAsk && "text-zinc-950",
-                  govBid && "text-white",
-                  !row.isGov && "text-primary"
+                  "min-w-0 truncate text-right text-[11px]",
+                  govAsk && "text-zinc-600",
+                  govBid && "text-white/80",
+                  !row.isGov && "text-muted-foreground"
                 )}
               >
-                {yours ? "Cancel 1" : actionLabel}
+                {name}
               </span>
             </button>
           </li>

@@ -1,5 +1,4 @@
 import type { Cosmetic, Item, Location, Recipe } from "@/lib/game/types";
-import { compareByCommonness } from "@/lib/game/rarity";
 
 export const WIN_ITEM_ID = "celestial-relic";
 export const STARTING_GOLD = 140;
@@ -506,7 +505,7 @@ const TRAVEL: Record<string, Record<string, number>> = {
 };
 
 export const itemById = Object.fromEntries(items.map((item) => [item.id, item]));
-export const itemsByCommonness = [...items].sort(compareByCommonness);
+export const itemsByCommonness = [...items].sort((a, b) => a.name.localeCompare(b.name));
 export const locationById = Object.fromEntries(
   locations.map((location) => [location.id, location])
 );

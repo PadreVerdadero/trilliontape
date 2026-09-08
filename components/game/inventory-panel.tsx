@@ -1,6 +1,6 @@
-import { itemById } from "@/lib/game/catalog";
+import { itemById, items } from "@/lib/game/catalog";
 import { formatCoins, formatNumber } from "@/lib/game/format";
-import { rarityClass } from "@/lib/game/rarity";
+import { rarityClass, rarityMapFromPrices } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
 import type { MarketPrice, PlayerState } from "@/lib/game/types";
 
@@ -15,6 +15,10 @@ export function InventoryPanel({
   onSelect?: (itemId: string) => void;
   selectedItemId?: string;
 }) {
+  const rarityMap = rarityMapFromPrices(
+    items.map((item) => item.id),
+    prices
+  );
   return (
     <div>
       <div className="grid w-full grid-cols-[1.25rem_minmax(0,1fr)_auto_auto_auto] items-center gap-1.5 rounded-lg px-1.5 py-1.5 sm:px-2">
@@ -49,7 +53,7 @@ export function InventoryPanel({
               className={cn(
                 "grid w-full grid-cols-[1.25rem_minmax(0,1fr)_auto_auto_auto] items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-sm hover:bg-background/70 sm:px-2 sm:py-1.5",
                 active && "bg-primary/15",
-                rarityClass(row.itemId)
+                rarityClass(row.itemId, rarityMap)
               )}
             >
               <span className="text-base leading-none">{item?.emoji}</span>
