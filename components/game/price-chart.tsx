@@ -91,7 +91,7 @@ export function PriceChart({
             "text-sm tabular-nums",
             up && "text-emerald-200",
             down && "text-rose-200",
-            traded && !up && !down && "text-muted-foreground"
+            traded && !up && !down && "text-sky-200"
           )}
           title={
             traded
@@ -100,7 +100,7 @@ export function PriceChart({
           }
         >
           {traded
-            ? `${up ? "▲" : down ? "▼" : "–"} ${formatCoins(Math.abs(delta))}`
+            ? `${up ? "▲" : down ? "▼" : "▬"} ${formatCoins(Math.abs(delta))}`
             : null}
         </p>
       </div>
