@@ -231,15 +231,39 @@ export function MarketPanel({
               ) : null}
             </div>
 
-            <PriceChart
-              compact
-              history={book?.history ?? []}
-              basePrice={selected.basePrice}
-              mv={price?.vwap ?? selected.basePrice}
-              bestBid={price?.bestBid}
-              bestAsk={price?.bestAsk}
-            />
+            <div className="rounded-xl bg-background/40 p-2.5 ring-1 ring-foreground/10">
+              <p className="mb-2 font-heading text-base">
+                Recent {selected.emoji} {selected.name} trades
+              </p>
+              {(book?.trades ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No prints for this item yet.</p>
+              ) : (
+                <ul className="max-h-36 space-y-1 overflow-y-auto text-sm">
+                  {(book?.trades ?? []).map((trade) => (
+                    <li
+                      key={trade.id}
+                      className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5"
+                    >
+                      <span>
+                        {formatNumber(trade.quantity)} @ {formatCoins(trade.price)}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {trade.buyUsername} bought from {trade.sellUsername}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
+
+          <PriceChart
+            history={book?.history ?? []}
+            basePrice={selected.basePrice}
+            mv={price?.vwap ?? selected.basePrice}
+            bestBid={price?.bestBid}
+            bestAsk={price?.bestAsk}
+          />
 
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
@@ -284,28 +308,6 @@ export function MarketPanel({
                 }}
               />
             </div>
-          </div>
-
-          <div className="rounded-xl bg-background/40 p-3 ring-1 ring-foreground/10">
-            <p className="mb-2 font-heading text-base">
-              Recent {selected.emoji} {selected.name} trades
-            </p>
-            {(book?.trades ?? []).length === 0 ? (
-              <p className="text-sm text-muted-foreground">No prints for this item yet.</p>
-            ) : (
-              <ul className="max-h-40 space-y-1 overflow-y-auto text-sm">
-                {(book?.trades ?? []).map((trade) => (
-                  <li key={trade.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                    <span>
-                      {formatNumber(trade.quantity)} @ {formatCoins(trade.price)}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {trade.buyUsername} bought from {trade.sellUsername}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
           </div>
         </div>
       ) : null}
