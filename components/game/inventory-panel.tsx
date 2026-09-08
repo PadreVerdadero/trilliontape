@@ -23,12 +23,14 @@ export function InventoryPanel({
   onSelect,
   selectedItemId,
   rankedItemIds,
+  coinVolume,
 }: {
   player: PlayerState;
   prices: MarketPrice[];
   onSelect?: (itemId: string) => void;
   selectedItemId?: string;
   rankedItemIds: string[];
+  coinVolume: number;
 }) {
   const rarityMap = rarityMapFromPrices(
     items.map((item) => item.id),
@@ -48,10 +50,18 @@ export function InventoryPanel({
               : `${formatNumber(player.availableGold)} free`
           }
         >
-          {formatNumber(player.availableGold)}
-          {player.availableGold !== player.gold ? (
-            <span className="text-muted-foreground">/{formatNumber(player.gold)}</span>
-          ) : null}
+          <span className="block">
+            {formatNumber(player.availableGold)}
+            {player.availableGold !== player.gold ? (
+              <span className="text-muted-foreground">/{formatNumber(player.gold)}</span>
+            ) : null}
+          </span>
+          <span
+            className="block text-[10px] font-normal text-muted-foreground"
+            title="Coins sitting in every purse on the desk"
+          >
+            Vol {formatNumber(coinVolume)}
+          </span>
         </span>
       </div>
       {rows.map((row) => {

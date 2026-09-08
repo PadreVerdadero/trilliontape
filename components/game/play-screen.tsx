@@ -141,6 +141,7 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
               onSelect={setItemId}
               selectedItemId={itemId}
               rankedItemIds={marketSort.rankedItems.map((item) => item.id)}
+              coinVolume={state.coinVolume}
             />
           </div>
         </aside>

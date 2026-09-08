@@ -2199,6 +2199,15 @@ export function getGameState(userId: number, timeZone?: string): GameState {
     .all() as { username: string; wonAt: number }[];
 
   const prices = priceSheet();
+  const coinVolume = (
+    getDb()
+      .prepare(
+        `SELECT COALESCE(SUM(p.gold), 0) AS gold
+         FROM players p JOIN users u ON u.id = p.user_id
+         WHERE u.username != 'Banker'`
+      )
+      .get() as { gold: number }
+  ).gold;
   const festival: FestivalState = {
     timeZone: timeZone || "UTC",
     clockLabel: "",
@@ -2232,5 +2241,6 @@ export function getGameState(userId: number, timeZone?: string): GameState {
     festival,
     swaps: listSwaps(userId),
     travelers: listTravelers(userId),
+    coinVolume,
   };
 }

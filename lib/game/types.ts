@@ -241,6 +241,7 @@ export type GameState = {
   festival: FestivalState;
   swaps: SwapOffer[];
   travelers: TravelerRow[];
+  coinVolume: number;
 };
 
 export type PricePoint = {
