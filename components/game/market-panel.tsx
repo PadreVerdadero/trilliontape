@@ -91,9 +91,9 @@ export function MarketPanel({
           <p className="font-heading text-2xl sm:text-3xl">Player market</p>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
             Post a buy or sell at any whole-coin price of 1 or more. Tap a listing to take one.
-            MV is the average of the last 100 board trades. Listed is how many are for sale.
-            Volume is how many exist in packs — it rises when stock is minted (treasury asks, regular
-            restocks) and falls when it is burned (treasury bids).
+            MV is the average of the last 100 board trades. Bid/ask is units on the book
+            (bids/asks). Volume is how many exist in packs — it rises when stock is minted (treasury
+            asks, regular restocks) and falls when it is burned (treasury bids).
           </p>
         </div>
         {state.recentTrades[0] ? (
@@ -128,10 +128,10 @@ export function MarketPanel({
               />
               <Stat label="MV" value={formatCoins(price?.vwap ?? selected.basePrice)} tone="mv" />
               <Stat
-                label="Listed"
-                value={formatNumber(price?.listed ?? 0)}
+                label="Bid/Ask"
+                value={`${formatNumber(price?.wanted ?? 0)}/${formatNumber(price?.listed ?? 0)}`}
                 tone="vol"
-                hint={(price?.wanted ?? 0) > 0 ? `${formatNumber(price?.wanted ?? 0)} on bids` : "On the book"}
+                hint="Units on bids / units on asks"
               />
               <Stat
                 label="Volume"
@@ -151,8 +151,9 @@ export function MarketPanel({
             <p className="mb-3 font-heading text-lg">Post your own order</p>
             {state.player.isGov ? (
               <p className="mb-3 text-xs leading-5 text-amber-100/90">
-                Treasury desk: an ask mints new units into the game when it fills. A bid buys units
-                and burns them, so volume drops.
+                Treasury desk: unlimited, and it does not spend or add to your purse. An ask mints
+                new units when it fills (the buyer’s coins are burned). A bid pays the seller with
+                new coin and burns the goods, so volume drops.
               </p>
             ) : null}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[auto_1fr_1fr_auto]">
@@ -209,7 +210,12 @@ export function MarketPanel({
             </div>
           </div>
 
-          <PriceChart history={book?.history ?? []} basePrice={selected.basePrice} />
+          <PriceChart
+            history={book?.history ?? []}
+            basePrice={selected.basePrice}
+            bestBid={price?.bestBid}
+            bestAsk={price?.bestAsk}
+          />
 
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
@@ -247,18 +253,19 @@ export function MarketPanel({
       ) : null}
 
       <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
-        <div className="grid grid-cols-[minmax(0,1.3fr)_1fr_1fr_0.85fr_0.7fr_0.7fr] gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase sm:px-4">
+        <div className="grid grid-cols-[minmax(0,1.3fr)_1fr_1fr_0.85fr_0.9fr_0.7fr] gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase sm:px-4">
           <span>Item</span>
           <span className="text-emerald-200/90">Best bid</span>
           <span className="text-rose-200/90">Best ask</span>
           <span className="text-sky-200/90">MV</span>
-          <span className="text-amber-200/90">Listed</span>
+          <span className="text-amber-200/90">Bid/Ask</span>
           <span className="text-violet-200/90">Volume</span>
         </div>
         <div className="max-h-[min(72vh,40rem)] overflow-auto">
           {itemsByCommonness.map((item) => {
             const quote = state.prices.find((row) => row.itemId === item.id);
             const active = item.id === selectedItemId;
+            const wanted = quote?.wanted ?? 0;
             const listed = quote?.listed ?? 0;
             const volume = quote?.held ?? 0;
             return (
@@ -267,7 +274,7 @@ export function MarketPanel({
                 type="button"
                 onClick={() => pick(item.id)}
                 className={cn(
-                  "grid w-full grid-cols-[minmax(0,1.3fr)_1fr_1fr_0.85fr_0.7fr_0.7fr] items-center gap-2 border-b border-border/40 px-3 py-2.5 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4 sm:py-3",
+                  "grid w-full grid-cols-[minmax(0,1.3fr)_1fr_1fr_0.85fr_0.9fr_0.7fr] items-center gap-2 border-b border-border/40 px-3 py-2.5 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4 sm:py-3",
                   active && "bg-primary/15"
                 )}
               >
@@ -289,8 +296,8 @@ export function MarketPanel({
                 <span className="font-medium text-sky-200">
                   {formatCoins(quote?.vwap ?? item.basePrice)}
                 </span>
-                <span className="font-medium text-amber-200">
-                  {listed > 0 ? formatNumber(listed) : "—"}
+                <span className="font-medium tabular-nums text-amber-200">
+                  {formatNumber(wanted)}/{formatNumber(listed)}
                 </span>
                 <span className="font-medium text-violet-200">
                   {volume > 0 ? formatNumber(volume) : "—"}

@@ -4,9 +4,13 @@ import type { PricePoint } from "@/lib/game/types";
 export function PriceChart({
   history,
   basePrice,
+  bestBid,
+  bestAsk,
 }: {
   history: PricePoint[];
   basePrice: number;
+  bestBid?: number | null;
+  bestAsk?: number | null;
 }) {
   const points =
     history.length >= 2
@@ -16,10 +20,11 @@ export function PriceChart({
           { at: 1, price: basePrice },
         ];
   const prices = points.map((point) => point.price);
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
+  const extras = [bestBid, bestAsk].filter((value): value is number => value != null);
+  const min = Math.min(...prices, ...extras);
+  const max = Math.max(...prices, ...extras);
   const span = Math.max(1, max - min);
-  const pad = { top: 12, right: 8, bottom: 22, left: 36 };
+  const pad = { top: 14, right: 78, bottom: 22, left: 36 };
   const width = 640;
   const height = 180;
   const innerW = width - pad.left - pad.right;
@@ -27,9 +32,10 @@ export function PriceChart({
   const first = points[0].at;
   const last = points[points.length - 1].at;
   const timeSpan = Math.max(1, last - first);
+  const yFor = (price: number) => pad.top + (1 - (price - min) / span) * innerH;
   const coords = points.map((point) => {
     const x = pad.left + ((point.at - first) / timeSpan) * innerW;
-    const y = pad.top + (1 - (point.price - min) / span) * innerH;
+    const y = yFor(point.price);
     return { x, y };
   });
   const line = coords.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
@@ -38,6 +44,19 @@ export function PriceChart({
   const firstPrice = points[0].price;
   const up = lastPrice >= firstPrice;
   const traded = history.length > 2 || (history.length === 2 && history[0].price !== history[1].price);
+  const endX = pad.left + innerW;
+  const startX = pad.left + innerW * 0.62;
+  let bidLabelY = bestBid != null ? yFor(bestBid) : 0;
+  let askLabelY = bestAsk != null ? yFor(bestAsk) : 0;
+  if (bestBid != null && bestAsk != null && Math.abs(bidLabelY - askLabelY) < 14) {
+    if (bidLabelY >= askLabelY) {
+      bidLabelY += 8;
+      askLabelY -= 8;
+    } else {
+      bidLabelY -= 8;
+      askLabelY += 8;
+    }
+  }
 
   return (
     <div className="rounded-xl bg-background/40 p-3 ring-1 ring-foreground/10">
@@ -45,7 +64,8 @@ export function PriceChart({
         <div>
           <p className="font-heading text-lg">Price</p>
           <p className="text-xs text-muted-foreground">
-            {traded ? "Each trade is a point, oldest to newest." : "No trades yet. The line sits at the starting price."}
+            {traded ? "Each trade is a point, oldest to newest." : "No trades yet. The line sits at the starting price."}{" "}
+            Dashed marks on the right are the best bid and ask.
           </p>
         </div>
         <p className={up ? "text-sm text-emerald-200" : "text-sm text-rose-200"}>
@@ -71,6 +91,50 @@ export function PriceChart({
             className={up ? "fill-emerald-200" : "fill-rose-200"}
           />
         ))}
+        {bestBid != null ? (
+          <>
+            <line
+              x1={startX}
+              x2={endX}
+              y1={yFor(bestBid)}
+              y2={yFor(bestBid)}
+              strokeWidth="2"
+              strokeDasharray="5 4"
+              className="stroke-emerald-300"
+            />
+            <text
+              x={width - 4}
+              y={bidLabelY + 3}
+              textAnchor="end"
+              fill="currentColor"
+              className="fill-emerald-200 text-[11px]"
+            >
+              bid {formatCoins(bestBid)}
+            </text>
+          </>
+        ) : null}
+        {bestAsk != null ? (
+          <>
+            <line
+              x1={startX}
+              x2={endX}
+              y1={yFor(bestAsk)}
+              y2={yFor(bestAsk)}
+              strokeWidth="2"
+              strokeDasharray="5 4"
+              className="stroke-rose-300"
+            />
+            <text
+              x={width - 4}
+              y={askLabelY + 3}
+              textAnchor="end"
+              fill="currentColor"
+              className="fill-rose-200 text-[11px]"
+            >
+              ask {formatCoins(bestAsk)}
+            </text>
+          </>
+        ) : null}
         <text x="4" y={pad.top + 4} fill="currentColor" className="text-[11px] text-muted-foreground">
           {formatCoins(max)}
         </text>

@@ -111,6 +111,7 @@ export type PlayerState = {
   goldDonated: number;
   titles: string[];
   isGov: boolean;
+  isAdmin: boolean;
 };
 
 export type MarketPrice = {

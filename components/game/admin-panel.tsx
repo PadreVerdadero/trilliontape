@@ -1,0 +1,85 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { itemById } from "@/lib/game/catalog";
+import type { PlayerState } from "@/lib/game/types";
+
+export function AdminPanel({
+  player,
+  selectedItemId,
+  pending,
+  onSetGold,
+  onSetItem,
+}: {
+  player: PlayerState;
+  selectedItemId: string;
+  pending: boolean;
+  onSetGold: (gold: number) => Promise<unknown>;
+  onSetItem: (itemId: string, quantity: number) => Promise<unknown>;
+}) {
+  const [goldInput, setGoldInput] = useState(String(player.gold));
+  const selected = itemById[selectedItemId];
+  const held = player.inventory.find((row) => row.itemId === selectedItemId)?.quantity ?? 0;
+  const [qtyInput, setQtyInput] = useState(String(held));
+
+  useEffect(() => {
+    setGoldInput(String(player.gold));
+  }, [player.gold]);
+
+  useEffect(() => {
+    setQtyInput(String(held));
+  }, [held, selectedItemId]);
+
+  return (
+    <div className="border-b border-amber-400/30 bg-amber-950/25 px-3 py-2 sm:px-4">
+      <div className="mx-auto flex w-full max-w-[90rem] flex-col gap-3 sm:flex-row sm:items-end">
+        <p className="font-heading text-sm text-amber-100">Admin</p>
+        <div className="grid flex-1 gap-2 sm:grid-cols-2">
+          <div className="flex items-end gap-2">
+            <div className="min-w-0 flex-1 space-y-1">
+              <Label htmlFor="admin-gold">Coins</Label>
+              <Input
+                id="admin-gold"
+                inputMode="numeric"
+                value={goldInput}
+                onChange={(event) => setGoldInput(event.target.value)}
+              />
+            </div>
+            <Button
+              size="sm"
+              className="h-11 md:h-8"
+              disabled={pending}
+              onClick={() => void onSetGold(Number(goldInput))}
+            >
+              Set
+            </Button>
+          </div>
+          <div className="flex items-end gap-2">
+            <div className="min-w-0 flex-1 space-y-1">
+              <Label htmlFor="admin-qty">
+                {selected ? `${selected.emoji} ${selected.name}` : "Item"} qty
+              </Label>
+              <Input
+                id="admin-qty"
+                inputMode="numeric"
+                value={qtyInput}
+                onChange={(event) => setQtyInput(event.target.value)}
+              />
+            </div>
+            <Button
+              size="sm"
+              className="h-11 md:h-8"
+              disabled={pending || !selected}
+              onClick={() => void onSetItem(selectedItemId, Number(qtyInput))}
+            >
+              Set
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

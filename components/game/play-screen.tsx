@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { AdminPanel } from "@/components/game/admin-panel";
 import { InventoryPanel } from "@/components/game/inventory-panel";
 import { MarketPanel } from "@/components/game/market-panel";
 import { useGame } from "@/hooks/use-game";
@@ -57,7 +58,8 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
             <p className="font-heading text-lg">🏮 Lantern Bazaar</p>
             <span className="hidden truncate text-sm text-muted-foreground sm:inline">
               {player.username}
-              {player.isGov ? " · treasury" : ""}
+            {player.isGov ? " · treasury ∞" : ""}
+              {player.isAdmin ? " · admin" : ""}
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -70,6 +72,15 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
             >
               {player.isGov ? "Leave office" : "Play as government"}
             </Button>
+            <Button
+              size="sm"
+              variant={player.isAdmin ? "secondary" : "outline"}
+              className="h-9"
+              disabled={pending}
+              onClick={() => void run({ action: "admin", on: !player.isAdmin })}
+            >
+              {player.isAdmin ? "Leave admin" : "Admin"}
+            </Button>
             <form action="/auth/logout" method="post">
               <button
                 type="submit"
@@ -80,6 +91,15 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
             </form>
           </div>
         </div>
+        {player.isAdmin ? (
+          <AdminPanel
+            player={player}
+            selectedItemId={itemId}
+            pending={pending}
+            onSetGold={(gold) => run({ action: "adminGold", gold })}
+            onSetItem={(itemId, quantity) => run({ action: "adminItem", itemId, quantity })}
+          />
+        ) : null}
         {player.lastEvent ? (
           <p className="mx-auto w-full max-w-[90rem] truncate px-3 pb-2 text-sm text-muted-foreground sm:px-4">
             {player.lastEvent}

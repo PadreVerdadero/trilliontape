@@ -21,6 +21,9 @@ import {
   takeOrder,
   consumeItem,
   setGovernment,
+  setAdmin,
+  adminSetGold,
+  adminSetItem,
 } from "@/lib/game/engine";
 
 type ActionBody = {
@@ -53,6 +56,9 @@ type ActionBody = {
   | { action: "swapCancel"; offerId: number }
   | { action: "swapDecline"; offerId: number }
   | { action: "government"; on: boolean }
+  | { action: "admin"; on: boolean }
+  | { action: "adminGold"; gold: number }
+  | { action: "adminItem"; itemId: string; quantity: number }
 );
 
 export async function POST(request: Request) {
@@ -126,6 +132,15 @@ export async function POST(request: Request) {
         break;
       case "government":
         setGovernment(userId, Boolean(body.on));
+        break;
+      case "admin":
+        setAdmin(userId, Boolean(body.on));
+        break;
+      case "adminGold":
+        adminSetGold(userId, Number(body.gold));
+        break;
+      case "adminItem":
+        adminSetItem(userId, String(body.itemId), Number(body.quantity));
         break;
       default:
         throw new Error("Unknown action.");

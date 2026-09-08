@@ -24,7 +24,9 @@ export function InventoryPanel({
           {formatNumber(player.gold)}
         </span>
         <span className="tabular-nums text-right text-xs text-muted-foreground">—</span>
-        <span className="tabular-nums text-right text-xs text-muted-foreground">—</span>
+        <span className="tabular-nums text-right text-xs text-muted-foreground">
+          {player.isGov ? "∞" : "—"}
+        </span>
       </div>
       {player.inventory.length === 0 ? (
         <p className="px-2 py-2 text-xs leading-5 text-muted-foreground">No goods yet. Buy on the board.</p>

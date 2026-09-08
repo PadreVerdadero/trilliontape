@@ -91,6 +91,7 @@ type PlayerRow = {
   donate_count: number;
   wardrobe_vp: number;
   is_gov: number;
+  is_admin: number;
 };
 
 function nowMs() {
@@ -100,7 +101,7 @@ function nowMs() {
 function loadPlayerRow(userId: number): PlayerRow {
   const row = getDb()
     .prepare(
-      `SELECT p.*, u.username, COALESCE(u.is_gov, 0) AS is_gov
+      `SELECT p.*, u.username, COALESCE(u.is_gov, 0) AS is_gov, COALESCE(u.is_admin, 0) AS is_admin
        FROM players p
        JOIN users u ON u.id = p.user_id
        WHERE p.user_id = ?`
@@ -144,11 +145,13 @@ function reservedItems(userId: number) {
 }
 
 function reservedGold(userId: number) {
-  const bids = getDb()
-    .prepare(
-      "SELECT COALESCE(SUM(price * remaining), 0) AS gold FROM orders WHERE user_id = ? AND side = 'buy' AND remaining > 0"
-    )
-    .get(userId) as { gold: number };
+  const bids = isGov(userId)
+    ? { gold: 0 }
+    : (getDb()
+        .prepare(
+          "SELECT COALESCE(SUM(price * remaining), 0) AS gold FROM orders WHERE user_id = ? AND side = 'buy' AND remaining > 0"
+        )
+        .get(userId) as { gold: number });
   const swaps = getDb()
     .prepare(
       "SELECT COALESCE(SUM(give_gold), 0) AS gold FROM swap_offers WHERE from_user_id = ? AND status = 'open'"
@@ -439,14 +442,18 @@ function executeFill(
   const govBuy = isGov(buy.user_id);
   const govSell = isGov(sell.user_id);
   const db = getDb();
-  db.prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(
-    price * quantity,
-    buy.user_id
-  );
-  db.prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?").run(
-    price * quantity,
-    sell.user_id
-  );
+  if (!govBuy) {
+    db.prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(
+      price * quantity,
+      buy.user_id
+    );
+  }
+  if (!govSell) {
+    db.prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?").run(
+      price * quantity,
+      sell.user_id
+    );
+  }
   if (!govSell) removeItem(sell.user_id, itemId, quantity);
   if (!govBuy) addItem(buy.user_id, itemId, quantity);
   const buyLeft = buy.remaining - quantity;
@@ -820,7 +827,7 @@ export function placeOrder(
         : "Quantity must be a whole number from 1 to 99."
     );
   }
-  if (side === "buy" && availableGold(userId) < price * quantity) {
+  if (side === "buy" && !isGov(userId) && availableGold(userId) < price * quantity) {
     throw new Error("Not enough free coin. Cancel a bid or sell something.");
   }
   if (side === "sell" && !isGov(userId) && availableItem(userId, itemId) < quantity) {
@@ -862,7 +869,7 @@ export function takeOrder(userId: number, orderId: number, quantity = 1) {
   const fillQty = Math.min(quantity, order.remaining);
 
   if (order.side === "sell") {
-    if (availableGold(userId) < order.price * fillQty) {
+    if (!isGov(userId) && availableGold(userId) < order.price * fillQty) {
       throw new Error("Not enough coin to take that ask.");
     }
     const info = db
@@ -917,24 +924,65 @@ export function cancelOrder(userId: number, orderId: number) {
   setEvent(userId, "Order pulled from the board.");
 }
 
-const GOV_TREASURY = 250_000;
-
 export function setGovernment(userId: number, on: boolean) {
   resolveBusy(userId);
   if (isBot(userId)) throw new Error("Plaza regulars cannot hold office.");
   getDb().prepare("UPDATE users SET is_gov = ? WHERE id = ?").run(on ? 1 : 0, userId);
   if (on) {
-    getDb()
-      .prepare("UPDATE players SET gold = MAX(gold, ?) WHERE user_id = ?")
-      .run(GOV_TREASURY, userId);
     setEvent(
       userId,
-      "You hold the treasury. Asks mint new stock into the world. Bids buy stock and burn it, so volume falls."
+      "You hold the treasury. It is unlimited and does not touch your purse. Asks mint new stock. Bids pay sellers with new coin and burn the goods."
     );
   } else {
     getDb().prepare("DELETE FROM orders WHERE user_id = ? AND remaining > 0").run(userId);
     setEvent(userId, "You left office. Open treasury orders were pulled.");
   }
+}
+
+function isAdmin(userId: number) {
+  const row = getDb()
+    .prepare("SELECT COALESCE(is_admin, 0) AS is_admin FROM users WHERE id = ?")
+    .get(userId) as { is_admin: number } | undefined;
+  return Boolean(row?.is_admin);
+}
+
+function requireAdmin(userId: number) {
+  if (!isAdmin(userId)) throw new Error("Admin mode is off.");
+}
+
+export function setAdmin(userId: number, on: boolean) {
+  resolveBusy(userId);
+  if (isBot(userId)) throw new Error("Plaza regulars cannot open admin.");
+  getDb().prepare("UPDATE users SET is_admin = ? WHERE id = ?").run(on ? 1 : 0, userId);
+  setEvent(userId, on ? "Admin mode on. You can set coins and pack quantities." : "Admin mode off.");
+}
+
+export function adminSetGold(userId: number, gold: number) {
+  requireAdmin(userId);
+  if (!Number.isInteger(gold) || gold < 0 || gold > 9_999_999) {
+    throw new Error("Coins must be a whole number from 0 to 9,999,999.");
+  }
+  getDb().prepare("UPDATE players SET gold = ? WHERE user_id = ?").run(gold, userId);
+  setEvent(userId, `Admin set coins to ${formatCoins(gold)}.`);
+}
+
+export function adminSetItem(userId: number, itemId: string, quantity: number) {
+  requireAdmin(userId);
+  const item = itemById[itemId];
+  if (!item) throw new Error("Unknown item.");
+  if (!Number.isInteger(quantity) || quantity < 0 || quantity > 9_999) {
+    throw new Error("Quantity must be a whole number from 0 to 9,999.");
+  }
+  const db = getDb();
+  if (quantity === 0) {
+    db.prepare("DELETE FROM inventory WHERE user_id = ? AND item_id = ?").run(userId, itemId);
+  } else {
+    db.prepare(
+      `INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)
+       ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = excluded.quantity`
+    ).run(userId, itemId, quantity);
+  }
+  setEvent(userId, `Admin set ${item.emoji} ${item.name} to ${formatNumber(quantity)}.`);
 }
 
 function mapOrder(row: {
@@ -1919,6 +1967,7 @@ export function getGameState(userId: number, timeZone?: string): GameState {
     goldDonated: player.gold_donated ?? 0,
     titles: [],
     isGov: Boolean(player.is_gov),
+    isAdmin: Boolean(player.is_admin),
   };
 
   const myOrders = (
