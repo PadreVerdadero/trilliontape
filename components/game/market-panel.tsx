@@ -138,7 +138,15 @@ export function MarketPanel({
               <Stat
                 label="Value"
                 value={price?.last != null ? formatCoins(price.last) : "none"}
-                tone="value"
+                tone={
+                  price?.last == null
+                    ? "value"
+                    : price.last > (price.vwap ?? selected.basePrice)
+                      ? "valueUp"
+                      : price.last < (price.vwap ?? selected.basePrice)
+                        ? "valueDown"
+                        : "value"
+                }
                 title="Last board print"
               />
               <Stat
@@ -427,7 +435,7 @@ function Stat({
 }: {
   label: string;
   value: string;
-  tone?: "value" | "bid" | "ask" | "mv" | "vol" | "supply";
+  tone?: "value" | "valueUp" | "valueDown" | "bid" | "ask" | "mv" | "vol" | "supply";
   title?: string;
 }) {
   return (
@@ -435,7 +443,9 @@ function Stat({
       title={title}
       className={cn(
         "rounded-xl px-3 py-2 ring-1 ring-foreground/10",
-        tone === "value" && "bg-black text-white ring-white/50",
+        tone === "valueDown" && "bg-black text-white ring-white/50",
+        tone === "valueUp" && "bg-white text-zinc-950 ring-zinc-300",
+        tone === "value" && "bg-zinc-500 text-white ring-zinc-400",
         tone === "bid" && "bg-emerald-950/30",
         tone === "ask" && "bg-rose-950/25",
         tone === "mv" && "bg-sky-950/30",
@@ -446,7 +456,11 @@ function Stat({
       <p
         className={cn(
           "text-[11px] tracking-wide uppercase",
-          tone === "value" ? "text-white/70" : "text-muted-foreground"
+          tone === "valueDown" || tone === "value"
+            ? "text-white/70"
+            : tone === "valueUp"
+              ? "text-zinc-500"
+              : "text-muted-foreground"
         )}
       >
         {label}
@@ -454,6 +468,8 @@ function Stat({
       <p
         className={cn(
           "font-heading text-lg tabular-nums",
+          tone === "valueDown" && "text-white",
+          tone === "valueUp" && "text-zinc-950",
           tone === "value" && "text-white",
           tone === "bid" && "text-emerald-200",
           tone === "ask" && "text-rose-200",
@@ -492,7 +508,7 @@ function OrderList({
   return (
     <ul className="space-y-0.5 pr-0.5">
       {units.map((row) => {
-        const yours = row.playerId === selfId;
+        const yours = row.playerId === selfId && !row.isGov;
         const govAsk = Boolean(row.isGov) && side === "sell";
         const govBid = Boolean(row.isGov) && side === "buy";
         const name = row.isGov ? "Government" : yours ? "you" : row.username;

@@ -523,7 +523,11 @@ function matchItem(itemId: string) {
       sell: (typeof sell)[number];
     } | null = null;
     for (const bid of buy) {
-      const ask = sell.find((row) => row.user_id !== bid.user_id && bid.price >= row.price);
+      const ask = sell.find((row) => {
+        if (bid.price < row.price) return false;
+        if (row.user_id !== bid.user_id) return true;
+        return Boolean(row.treasury) !== Boolean(bid.treasury);
+      });
       if (ask) {
         pair = { buy: bid, sell: ask };
         break;
@@ -915,19 +919,20 @@ export function takeOrder(userId: number, orderId: number, quantity = 1) {
       }
     | undefined;
   if (!order) throw new Error("That order is gone.");
-  if (order.user_id === userId) throw new Error("That is your own order.");
+  const treasuryQuote = Boolean(order.treasury);
+  if (order.user_id === userId && !treasuryQuote) throw new Error("That is your own order.");
   if (!Number.isInteger(quantity) || quantity < 1) {
     throw new Error("Choose how many to take.");
   }
   const fillQty = Math.min(quantity, order.remaining);
 
   if (order.side === "sell") {
-    if (!isGov(userId) && availableGold(userId) < order.price * fillQty) {
+    if (availableGold(userId) < order.price * fillQty) {
       throw new Error("Not enough coin to take that ask.");
     }
-    const buyId = insertLiveOrder(userId, order.item_id, "buy", order.price, fillQty, isGov(userId));
+    const buyId = insertLiveOrder(userId, order.item_id, "buy", order.price, fillQty, false);
     executeFill(
-      { id: buyId, user_id: userId, price: order.price, remaining: fillQty, treasury: isGov(userId) ? 1 : 0 },
+      { id: buyId, user_id: userId, price: order.price, remaining: fillQty, treasury: 0 },
       {
         id: order.id,
         user_id: order.user_id,
@@ -940,10 +945,10 @@ export function takeOrder(userId: number, orderId: number, quantity = 1) {
       order.price
     );
   } else {
-    if (!isGov(userId) && availableItem(userId, order.item_id) < fillQty) {
+    if (availableItem(userId, order.item_id) < fillQty) {
       throw new Error("Not enough stock to fill that bid.");
     }
-    const sellId = insertLiveOrder(userId, order.item_id, "sell", order.price, fillQty, isGov(userId));
+    const sellId = insertLiveOrder(userId, order.item_id, "sell", order.price, fillQty, false);
     executeFill(
       {
         id: order.id,
@@ -952,7 +957,7 @@ export function takeOrder(userId: number, orderId: number, quantity = 1) {
         remaining: order.remaining,
         treasury: order.treasury,
       },
-      { id: sellId, user_id: userId, price: order.price, remaining: fillQty, treasury: isGov(userId) ? 1 : 0 },
+      { id: sellId, user_id: userId, price: order.price, remaining: fillQty, treasury: 0 },
       order.item_id,
       fillQty,
       order.price
@@ -961,10 +966,10 @@ export function takeOrder(userId: number, orderId: number, quantity = 1) {
   const item = itemById[order.item_id];
   setEvent(
     userId,
-    isGov(userId) && order.side === "buy"
-      ? `Treasury minted ${item.emoji} ${item.name} ×${formatNumber(fillQty)} into the market at ${formatCoins(order.price)}.`
-      : isGov(userId) && order.side === "sell"
-        ? `Treasury bought and burned ${item.emoji} ${item.name} ×${formatNumber(fillQty)} at ${formatCoins(order.price)}.`
+    treasuryQuote && order.side === "sell"
+      ? `Treasury minted ${item.emoji} ${item.name} ×${formatNumber(fillQty)} into your pack at ${formatCoins(order.price)}.`
+      : treasuryQuote && order.side === "buy"
+        ? `Sold into the treasury: ${item.emoji} ${item.name} ×${formatNumber(fillQty)} at ${formatCoins(order.price)}.`
         : `Filled ${item.emoji} ${item.name} ×${formatNumber(fillQty)} at ${formatCoins(order.price)}.`
   );
 }
