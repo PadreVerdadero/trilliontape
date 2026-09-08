@@ -475,24 +475,34 @@ function matchItem(itemId: string) {
   while (true) {
     const buy = db
       .prepare(
-        "SELECT id, user_id, price, remaining, COALESCE(treasury, 0) AS treasury FROM orders WHERE item_id = ? AND side = 'buy' AND remaining > 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker') ORDER BY price DESC, created_at ASC, id ASC"
+        `SELECT id, user_id, price, remaining, created_at, COALESCE(treasury, 0) AS treasury
+         FROM orders
+         WHERE item_id = ? AND side = 'buy' AND remaining > 0
+           AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')
+         ORDER BY price DESC, created_at ASC, id ASC`
       )
       .all(itemId) as {
       id: number;
       user_id: number;
       price: number;
       remaining: number;
+      created_at: number;
       treasury: number;
     }[];
     const sell = db
       .prepare(
-        "SELECT id, user_id, price, remaining, COALESCE(treasury, 0) AS treasury FROM orders WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker') ORDER BY price ASC, created_at ASC, id ASC"
+        `SELECT id, user_id, price, remaining, created_at, COALESCE(treasury, 0) AS treasury
+         FROM orders
+         WHERE item_id = ? AND side = 'sell' AND remaining > 0
+           AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')
+         ORDER BY price ASC, created_at ASC, id ASC`
       )
       .all(itemId) as {
       id: number;
       user_id: number;
       price: number;
       remaining: number;
+      created_at: number;
       treasury: number;
     }[];
 
@@ -858,7 +868,9 @@ export function placeOrder(
   if (side === "sell" && !treasury && availableItem(userId, itemId) < quantity) {
     throw new Error("Not enough unbound stock. Cancel a sell order first.");
   }
-  insertLiveOrder(userId, itemId, side, price, quantity, treasury);
+  for (let n = 0; n < quantity; n += 1) {
+    insertLiveOrder(userId, itemId, side, price, 1, treasury);
+  }
   matchItem(itemId);
   setEvent(
     userId,
@@ -945,14 +957,24 @@ export function takeOrder(userId: number, orderId: number, quantity = 1) {
   );
 }
 
-export function cancelOrder(userId: number, orderId: number) {
+export function cancelOrder(userId: number, orderId: number, quantity = 1) {
   resolveBusy(userId);
   const order = getDb()
-    .prepare("SELECT id, user_id FROM orders WHERE id = ?")
-    .get(orderId) as { id: number; user_id: number } | undefined;
+    .prepare("SELECT id, user_id, remaining FROM orders WHERE id = ?")
+    .get(orderId) as { id: number; user_id: number; remaining: number } | undefined;
   if (!order || order.user_id !== userId) throw new Error("You cannot cancel that.");
-  getDb().prepare("DELETE FROM orders WHERE id = ?").run(orderId);
-  setEvent(userId, "Order pulled from the board.");
+  if (!Number.isInteger(quantity) || quantity < 1) {
+    throw new Error("Choose how many to cancel.");
+  }
+  const pull = Math.min(quantity, order.remaining);
+  if (pull >= order.remaining) {
+    getDb().prepare("DELETE FROM orders WHERE id = ?").run(orderId);
+  } else {
+    getDb()
+      .prepare("UPDATE orders SET remaining = remaining - ? WHERE id = ?")
+      .run(pull, orderId);
+  }
+  setEvent(userId, pull === 1 ? "Pulled 1 from the board." : `Pulled ${formatNumber(pull)} from the board.`);
 }
 
 export function setGovernment(userId: number, on: boolean) {
@@ -1681,7 +1703,7 @@ export function tickBots() {
         continue;
       }
       const live = db
-        .prepare("SELECT COUNT(*) AS n FROM orders WHERE user_id = ? AND remaining > 0")
+        .prepare("SELECT COALESCE(SUM(remaining), 0) AS n FROM orders WHERE user_id = ? AND remaining > 0")
         .get(user.id) as { n: number };
       if (live.n >= 8) continue;
       const qty = profile.style === "thin" || profile.style === "wild" ? 1 : 1 + Math.floor(Math.random() * 3);

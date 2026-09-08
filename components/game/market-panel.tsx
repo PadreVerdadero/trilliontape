@@ -15,6 +15,16 @@ import { SwapPanel } from "@/components/game/swap-panel";
 import { isBotUsername } from "@/lib/game/bots";
 import type { GameState, OrderSide } from "@/lib/game/types";
 
+function unitRows<T extends { remaining: number }>(rows: T[]) {
+  return rows.flatMap((row) =>
+    Array.from({ length: Math.max(0, row.remaining) }, (_, unit) => ({
+      ...row,
+      remaining: 1,
+      unit,
+    }))
+  );
+}
+
 export function MarketPanel({
   state,
   pending,
@@ -90,8 +100,10 @@ export function MarketPanel({
         <div>
           <p className="font-heading text-2xl sm:text-3xl">Player market</p>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            Post a buy or sell at any whole-coin price of 1 or more. Tap a listing to take one;
-            tap your highlighted bid or ask to cancel it.
+            Post a buy or sell at any whole-coin price of 1 or more. A size of 3 still posts 3
+            quotes, listed one-by-one so you can take or cancel as many as you want. Crossing bids
+            and asks fill automatically (bid meets an equal or cheaper ask); if prices tie, the
+            earlier quote trades first.
             MV is the average of the last 100 board trades. Bid/ask is units on the book
             (bids/asks). Volume is how many exist in packs — it rises when a treasury ask fills or
             regulars restock, and falls when a treasury bid fills. Posting a treasury quote does not
@@ -223,7 +235,9 @@ export function MarketPanel({
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
               <p className="mb-2 font-heading text-lg text-emerald-100">Bids</p>
-              <p className="mb-3 text-xs text-muted-foreground">Tap a row to sell them 1. Tap yours to cancel.</p>
+              <p className="mb-3 text-xs text-muted-foreground">
+                Each line is one unit. Tap to sell 1, or tap yours to cancel 1.
+              </p>
               <OrderList
                 empty="No bids. Post one above if you want this."
                 side="buy"
@@ -243,7 +257,9 @@ export function MarketPanel({
             </div>
             <div className="rounded-xl bg-rose-950/20 p-3 ring-1 ring-rose-400/20">
               <p className="mb-2 font-heading text-lg text-rose-100">Asks</p>
-              <p className="mb-3 text-xs text-muted-foreground">Tap a row to buy 1 from them. Tap yours to cancel.</p>
+              <p className="mb-3 text-xs text-muted-foreground">
+                Each line is one unit. Tap to buy 1, or tap yours to cancel 1.
+              </p>
               <OrderList
                 empty="No asks. Post your own, or wait for a regular."
                 side="sell"
@@ -328,13 +344,13 @@ export function MarketPanel({
             Nothing resting on the board. Post a buy or sell above.
           </p>
         ) : (
-          <ul className="space-y-2">
-            {state.myOrders.map((order) => {
+          <ul className="max-h-[min(40vh,22rem)] space-y-2 overflow-y-auto">
+            {unitRows(state.myOrders).map((order) => {
               const govAsk = order.isGov && order.side === "sell";
               const govBid = order.isGov && order.side === "buy";
               return (
               <li
-                key={order.id}
+                key={`${order.id}-${order.unit}`}
                 className={cn(
                   "flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm",
                   govAsk && "bg-white text-zinc-950 ring-2 ring-white",
@@ -345,13 +361,7 @@ export function MarketPanel({
               >
                 <span>
                   {order.side === "buy" ? "Buying" : "Selling"}{" "}
-                  <ItemChip itemId={order.itemId} qty={order.remaining} /> @ {formatCoins(order.price)}
-                  {order.remaining > 1 ? (
-                    <span className={cn(govBid ? "text-white/70" : govAsk ? "text-zinc-600" : "text-muted-foreground")}>
-                      {" "}
-                      · {formatCoins(order.remaining * order.price)} total
-                    </span>
-                  ) : null}
+                  <ItemChip itemId={order.itemId} qty={1} /> @ {formatCoins(order.price)}
                 </span>
                 <Button
                   size="sm"
@@ -364,7 +374,7 @@ export function MarketPanel({
                   disabled={pending}
                   onClick={() => void onCancel(order.id)}
                 >
-                  Cancel
+                  Cancel 1
                 </Button>
               </li>
               );
@@ -475,14 +485,15 @@ function OrderList({
   if (rows.length === 0) {
     return <p className="text-sm leading-6 text-muted-foreground">{empty}</p>;
   }
+  const units = unitRows(rows);
   return (
-    <ul className="space-y-2">
-      {rows.map((row) => {
+    <ul className="max-h-[min(48vh,26rem)] space-y-2 overflow-y-auto pr-1">
+      {units.map((row) => {
         const yours = row.playerId === selfId;
         const govAsk = Boolean(row.isGov) && side === "sell";
         const govBid = Boolean(row.isGov) && side === "buy";
         return (
-          <li key={row.id}>
+          <li key={`${row.id}-${row.unit}`}>
             <button
               type="button"
               disabled={pending}
@@ -496,9 +507,7 @@ function OrderList({
               )}
             >
               <span>
-                <span className="block text-base font-medium">
-                  {formatNumber(row.remaining)} @ {formatCoins(row.price)}
-                </span>
+                <span className="block text-base font-medium">{formatCoins(row.price)}</span>
                 <span
                   className={cn(
                     "text-xs",
@@ -507,10 +516,15 @@ function OrderList({
                     !row.isGov && "text-muted-foreground"
                   )}
                 >
-                  {row.isGov ? (yours ? "treasury · tap to cancel" : "Government") : yours ? "your order" : isBotUsername(row.username)
-                    ? `${row.username} · regular`
-                    : row.username}
-                  {row.remaining > 1 ? ` · ${formatCoins(row.remaining * row.price)} total` : ""}
+                  {row.isGov
+                    ? yours
+                      ? "treasury · tap to cancel 1"
+                      : "Government"
+                    : yours
+                      ? "your order"
+                      : isBotUsername(row.username)
+                        ? `${row.username} · regular`
+                        : row.username}
                 </span>
               </span>
               <span
@@ -521,7 +535,7 @@ function OrderList({
                   !row.isGov && "text-primary"
                 )}
               >
-                {yours ? "Cancel" : actionLabel}
+                {yours ? "Cancel 1" : actionLabel}
               </span>
             </button>
           </li>
