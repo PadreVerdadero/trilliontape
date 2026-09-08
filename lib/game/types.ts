@@ -59,6 +59,7 @@ export type OrderRow = {
   price: number;
   remaining: number;
   createdAt: number;
+  isGov: boolean;
 };
 
 export type TradeRow = {
@@ -109,6 +110,7 @@ export type PlayerState = {
   boardFills: number;
   goldDonated: number;
   titles: string[];
+  isGov: boolean;
 };
 
 export type MarketPrice = {

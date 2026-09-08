@@ -13,7 +13,7 @@ export function validateCredentials(username: string, password: string) {
   if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
     return "Use 3–20 letters, numbers, or underscores.";
   }
-  if (username.toLowerCase() === "banker") {
+  if (username.toLowerCase() === "banker" || username.toLowerCase() === "government") {
     return "That name is reserved.";
   }
   if (password.length < 4) {

@@ -90,6 +90,7 @@ type PlayerRow = {
   gold_donated: number;
   donate_count: number;
   wardrobe_vp: number;
+  is_gov: number;
 };
 
 function nowMs() {
@@ -99,7 +100,7 @@ function nowMs() {
 function loadPlayerRow(userId: number): PlayerRow {
   const row = getDb()
     .prepare(
-      `SELECT p.*, u.username
+      `SELECT p.*, u.username, COALESCE(u.is_gov, 0) AS is_gov
        FROM players p
        JOIN users u ON u.id = p.user_id
        WHERE p.user_id = ?`
@@ -121,11 +122,13 @@ function reservedItems(userId: number) {
   const bump = (itemId: string, qty: number) => {
     map[itemId] = (map[itemId] ?? 0) + qty;
   };
-  const listed = getDb()
-    .prepare(
-      "SELECT item_id, COALESCE(SUM(remaining), 0) AS qty FROM orders WHERE user_id = ? AND side = 'sell' AND remaining > 0 GROUP BY item_id"
-    )
-    .all(userId) as { item_id: string; qty: number }[];
+  const listed = isGov(userId)
+    ? []
+    : (getDb()
+        .prepare(
+          "SELECT item_id, COALESCE(SUM(remaining), 0) AS qty FROM orders WHERE user_id = ? AND side = 'sell' AND remaining > 0 GROUP BY item_id"
+        )
+        .all(userId) as { item_id: string; qty: number }[]);
   for (const row of listed) bump(row.item_id, row.qty);
   const offered = getDb()
     .prepare(
@@ -398,6 +401,13 @@ function marketPrice(itemId: string): number {
   return computeFairValue(base, [...marketPrints(itemId)].reverse());
 }
 
+function isGov(userId: number) {
+  const row = getDb()
+    .prepare("SELECT COALESCE(is_gov, 0) AS is_gov FROM users WHERE id = ?")
+    .get(userId) as { is_gov: number } | undefined;
+  return Boolean(row?.is_gov);
+}
+
 function isBot(userId: number) {
   const row = getDb()
     .prepare("SELECT COALESCE(is_bot, 0) AS is_bot FROM users WHERE id = ?")
@@ -426,6 +436,8 @@ function executeFill(
   quantity: number,
   price: number
 ) {
+  const govBuy = isGov(buy.user_id);
+  const govSell = isGov(sell.user_id);
   const db = getDb();
   db.prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(
     price * quantity,
@@ -435,8 +447,8 @@ function executeFill(
     price * quantity,
     sell.user_id
   );
-  removeItem(sell.user_id, itemId, quantity);
-  addItem(buy.user_id, itemId, quantity);
+  if (!govSell) removeItem(sell.user_id, itemId, quantity);
+  if (!govBuy) addItem(buy.user_id, itemId, quantity);
   const buyLeft = buy.remaining - quantity;
   const sellLeft = sell.remaining - quantity;
   if (buyLeft <= 0) db.prepare("DELETE FROM orders WHERE id = ?").run(buy.id);
@@ -800,13 +812,18 @@ export function placeOrder(
   if (!Number.isInteger(price) || price < 1) {
     throw new Error("Price must be a whole number of at least 1.");
   }
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) {
-    throw new Error("Quantity must be a whole number from 1 to 99.");
+  const maxQty = isGov(userId) ? 999 : 99;
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > maxQty) {
+    throw new Error(
+      isGov(userId)
+        ? "Quantity must be a whole number from 1 to 999."
+        : "Quantity must be a whole number from 1 to 99."
+    );
   }
   if (side === "buy" && availableGold(userId) < price * quantity) {
     throw new Error("Not enough free coin. Cancel a bid or sell something.");
   }
-  if (side === "sell" && availableItem(userId, itemId) < quantity) {
+  if (side === "sell" && !isGov(userId) && availableItem(userId, itemId) < quantity) {
     throw new Error("Not enough unbound stock. Cancel a sell order first.");
   }
   getDb()
@@ -817,9 +834,13 @@ export function placeOrder(
   matchItem(itemId);
   setEvent(
     userId,
-    side === "buy"
-      ? `Bid posted: ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(price)}.`
-      : `Ask posted: ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(price)}.`
+    isGov(userId)
+      ? side === "buy"
+        ? `Treasury bid: will burn ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(price)}.`
+        : `Treasury ask: will mint ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(price)}.`
+      : side === "buy"
+        ? `Bid posted: ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(price)}.`
+        : `Ask posted: ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(price)}.`
   );
 }
 
@@ -858,7 +879,7 @@ export function takeOrder(userId: number, orderId: number, quantity = 1) {
       order.price
     );
   } else {
-    if (availableItem(userId, order.item_id) < fillQty) {
+    if (!isGov(userId) && availableItem(userId, order.item_id) < fillQty) {
       throw new Error("Not enough stock to fill that bid.");
     }
     const info = db
@@ -876,7 +897,14 @@ export function takeOrder(userId: number, orderId: number, quantity = 1) {
     );
   }
   const item = itemById[order.item_id];
-  setEvent(userId, `Filled ${item.emoji} ${item.name} ×${formatNumber(fillQty)} at ${formatCoins(order.price)}.`);
+  setEvent(
+    userId,
+    isGov(userId) && order.side === "buy"
+      ? `Treasury minted ${item.emoji} ${item.name} ×${formatNumber(fillQty)} into the market at ${formatCoins(order.price)}.`
+      : isGov(userId) && order.side === "sell"
+        ? `Treasury bought and burned ${item.emoji} ${item.name} ×${formatNumber(fillQty)} at ${formatCoins(order.price)}.`
+        : `Filled ${item.emoji} ${item.name} ×${formatNumber(fillQty)} at ${formatCoins(order.price)}.`
+  );
 }
 
 export function cancelOrder(userId: number, orderId: number) {
@@ -889,6 +917,25 @@ export function cancelOrder(userId: number, orderId: number) {
   setEvent(userId, "Order pulled from the board.");
 }
 
+const GOV_TREASURY = 250_000;
+
+export function setGovernment(userId: number, on: boolean) {
+  resolveBusy(userId);
+  if (isBot(userId)) throw new Error("Plaza regulars cannot hold office.");
+  getDb().prepare("UPDATE users SET is_gov = ? WHERE id = ?").run(on ? 1 : 0, userId);
+  if (on) {
+    getDb()
+      .prepare("UPDATE players SET gold = MAX(gold, ?) WHERE user_id = ?")
+      .run(GOV_TREASURY, userId);
+    setEvent(
+      userId,
+      "You hold the treasury. Asks mint new stock into the world. Bids buy stock and burn it, so volume falls."
+    );
+  } else {
+    getDb().prepare("DELETE FROM orders WHERE user_id = ? AND remaining > 0").run(userId);
+    setEvent(userId, "You left office. Open treasury orders were pulled.");
+  }
+}
 
 function mapOrder(row: {
   id: number;
@@ -899,16 +946,19 @@ function mapOrder(row: {
   price: number;
   remaining: number;
   created_at: number;
+  is_gov?: number;
 }): OrderRow {
+  const gov = Boolean(row.is_gov);
   return {
     id: row.id,
     playerId: row.user_id,
-    username: row.username,
+    username: gov ? "Government" : row.username,
     itemId: row.item_id,
     side: row.side,
     price: row.price,
     remaining: row.remaining,
     createdAt: row.created_at,
+    isGov: gov,
   };
 }
 
@@ -1362,7 +1412,8 @@ function playerTitles(username: string, titles: FestivalTitle[]) {
 export function getOrderBook(itemId: string): OrderBook {
   const rows = getDb()
     .prepare(
-      `SELECT o.id, o.user_id, u.username, o.item_id, o.side, o.price, o.remaining, o.created_at
+      `SELECT o.id, o.user_id, u.username, o.item_id, o.side, o.price, o.remaining, o.created_at,
+              COALESCE(u.is_gov, 0) AS is_gov
        FROM orders o JOIN users u ON u.id = o.user_id
        WHERE o.item_id = ? AND o.remaining > 0 AND u.username != 'Banker'`
     )
@@ -1375,6 +1426,7 @@ export function getOrderBook(itemId: string): OrderBook {
     price: number;
     remaining: number;
     created_at: number;
+    is_gov: number;
   }[];
   const mapped = rows.map(mapOrder);
   return {
@@ -1513,7 +1565,7 @@ export function tickBots() {
   db.prepare(
     "DELETE FROM orders WHERE created_at < ? AND user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)"
   ).run(now - 150_000);
-  for (const profile of shufflePick(BOT_PROFILES, 8)) {
+  for (const profile of shufflePick(BOT_PROFILES, 14)) {
     const user = db
       .prepare("SELECT id FROM users WHERE username = ? AND COALESCE(is_bot, 0) = 1")
       .get(profile.username) as { id: number } | undefined;
@@ -1550,23 +1602,23 @@ export function tickBots() {
       const live = db
         .prepare("SELECT COUNT(*) AS n FROM orders WHERE user_id = ? AND remaining > 0")
         .get(user.id) as { n: number };
-      if (live.n >= 6) continue;
-      const qty = profile.style === "thin" ? 1 : 1 + Math.floor(Math.random() * 3);
-      const quoteBoth = live.n <= 3 && Math.random() < 0.4;
-      const chase = Math.random() < 0.3;
-      const drift = 0.94 + Math.random() * 0.12;
+      if (live.n >= 8) continue;
+      const qty = profile.style === "thin" || profile.style === "wild" ? 1 : 1 + Math.floor(Math.random() * 3);
+      const quoteBoth = live.n <= 4 && Math.random() < 0.45;
+      const chase = Math.random() < (profile.style === "wild" ? 0.7 : 0.5);
+      const drift = 0.9 + Math.random() * 0.2;
       const buySide = Math.random() < 0.5;
       if (quoteBoth || buySide) {
         const bidPx = Math.max(
           1,
-          Math.round(fair * (chase ? 1.04 + Math.random() * 0.08 : spread.bid * drift))
+          Math.round(fair * (chase ? 1.08 + Math.random() * 0.32 : spread.bid * drift))
         );
         if (availableGold(user.id) >= bidPx * qty) placeOrder(user.id, itemId, "buy", bidPx, qty);
       }
       if (quoteBoth || !buySide) {
         const askPx = Math.max(
           1,
-          Math.round(fair * (chase ? 0.88 + Math.random() * 0.08 : spread.ask * drift))
+          Math.round(fair * (chase ? 0.55 + Math.random() * 0.32 : spread.ask * drift))
         );
         if (availableItem(user.id, itemId) >= qty) {
           placeOrder(user.id, itemId, "sell", askPx, qty);
@@ -1772,7 +1824,7 @@ function listTravelers(userId: number): TravelerRow[] {
       .prepare(
         `SELECT u.id, u.username, COALESCE(u.is_bot, 0) AS is_bot
          FROM users u JOIN players p ON p.user_id = u.id
-         WHERE u.id != ? AND u.username != 'Banker' AND COALESCE(u.is_bot, 0) = 0
+         WHERE u.id != ? AND u.username != 'Banker' AND COALESCE(u.is_bot, 0) = 0 AND COALESCE(u.is_gov, 0) = 0
          ORDER BY u.username COLLATE NOCASE ASC`
       )
       .all(userId) as { id: number; username: string; is_bot: number }[]
@@ -1866,12 +1918,14 @@ export function getGameState(userId: number, timeZone?: string): GameState {
     boardFills: player.board_fills ?? 0,
     goldDonated: player.gold_donated ?? 0,
     titles: [],
+    isGov: Boolean(player.is_gov),
   };
 
   const myOrders = (
     getDb()
       .prepare(
-        `SELECT o.id, o.user_id, u.username, o.item_id, o.side, o.price, o.remaining, o.created_at
+      `SELECT o.id, o.user_id, u.username, o.item_id, o.side, o.price, o.remaining, o.created_at,
+              COALESCE(u.is_gov, 0) AS is_gov
          FROM orders o JOIN users u ON u.id = o.user_id
          WHERE o.user_id = ? AND o.remaining > 0
          ORDER BY o.created_at DESC`

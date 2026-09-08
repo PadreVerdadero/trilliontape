@@ -57,17 +57,19 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
             <p className="font-heading text-lg">🏮 Lantern Bazaar</p>
             <span className="hidden truncate text-sm text-muted-foreground sm:inline">
               {player.username}
+              {player.isGov ? " · treasury" : ""}
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <span className="rounded-full bg-primary/15 px-3 py-1 text-sm font-medium text-primary">
-              {formatCoins(player.gold)}
-              {player.availableGold !== player.gold ? (
-                <span className="ml-1 font-normal text-muted-foreground">
-                  · {formatCoins(player.availableGold)} free
-                </span>
-              ) : null}
-            </span>
+            <Button
+              size="sm"
+              variant={player.isGov ? "secondary" : "outline"}
+              className="h-9"
+              disabled={pending}
+              onClick={() => void run({ action: "government", on: !player.isGov })}
+            >
+              {player.isGov ? "Leave office" : "Play as government"}
+            </Button>
             <form action="/auth/logout" method="post">
               <button
                 type="submit"
@@ -96,11 +98,13 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
       </header>
 
       <div className="mx-auto flex min-h-0 w-full max-w-[90rem] flex-1 overflow-hidden">
-        <aside className="flex w-[11.5rem] shrink-0 flex-col overflow-hidden border-r border-border/70 bg-card/40 sm:w-[16rem] lg:w-[17.5rem]">
-          <div className="grid grid-cols-[1fr_auto_auto] items-center gap-1 border-b border-border/60 px-2 py-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase sm:px-3">
-            <span>Pack</span>
-            <span>Qty</span>
-            <span>MV</span>
+        <aside className="flex w-[13.5rem] shrink-0 flex-col overflow-hidden border-r border-border/70 bg-card/40 sm:w-[18rem] lg:w-[20rem]">
+          <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto_auto_auto] items-center gap-1.5 border-b border-border/60 px-2 py-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase sm:px-3">
+            <span />
+            <span>Item</span>
+            <span className="text-right">Qty</span>
+            <span className="text-right">MV</span>
+            <span className="text-right">Total</span>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-1 py-1 sm:px-2">
             <InventoryPanel

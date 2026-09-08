@@ -20,6 +20,7 @@ import {
   startTravel,
   takeOrder,
   consumeItem,
+  setGovernment,
 } from "@/lib/game/engine";
 
 type ActionBody = {
@@ -51,6 +52,7 @@ type ActionBody = {
   | { action: "swapAccept"; offerId: number }
   | { action: "swapCancel"; offerId: number }
   | { action: "swapDecline"; offerId: number }
+  | { action: "government"; on: boolean }
 );
 
 export async function POST(request: Request) {
@@ -121,6 +123,9 @@ export async function POST(request: Request) {
         break;
       case "swapDecline":
         declineSwap(userId, Number(body.offerId));
+        break;
+      case "government":
+        setGovernment(userId, Boolean(body.on));
         break;
       default:
         throw new Error("Unknown action.");

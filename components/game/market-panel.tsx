@@ -92,7 +92,8 @@ export function MarketPanel({
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
             Post a buy or sell at any whole-coin price of 1 or more. Tap a listing to take one.
             MV is the average of the last 100 board trades. Listed is how many are for sale.
-            Volume is how many exist in packs and could be traded.
+            Volume is how many exist in packs — it rises when stock is minted (treasury asks, regular
+            restocks) and falls when it is burned (treasury bids).
           </p>
         </div>
         {state.recentTrades[0] ? (
@@ -148,6 +149,12 @@ export function MarketPanel({
 
           <div className="rounded-xl bg-background/40 p-3 ring-1 ring-foreground/10">
             <p className="mb-3 font-heading text-lg">Post your own order</p>
+            {state.player.isGov ? (
+              <p className="mb-3 text-xs leading-5 text-amber-100/90">
+                Treasury desk: an ask mints new units into the game when it fills. A bid buys units
+                and burns them, so volume drops.
+              </p>
+            ) : null}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[auto_1fr_1fr_auto]">
               <div className="space-y-1">
                 <Label>I want to</Label>
@@ -305,7 +312,12 @@ export function MarketPanel({
             {state.myOrders.map((order) => (
               <li
                 key={order.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-background/40 px-3 py-2 text-sm"
+                className={cn(
+                  "flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm",
+                  order.itemId === selectedItemId
+                    ? "bg-primary/25 ring-2 ring-primary"
+                    : "bg-background/40"
+                )}
               >
                 <span>
                   {order.side === "buy" ? "Buying" : "Selling"}{" "}
@@ -420,7 +432,7 @@ function OrderList({
   actionLabel,
   onTake,
 }: {
-  rows: { id: number; username: string; price: number; remaining: number; playerId: number }[];
+  rows: { id: number; username: string; price: number; remaining: number; playerId: number; isGov?: boolean }[];
   empty: string;
   selfId: number;
   pending: boolean;
@@ -440,7 +452,12 @@ function OrderList({
               type="button"
               disabled={pending || yours}
               onClick={() => onTake(row.id)}
-              className="flex min-h-12 w-full items-center justify-between gap-3 rounded-xl bg-background/60 px-3 py-3 text-left ring-1 ring-foreground/10 hover:bg-background disabled:opacity-60"
+              className={cn(
+                "flex min-h-12 w-full items-center justify-between gap-3 rounded-xl px-3 py-3 text-left ring-1 hover:bg-background disabled:opacity-100",
+                yours
+                  ? "bg-primary/25 ring-2 ring-primary"
+                  : "bg-background/60 ring-foreground/10"
+              )}
             >
               <span>
                 <span className="block text-base font-medium">
@@ -449,9 +466,11 @@ function OrderList({
                 <span className="text-xs text-muted-foreground">
                   {yours
                     ? "your order"
-                    : isBotUsername(row.username)
-                      ? `${row.username} · regular`
-                      : row.username}
+                    : row.isGov
+                      ? "Government"
+                      : isBotUsername(row.username)
+                        ? `${row.username} · regular`
+                        : row.username}
                   {row.remaining > 1 ? ` · ${formatCoins(row.remaining * row.price)} total` : ""}
                 </span>
               </span>

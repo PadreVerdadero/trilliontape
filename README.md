@@ -7,11 +7,12 @@ The UI is built for a phone in the pocket and a computer at the desk.
 ## How to play
 
 1. Create a traveler name and password, or press **Play as Guest** (Guest / play).
-2. Your **pack** is the left rail: how many you hold, and each item’s current **market value**.
-3. **Coin** sits at the top. **Net worth** (coin plus goods at MV) sits at the bottom.
-4. The **player market** never closes. Post a bid or ask at any whole-coin price of 1 or more. Crossing trades clear at the ask. MV is the simple average of the last 100 board trades (catalog starting price if none). **Listed** is how many units are for sale. **Volume** is how many exist in packs and could be traded.
+2. Your **pack** is the left rail: **Coins** first (how many you have), then each good with **Qty**, **MV**, and **Total** (qty × MV).
+3. **Net worth** (coin plus goods at MV) sits at the bottom.
+4. The **player market** never closes. Post a bid or ask at any whole-coin price of 1 or more. Crossing trades clear at the ask. MV is the simple average of the last 100 board trades (catalog starting price if none). **Listed** is how many units are for sale. **Volume** is how many exist in packs and could be traded — it goes **up** when new stock is minted (a filled treasury ask, or plaza regulars restocking) and **down** when stock is burned (a filled treasury bid).
 5. **Direct deals** let two travelers swap several different items plus gold. Those swaps do not print and do not move MV.
-6. Twelve plaza regulars (computer traders) keep the book lively.
+6. Twenty-two plaza regulars (computer traders) keep the book lively. Many will bid well above MV or ask well below it, even when that is a bad deal for them — those prints can still move the price.
+7. **Play as government** (practice) lets you mint and burn stock. A filled treasury **ask** creates new units into the buyer’s pack (volume up). A filled treasury **bid** pays for units and destroys them (volume down). You do not need the goods in your pack to post a treasury ask.
 
 You start with a little gold, wheat, wood, flax, and berries.
 

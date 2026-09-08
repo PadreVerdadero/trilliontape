@@ -160,6 +160,7 @@ function migrate(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_swap_legs_offer ON swap_legs(offer_id);
   `);
   ensureColumn(db, "users", "is_bot", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "users", "is_gov", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "players", "energy", `INTEGER NOT NULL DEFAULT ${ENERGY_MAX}`);
   ensureColumn(db, "players", "energy_max", `INTEGER NOT NULL DEFAULT ${ENERGY_MAX}`);
   ensureColumn(db, "players", "vp", "INTEGER NOT NULL DEFAULT 0");

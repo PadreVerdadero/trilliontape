@@ -2,7 +2,7 @@ export type BotProfile = {
   username: string;
   gold: number;
   specialty: string[];
-  style: "tight" | "wide" | "thin";
+  style: "tight" | "wide" | "thin" | "wild";
 };
 
 export const BOT_PROFILES: BotProfile[] = [
@@ -78,6 +78,66 @@ export const BOT_PROFILES: BotProfile[] = [
     specialty: ["coral", "gem", "candle", "blade", "jewel"],
     style: "thin",
   },
+  {
+    username: "Finch",
+    gold: 2100,
+    specialty: ["wheat", "berries", "flower", "honey", "bread"],
+    style: "wild",
+  },
+  {
+    username: "Soot",
+    gold: 3100,
+    specialty: ["coal", "iron", "stone", "brick", "blade"],
+    style: "wild",
+  },
+  {
+    username: "Vetch",
+    gold: 2300,
+    specialty: ["herbs", "flax", "mushrooms", "salve", "basket"],
+    style: "wild",
+  },
+  {
+    username: "Gale",
+    gold: 2900,
+    specialty: ["fish", "salt", "shell", "coral", "stew"],
+    style: "wild",
+  },
+  {
+    username: "Bramble",
+    gold: 2500,
+    specialty: ["wood", "planks", "berries", "mushrooms", "charm"],
+    style: "wide",
+  },
+  {
+    username: "Yarrow",
+    gold: 2700,
+    specialty: ["flower", "honey", "herbs", "candle", "salve"],
+    style: "wild",
+  },
+  {
+    username: "Knurl",
+    gold: 3400,
+    specialty: ["stone", "coal", "iron", "gem", "jewel"],
+    style: "thin",
+  },
+  {
+    username: "Dusk",
+    gold: 4000,
+    specialty: ["coral", "gem", "candle", "blade", "charm"],
+    style: "wild",
+  },
+  {
+    username: "Rill",
+    gold: 2200,
+    specialty: ["fish", "wheat", "salt", "bread", "stew"],
+    style: "wide",
+  },
+  {
+    username: "Quill",
+    gold: 2600,
+    specialty: ["flax", "wood", "basket", "planks", "flower"],
+    style: "wild",
+  },
 ];
 
 export const BOT_USERNAMES = new Set(BOT_PROFILES.map((bot) => bot.username));
@@ -87,7 +147,8 @@ export function isBotUsername(name: string) {
 }
 
 export function botSpread(style: BotProfile["style"]) {
-  if (style === "tight") return { bid: 0.88, ask: 1.12, take: 0.06 };
-  if (style === "wide") return { bid: 0.78, ask: 1.24, take: 0.1 };
-  return { bid: 0.7, ask: 1.34, take: 0.14 };
+  if (style === "tight") return { bid: 0.82, ask: 1.18, take: 0.05 };
+  if (style === "wide") return { bid: 0.68, ask: 1.38, take: 0.08 };
+  if (style === "thin") return { bid: 0.58, ask: 1.52, take: 0.12 };
+  return { bid: 0.42, ask: 1.85, take: 0.18 };
 }
