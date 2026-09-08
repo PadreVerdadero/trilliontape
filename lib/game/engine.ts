@@ -1617,23 +1617,12 @@ export function getOrderBook(itemId: string): OrderBook {
 }
 
 export function getPriceHistory(itemId: string): PricePoint[] {
-  const base = itemById[itemId]?.basePrice ?? 1;
   const rows = getDb()
     .prepare(
-      "SELECT created_at, price FROM trades WHERE item_id = ? ORDER BY created_at ASC, id ASC LIMIT 120"
+      `SELECT created_at, price FROM trades WHERE item_id = ? ORDER BY id DESC LIMIT ${MV_PRINTS}`
     )
     .all(itemId) as { created_at: number; price: number }[];
-  if (rows.length === 0) {
-    const now = Date.now();
-    return [
-      { at: now - 60 * 60 * 1000, price: base },
-      { at: now, price: base },
-    ];
-  }
-  return [
-    { at: rows[0].created_at - 1, price: base },
-    ...rows.map((row) => ({ at: row.created_at, price: row.price })),
-  ];
+  return [...rows].reverse().map((row) => ({ at: row.created_at, price: row.price }));
 }
 
 function bookDepth() {

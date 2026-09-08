@@ -261,7 +261,7 @@ export function MarketPanel({
           </div>
 
           <PriceChart
-            history={book?.history ?? []}
+            trades={book?.trades ?? []}
             basePrice={selected.basePrice}
             mv={price?.vwap ?? selected.basePrice}
             bestBid={price?.bestBid}
