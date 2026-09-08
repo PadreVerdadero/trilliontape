@@ -1,16 +1,20 @@
 import { asJson, handleError, requireUser } from "@/lib/game/api";
 import {
+  acceptSwap,
   bankSell,
   buyCosmetic,
   buyFromStall,
   buyRumor,
   cancelOrder,
+  cancelSwap,
   completeContract,
   craftItem,
+  declineSwap,
   donateLanterns,
   equipCosmetic,
   getGameState,
   placeOrder,
+  proposeSwap,
   arriveAt,
   rentCrate,
   sellToStall,
@@ -42,6 +46,17 @@ type ActionBody = {
   | { action: "crate"; stallId: string }
   | { action: "contract"; contractId: string }
   | { action: "donate" }
+  | {
+      action: "swapPropose";
+      toUsername?: string | null;
+      giveGold?: number;
+      wantGold?: number;
+      give?: { itemId: string; quantity: number }[];
+      want?: { itemId: string; quantity: number }[];
+    }
+  | { action: "swapAccept"; offerId: number }
+  | { action: "swapCancel"; offerId: number }
+  | { action: "swapDecline"; offerId: number }
 );
 
 export async function POST(request: Request) {
@@ -103,6 +118,24 @@ export async function POST(request: Request) {
         break;
       case "donate":
         donateLanterns(userId);
+        break;
+      case "swapPropose":
+        proposeSwap(userId, {
+          toUsername: body.toUsername,
+          giveGold: Number(body.giveGold ?? 0),
+          wantGold: Number(body.wantGold ?? 0),
+          give: body.give,
+          want: body.want,
+        });
+        break;
+      case "swapAccept":
+        acceptSwap(userId, Number(body.offerId));
+        break;
+      case "swapCancel":
+        cancelSwap(userId, Number(body.offerId));
+        break;
+      case "swapDecline":
+        declineSwap(userId, Number(body.offerId));
         break;
       default:
         throw new Error("Unknown action.");

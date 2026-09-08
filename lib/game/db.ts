@@ -138,6 +138,26 @@ function migrate(db: Database.Database) {
       special_sold TEXT NOT NULL DEFAULT '',
       PRIMARY KEY (user_id, day_key)
     );
+
+    CREATE TABLE IF NOT EXISTS swap_offers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      from_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      to_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      give_gold INTEGER NOT NULL DEFAULT 0,
+      want_gold INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS swap_legs (
+      offer_id INTEGER NOT NULL REFERENCES swap_offers(id) ON DELETE CASCADE,
+      side TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      quantity INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_swap_offers_open ON swap_offers(status, from_user_id, to_user_id);
+    CREATE INDEX IF NOT EXISTS idx_swap_legs_offer ON swap_legs(offer_id);
   `);
   ensureColumn(db, "users", "is_bot", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "players", "energy", `INTEGER NOT NULL DEFAULT ${ENERGY_MAX}`);

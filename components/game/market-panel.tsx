@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { useOrderBook } from "@/hooks/use-game";
 import { ItemChip } from "@/components/game/item-chip";
 import { PriceChart } from "@/components/game/price-chart";
+import { SwapPanel } from "@/components/game/swap-panel";
 import { isBotUsername } from "@/lib/game/bots";
 import type { GameState, OrderSide } from "@/lib/game/types";
 
@@ -20,6 +21,10 @@ export function MarketPanel({
   onOrder,
   onTake,
   onCancel,
+  onProposeSwap,
+  onAcceptSwap,
+  onCancelSwap,
+  onDeclineSwap,
   selectedItemId,
   onSelectItem,
 }: {
@@ -33,6 +38,16 @@ export function MarketPanel({
   }) => Promise<unknown>;
   onTake: (orderId: number) => Promise<unknown>;
   onCancel: (orderId: number) => Promise<unknown>;
+  onProposeSwap: (input: {
+    toUsername: string | null;
+    giveGold: number;
+    wantGold: number;
+    give: { itemId: string; quantity: number }[];
+    want: { itemId: string; quantity: number }[];
+  }) => Promise<unknown>;
+  onAcceptSwap: (offerId: number) => Promise<unknown>;
+  onCancelSwap: (offerId: number) => Promise<unknown>;
+  onDeclineSwap: (offerId: number) => Promise<unknown>;
   selectedItemId: string;
   onSelectItem: (itemId: string) => void;
 }) {
@@ -44,10 +59,7 @@ export function MarketPanel({
   const [qtyInput, setQtyInput] = useState("1");
 
   const suggested = useMemo(() => {
-    const raw = Number(price?.bestAsk ?? price?.vwap ?? selected?.basePrice ?? 5);
-    const min = price?.bandMin ?? 1;
-    const max = price?.bandMax ?? 9999;
-    return String(Math.min(max, Math.max(min, raw)));
+    return String(Math.max(1, Math.round(Number(price?.bestAsk ?? price?.vwap ?? selected?.basePrice ?? 5))));
   }, [price, selected]);
   const draftQty = Number(qtyInput);
   const draftPrice = Number(priceInput || suggested);
@@ -78,9 +90,9 @@ export function MarketPanel({
         <div>
           <p className="font-heading text-2xl sm:text-3xl">Player market</p>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            Pick an item, post a buy or sell at the top, then tap a listing to take one. Crossing
-            trades clear at the ask. MV is a catalog-anchored average of recent prints — not a
-            single flash trade — and new orders must sit inside the collar.
+            Pick an item, post a buy or sell at any whole-coin price of 1 or more, then tap a listing
+            to take one. Crossing trades clear at the ask. Market value is the simple average of the
+            last 100 board trades for that item — or the catalog price if nobody has printed yet.
           </p>
         </div>
         {state.recentTrades[0] ? (
@@ -135,11 +147,11 @@ export function MarketPanel({
               />
               <Stat label="MV" value={formatCoins(price?.vwap ?? selected.basePrice)} tone="mv" />
             </div>
-            {price?.bandMin != null ? (
-              <p className="text-xs text-muted-foreground lg:text-right">
-                Collar {formatCoins(price.bandMin)}–{formatCoins(price.bandMax)}
-              </p>
-            ) : null}
+            <p className="text-xs text-muted-foreground lg:max-w-[12rem] lg:text-right">
+              {price?.prints
+                ? `Average of the last ${formatNumber(price.prints)} board trade${price.prints === 1 ? "" : "s"}.`
+                : "No board trades yet — catalog price."}
+            </p>
           </div>
 
           <div className="rounded-xl bg-background/40 p-3 ring-1 ring-foreground/10">
@@ -342,6 +354,18 @@ export function MarketPanel({
           </p>
         ) : null}
       </div>
+
+      <SwapPanel
+        inventory={state.player.inventory}
+        gold={state.player.availableGold}
+        swaps={state.swaps ?? []}
+        travelers={state.travelers ?? []}
+        pending={pending}
+        onPropose={onProposeSwap}
+        onAccept={onAcceptSwap}
+        onCancel={onCancelSwap}
+        onDecline={onDeclineSwap}
+      />
     </div>
   );
 }

@@ -116,10 +116,40 @@ export type MarketPrice = {
   vwap: number;
   last: number | null;
   volume: number;
+  prints: number;
   bestBid: number | null;
   bestAsk: number | null;
-  bandMin: number;
-  bandMax: number;
+};
+
+export type SwapLeg = {
+  itemId: string;
+  name: string;
+  emoji: string;
+  quantity: number;
+};
+
+export type SwapRole = "inbox" | "mine" | "open";
+
+export type SwapOffer = {
+  id: number;
+  fromId: number;
+  fromName: string;
+  toId: number | null;
+  toName: string | null;
+  giveGold: number;
+  wantGold: number;
+  give: SwapLeg[];
+  want: SwapLeg[];
+  createdAt: number;
+  yours: boolean;
+  incoming: boolean;
+  role: SwapRole;
+};
+
+export type TravelerRow = {
+  id: number;
+  username: string;
+  bot: boolean;
 };
 
 export type AreaCrowd = {
@@ -218,6 +248,8 @@ export type GameState = {
   areas: AreaCrowd[];
   bank: BankQuote[];
   festival: FestivalState;
+  swaps: SwapOffer[];
+  travelers: TravelerRow[];
 };
 
 export type PricePoint = {

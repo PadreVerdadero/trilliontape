@@ -35,11 +35,11 @@ export function GuidePanel() {
       <section className="space-y-2">
         <h3 className="font-heading text-foreground">Market value</h3>
         <p>
-          MV is not the last print. It starts from the catalog price, then blends in a volume
-          average of recent trades (about 45 minutes). Extreme prints outside a band around the
-          catalog are ignored, and MV itself cannot wander far from that catalog. New bids and
-          asks must sit inside a collar around MV. Plaza regulars (Piper, Reed, Anvil, and the
-          rest) keep a live book so one traveler cannot own the tape.
+          MV is the simple average of the last 100 board trades for that item. Each print counts
+          equally. If nobody has traded it yet, MV is the catalog price. You may post a bid or ask
+          at any whole-coin price of 1 or more — there is no collar. Direct bundle deals (several
+          items plus gold, named or open) do not print on the tape, so they do not move MV. Plaza
+          regulars (Piper, Reed, Anvil, and the rest) keep a live book so the plaza is never empty.
         </p>
       </section>
       <section className="space-y-2">

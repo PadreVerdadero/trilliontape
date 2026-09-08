@@ -1,0 +1,346 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { itemById, itemsByCommonness } from "@/lib/game/catalog";
+import { formatCoins, formatNumber } from "@/lib/game/format";
+import type { InventoryRow, SwapOffer, TravelerRow } from "@/lib/game/types";
+
+type LegDraft = { itemId: string; quantity: number };
+
+function emptyLeg(): LegDraft {
+  return { itemId: "", quantity: 1 };
+}
+
+function cleanLegs(rows: LegDraft[]) {
+  return rows
+    .filter((leg) => leg.itemId && leg.quantity > 0)
+    .map((leg) => ({ itemId: leg.itemId, quantity: Math.floor(leg.quantity) }));
+}
+
+export function SwapPanel({
+  inventory,
+  gold,
+  swaps,
+  travelers,
+  pending,
+  onPropose,
+  onAccept,
+  onCancel,
+  onDecline,
+}: {
+  inventory: InventoryRow[];
+  gold: number;
+  swaps: SwapOffer[];
+  travelers: TravelerRow[];
+  pending: boolean;
+  onPropose: (payload: {
+    toUsername: string | null;
+    giveGold: number;
+    wantGold: number;
+    give: { itemId: string; quantity: number }[];
+    want: { itemId: string; quantity: number }[];
+  }) => Promise<unknown>;
+  onAccept: (id: number) => Promise<unknown>;
+  onCancel: (id: number) => Promise<unknown>;
+  onDecline: (id: number) => Promise<unknown>;
+}) {
+  const [toUsername, setToUsername] = useState("");
+  const [giveGold, setGiveGold] = useState("");
+  const [wantGold, setWantGold] = useState("");
+  const [giveLegs, setGiveLegs] = useState<LegDraft[]>([emptyLeg()]);
+  const [wantLegs, setWantLegs] = useState<LegDraft[]>([emptyLeg()]);
+
+  const owned = useMemo(
+    () =>
+      inventory
+        .filter((row) => row.quantity > 0)
+        .map((row) => ({
+          itemId: row.itemId,
+          name: itemById[row.itemId]?.name ?? row.itemId,
+          quantity: row.quantity,
+        })),
+    [inventory]
+  );
+
+  function updateLeg(side: "give" | "want", index: number, patch: Partial<LegDraft>) {
+    const setter = side === "give" ? setGiveLegs : setWantLegs;
+    setter((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  }
+
+  async function propose() {
+    const result = await onPropose({
+      toUsername: toUsername.trim() || null,
+      giveGold: Math.max(0, Math.floor(Number(giveGold) || 0)),
+      wantGold: Math.max(0, Math.floor(Number(wantGold) || 0)),
+      give: cleanLegs(giveLegs),
+      want: cleanLegs(wantLegs),
+    });
+    if (!result) return;
+    setGiveGold("");
+    setWantGold("");
+    setGiveLegs([emptyLeg()]);
+    setWantLegs([emptyLeg()]);
+  }
+
+  const inbox = swaps.filter((offer) => offer.role === "inbox");
+  const mine = swaps.filter((offer) => offer.role === "mine");
+  const open = swaps.filter((offer) => offer.role === "open");
+
+  return (
+    <div className="space-y-4 rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
+      <div>
+        <p className="font-heading text-lg">Direct deals</p>
+        <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+          Bundle several goods — even different ones — plus gold, and send the offer to one traveler
+          or leave it open for anyone. These swaps do not print on the board, so they will not move
+          market value.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label htmlFor="swap-to">Send to</Label>
+          <Input
+            id="swap-to"
+            list="traveler-names"
+            value={toUsername}
+            onChange={(event) => setToUsername(event.target.value)}
+            placeholder="Anyone (open offer)"
+          />
+          <datalist id="traveler-names">
+            {travelers.map((row) => (
+              <option key={row.username} value={row.username} />
+            ))}
+          </datalist>
+        </div>
+        <p className="self-end text-xs text-muted-foreground">
+          Leave blank for a public offer. Named deals only the recipient can accept.
+        </p>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <LegEditor
+          title="You give"
+          gold={giveGold}
+          onGold={setGiveGold}
+          goldHint={`You have ${formatCoins(gold)} free.`}
+          legs={giveLegs}
+          itemChoices={owned}
+          onChange={(index, patch) => updateLeg("give", index, patch)}
+          onAdd={() => setGiveLegs((rows) => [...rows, emptyLeg()])}
+          onRemove={(index) =>
+            setGiveLegs((rows) => (rows.length <= 1 ? [emptyLeg()] : rows.filter((_, i) => i !== index)))
+          }
+        />
+        <LegEditor
+          title="You want"
+          gold={wantGold}
+          onGold={setWantGold}
+          goldHint="Gold they must send you."
+          legs={wantLegs}
+          itemChoices={itemsByCommonness.map((item) => ({ itemId: item.id, name: item.name }))}
+          onChange={(index, patch) => updateLeg("want", index, patch)}
+          onAdd={() => setWantLegs((rows) => [...rows, emptyLeg()])}
+          onRemove={(index) =>
+            setWantLegs((rows) => (rows.length <= 1 ? [emptyLeg()] : rows.filter((_, i) => i !== index)))
+          }
+        />
+      </div>
+
+      <Button className="h-11 w-full sm:w-auto" disabled={pending} onClick={() => void propose()}>
+        Post deal
+      </Button>
+
+      <OfferList
+        title="Inbox"
+        empty="No named deals waiting on you."
+        offers={inbox}
+        pending={pending}
+        onAccept={onAccept}
+        onDecline={onDecline}
+      />
+      <OfferList
+        title="Your posted deals"
+        empty="You have no open offers."
+        offers={mine}
+        pending={pending}
+        onCancel={onCancel}
+      />
+      <OfferList
+        title="Open to anyone"
+        empty="No public bundles on the board."
+        offers={open}
+        pending={pending}
+        onAccept={onAccept}
+      />
+    </div>
+  );
+}
+
+function LegEditor({
+  title,
+  gold,
+  onGold,
+  goldHint,
+  legs,
+  itemChoices,
+  onChange,
+  onAdd,
+  onRemove,
+}: {
+  title: string;
+  gold: string;
+  onGold: (value: string) => void;
+  goldHint: string;
+  legs: LegDraft[];
+  itemChoices: { itemId: string; name: string; quantity?: number }[];
+  onChange: (index: number, patch: Partial<LegDraft>) => void;
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+}) {
+  return (
+    <div className="space-y-2 rounded-xl bg-background/40 p-3 ring-1 ring-foreground/10">
+      <p className="text-sm font-medium">{title}</p>
+      <div className="space-y-1">
+        <Label className="text-xs">Gold</Label>
+        <Input inputMode="numeric" min={0} value={gold} onChange={(event) => onGold(event.target.value)} />
+        <p className="text-[11px] text-muted-foreground">{goldHint}</p>
+      </div>
+      <div className="space-y-2">
+        {legs.map((leg, index) => (
+          <div key={`${title}-${index}`} className="flex gap-2">
+            <select
+              className="h-11 min-w-0 flex-1 rounded-lg border border-input bg-transparent px-2 text-sm md:h-8"
+              value={leg.itemId}
+              onChange={(event) => onChange(index, { itemId: event.target.value })}
+            >
+              <option value="">Item…</option>
+              {itemChoices.map((item) => (
+                <option key={`${item.itemId}-${index}`} value={item.itemId}>
+                  {item.name}
+                  {item.quantity != null ? ` ×${item.quantity}` : ""}
+                </option>
+              ))}
+            </select>
+            <Input
+              className="w-20"
+              inputMode="numeric"
+              min={1}
+              value={leg.quantity}
+              onChange={(event) => onChange(index, { quantity: Number(event.target.value) || 0 })}
+            />
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              className="h-11 w-11 md:h-8 md:w-8"
+              onClick={() => onRemove(index)}
+            >
+              ×
+            </Button>
+          </div>
+        ))}
+      </div>
+      <Button type="button" size="sm" variant="outline" className="h-10 md:h-8" onClick={onAdd}>
+        Add item
+      </Button>
+    </div>
+  );
+}
+
+function OfferList({
+  title,
+  empty,
+  offers,
+  pending,
+  onAccept,
+  onCancel,
+  onDecline,
+}: {
+  title: string;
+  empty: string;
+  offers: SwapOffer[];
+  pending: boolean;
+  onAccept?: (id: number) => void;
+  onCancel?: (id: number) => void;
+  onDecline?: (id: number) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium">{title}</p>
+      {offers.length === 0 ? <p className="text-sm text-muted-foreground">{empty}</p> : null}
+      {offers.map((offer) => (
+        <div key={offer.id} className="rounded-xl bg-background/50 p-3 text-sm ring-1 ring-foreground/10">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="font-medium">
+                {offer.fromName}
+                {offer.toName ? ` → ${offer.toName}` : " → anyone"}
+              </p>
+              <p className="text-xs text-muted-foreground">{new Date(offer.createdAt).toLocaleString()}</p>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {onAccept ? (
+                <Button size="sm" className="h-10 md:h-8" disabled={pending} onClick={() => onAccept(offer.id)}>
+                  Accept
+                </Button>
+              ) : null}
+              {onDecline ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-10 md:h-8"
+                  disabled={pending}
+                  onClick={() => onDecline(offer.id)}
+                >
+                  Decline
+                </Button>
+              ) : null}
+              {onCancel ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-10 md:h-8"
+                  disabled={pending}
+                  onClick={() => onCancel(offer.id)}
+                >
+                  Withdraw
+                </Button>
+              ) : null}
+            </div>
+          </div>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <SwapSide
+              label={offer.role === "mine" ? "You give" : "They give"}
+              gold={offer.giveGold}
+              legs={offer.give}
+            />
+            <SwapSide
+              label={offer.role === "mine" ? "You want" : "They want"}
+              gold={offer.wantGold}
+              legs={offer.want}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SwapSide({ label, gold, legs }: { label: string; gold: number; legs: SwapOffer["give"] }) {
+  return (
+    <div className="rounded-lg bg-muted/40 p-2">
+      <p className="text-[11px] tracking-wide text-muted-foreground uppercase">{label}</p>
+      {gold > 0 ? <p>{formatCoins(gold)}</p> : null}
+      {legs.map((leg) => (
+        <p key={`${leg.itemId}-${leg.quantity}`}>
+          {leg.emoji} {leg.name} ×{formatNumber(leg.quantity)}
+        </p>
+      ))}
+      {gold === 0 && legs.length === 0 ? <p className="text-muted-foreground">Nothing</p> : null}
+    </div>
+  );
+}

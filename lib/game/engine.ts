@@ -30,7 +30,7 @@ import {
 import { rarityOf } from "@/lib/game/rarity";
 import { getDb } from "@/lib/game/db";
 import { BOT_PROFILES, botSpread } from "@/lib/game/bots";
-import { computeFairValue, orderCollar } from "@/lib/game/market";
+import { computeFairValue } from "@/lib/game/market";
 import {
   chalkboardItem,
   contractsForWeek,
@@ -66,7 +66,9 @@ import type {
   PlayerState,
   PricePoint,
   StallView,
+  SwapOffer,
   TradeRow,
+  TravelerRow,
 } from "@/lib/game/types";
 
 type PlayerRow = {
@@ -120,21 +122,41 @@ function inventoryMap(userId: number) {
 }
 
 function reservedItems(userId: number) {
-  const rows = getDb()
+  const map: Record<string, number> = {};
+  const bump = (itemId: string, qty: number) => {
+    map[itemId] = (map[itemId] ?? 0) + qty;
+  };
+  const listed = getDb()
     .prepare(
       "SELECT item_id, COALESCE(SUM(remaining), 0) AS qty FROM orders WHERE user_id = ? AND side = 'sell' AND remaining > 0 GROUP BY item_id"
     )
     .all(userId) as { item_id: string; qty: number }[];
-  return Object.fromEntries(rows.map((row) => [row.item_id, row.qty]));
+  for (const row of listed) bump(row.item_id, row.qty);
+  const offered = getDb()
+    .prepare(
+      `SELECT l.item_id, COALESCE(SUM(l.quantity), 0) AS qty
+       FROM swap_legs l
+       JOIN swap_offers o ON o.id = l.offer_id
+       WHERE o.from_user_id = ? AND o.status = 'open' AND l.side = 'give'
+       GROUP BY l.item_id`
+    )
+    .all(userId) as { item_id: string; qty: number }[];
+  for (const row of offered) bump(row.item_id, row.qty);
+  return map;
 }
 
 function reservedGold(userId: number) {
-  const row = getDb()
+  const bids = getDb()
     .prepare(
       "SELECT COALESCE(SUM(price * remaining), 0) AS gold FROM orders WHERE user_id = ? AND side = 'buy' AND remaining > 0"
     )
     .get(userId) as { gold: number };
-  return row.gold;
+  const swaps = getDb()
+    .prepare(
+      "SELECT COALESCE(SUM(give_gold), 0) AS gold FROM swap_offers WHERE from_user_id = ? AND status = 'open'"
+    )
+    .get(userId) as { gold: number };
+  return (bids.gold ?? 0) + (swaps.gold ?? 0);
 }
 
 function availableItem(userId: number, itemId: string) {
@@ -372,15 +394,13 @@ function listAreas(playerLocationId = "town"): AreaCrowd[] {
 
 function marketPrints(itemId: string) {
   return getDb()
-    .prepare(
-      "SELECT price, quantity, created_at AS at FROM trades WHERE item_id = ? ORDER BY id ASC"
-    )
-    .all(itemId) as { price: number; quantity: number; at: number }[];
+    .prepare("SELECT price, quantity FROM trades WHERE item_id = ? ORDER BY id DESC LIMIT 100")
+    .all(itemId) as { price: number; quantity: number }[];
 }
 
 function marketPrice(itemId: string): number {
   const base = itemById[itemId]?.basePrice ?? 1;
-  return computeFairValue(base, marketPrints(itemId), nowMs());
+  return computeFairValue(base, [...marketPrints(itemId)].reverse());
 }
 
 function isBot(userId: number) {
@@ -791,15 +811,8 @@ export function placeOrder(
   resolveBusy(userId);
   const item = itemById[itemId];
   if (!item) throw new Error("Unknown item.");
-  if (!Number.isInteger(price) || price < 1 || price > 9999) {
-    throw new Error("Price must be a whole number from 1 to 9999.");
-  }
-  const fair = marketPrice(itemId);
-  const band = orderCollar(fair, item.basePrice);
-  if (price < band.min || price > band.max) {
-    throw new Error(
-      `Price must sit inside the collar (${formatCoins(band.min)}–${formatCoins(band.max)}) around MV ${formatCoins(fair)}.`
-    );
+  if (!Number.isInteger(price) || price < 1) {
+    throw new Error("Price must be a whole number of at least 1.");
   }
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) {
     throw new Error("Quantity must be a whole number from 1 to 99.");
@@ -1531,23 +1544,18 @@ function priceSheet(): MarketPrice[] {
         "SELECT MIN(price) AS p FROM orders WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')"
       )
       .get(itemId) as { p: number | null };
-    const vwap = computeFairValue(itemById[itemId].basePrice, marketPrints(itemId), nowMs());
-    const band = orderCollar(vwap, itemById[itemId].basePrice);
+    const prints = marketPrints(itemId);
+    const vwap = computeFairValue(itemById[itemId].basePrice, [...prints].reverse());
     return {
       itemId,
       vwap,
       last: last?.price ?? null,
       volume: stats.volume ?? 0,
+      prints: prints.length,
       bestBid: bid.p,
       bestAsk: ask.p,
-      bandMin: band.min,
-      bandMax: band.max,
     };
   });
-}
-
-function clampInt(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, Math.round(value)));
 }
 
 function shufflePick<T>(list: T[], count: number) {
@@ -1592,7 +1600,6 @@ export function tickBots() {
       const item = itemById[itemId];
       if (!item) continue;
       const fair = marketPrice(itemId);
-      const band = orderCollar(fair, item.basePrice);
       const spread = botSpread(profile.style);
       const ask = db
         .prepare(
@@ -1623,11 +1630,11 @@ export function tickBots() {
       const jitter = 0.96 + Math.random() * 0.08;
       const qty = profile.style === "thin" ? 1 : 1 + Math.floor(Math.random() * 3);
       if (Math.random() < 0.55) {
-        const price = clampInt(fair * spread.bid * jitter, band.min, band.max);
+        const price = Math.max(1, Math.round(fair * spread.bid * jitter));
         if (availableGold(user.id) >= price * qty) placeOrder(user.id, itemId, "buy", price, qty);
       } else {
-        const price = clampInt(fair * spread.ask * jitter, band.min, Math.max(band.min + 1, band.max));
-        if (price <= band.max && availableItem(user.id, itemId) >= qty) {
+        const price = Math.max(1, Math.round(fair * spread.ask * jitter));
+        if (availableItem(user.id, itemId) >= qty) {
           placeOrder(user.id, itemId, "sell", price, qty);
         }
       }
@@ -1635,6 +1642,251 @@ export function tickBots() {
       // One noisy step should not stall the plaza.
     }
   }
+}
+
+type SwapDraft = {
+  toUsername?: string | null;
+  giveGold?: number;
+  wantGold?: number;
+  give?: { itemId: string; quantity: number }[];
+  want?: { itemId: string; quantity: number }[];
+};
+
+function mergeLegs(rows: { itemId: string; quantity: number }[] | undefined) {
+  const map = new Map<string, number>();
+  for (const row of rows ?? []) {
+    if (!itemById[row.itemId]) throw new Error(`Unknown item: ${row.itemId}.`);
+    if (!Number.isInteger(row.quantity) || row.quantity < 1 || row.quantity > 99) {
+      throw new Error("Each stack in a deal must be a whole number from 1 to 99.");
+    }
+    map.set(row.itemId, (map.get(row.itemId) ?? 0) + row.quantity);
+  }
+  return [...map.entries()].map(([itemId, quantity]) => ({ itemId, quantity }));
+}
+
+function loadSwap(offerId: number) {
+  const row = getDb()
+    .prepare(
+      `SELECT o.id, o.from_user_id, o.to_user_id, o.give_gold, o.want_gold, o.status, o.created_at,
+              f.username AS from_name, t.username AS to_name
+       FROM swap_offers o
+       JOIN users f ON f.id = o.from_user_id
+       LEFT JOIN users t ON t.id = o.to_user_id
+       WHERE o.id = ?`
+    )
+    .get(offerId) as
+    | {
+        id: number;
+        from_user_id: number;
+        to_user_id: number | null;
+        give_gold: number;
+        want_gold: number;
+        status: string;
+        created_at: number;
+        from_name: string;
+        to_name: string | null;
+      }
+    | undefined;
+  if (!row) throw new Error("That deal is gone.");
+  const legs = getDb()
+    .prepare("SELECT side, item_id, quantity FROM swap_legs WHERE offer_id = ?")
+    .all(offerId) as { side: string; item_id: string; quantity: number }[];
+  return {
+    ...row,
+    give: legs.filter((leg) => leg.side === "give").map((leg) => ({ itemId: leg.item_id, quantity: leg.quantity })),
+    want: legs.filter((leg) => leg.side === "want").map((leg) => ({ itemId: leg.item_id, quantity: leg.quantity })),
+  };
+}
+
+function describeBundle(gold: number, legs: { itemId: string; quantity: number }[]) {
+  const bits = legs.map((leg) => {
+    const item = itemById[leg.itemId];
+    return `${item?.emoji ?? ""} ${item?.name ?? leg.itemId} ×${formatNumber(leg.quantity)}`;
+  });
+  if (gold > 0) bits.push(formatCoins(gold));
+  return bits.length ? bits.join(", ") : "nothing";
+}
+
+export function proposeSwap(userId: number, draft: SwapDraft) {
+  resolveBusy(userId);
+  const giveGold = Number(draft.giveGold ?? 0);
+  const wantGold = Number(draft.wantGold ?? 0);
+  if (!Number.isInteger(giveGold) || giveGold < 0 || !Number.isInteger(wantGold) || wantGold < 0) {
+    throw new Error("Gold in a deal must be a whole number, 0 or more.");
+  }
+  const give = mergeLegs(draft.give);
+  const want = mergeLegs(draft.want);
+  if (give.length === 0 && want.length === 0) {
+    throw new Error("A deal needs at least one item. Coin can ride along.");
+  }
+  let toId: number | null = null;
+  const targetName = String(draft.toUsername ?? "").trim();
+  if (targetName) {
+    const target = getDb()
+      .prepare("SELECT id, username, COALESCE(is_bot, 0) AS is_bot FROM users WHERE username = ?")
+      .get(targetName) as { id: number; username: string; is_bot: number } | undefined;
+    if (!target) throw new Error("No traveler by that name.");
+    if (target.id === userId) throw new Error("You cannot send a deal to yourself.");
+    if (target.is_bot) {
+      throw new Error("Plaza regulars do not take private bundles. Name a traveler, or leave the deal open.");
+    }
+    toId = target.id;
+  }
+  if (giveGold > 0 && availableGold(userId) < giveGold) {
+    throw new Error("Not enough free coin to put on that deal.");
+  }
+  for (const leg of give) {
+    if (availableItem(userId, leg.itemId) < leg.quantity) {
+      throw new Error(`Not enough unbound ${itemById[leg.itemId]?.name ?? leg.itemId}.`);
+    }
+  }
+  const db = getDb();
+  const info = db
+    .prepare(
+      `INSERT INTO swap_offers (from_user_id, to_user_id, give_gold, want_gold, status, created_at)
+       VALUES (?, ?, ?, ?, 'open', ?)`
+    )
+    .run(userId, toId, giveGold, wantGold, nowMs());
+  const offerId = Number(info.lastInsertRowid);
+  const insertLeg = db.prepare(
+    "INSERT INTO swap_legs (offer_id, side, item_id, quantity) VALUES (?, ?, ?, ?)"
+  );
+  for (const leg of give) insertLeg.run(offerId, "give", leg.itemId, leg.quantity);
+  for (const leg of want) insertLeg.run(offerId, "want", leg.itemId, leg.quantity);
+  const who = toId ? loadPlayerRow(toId).username : "anyone on the board";
+  setEvent(
+    userId,
+    `Deal posted to ${who}: you give ${describeBundle(giveGold, give)} for ${describeBundle(wantGold, want)}.`
+  );
+}
+
+export function cancelSwap(userId: number, offerId: number) {
+  resolveBusy(userId);
+  const offer = loadSwap(offerId);
+  if (offer.status !== "open") throw new Error("That deal is already closed.");
+  if (offer.from_user_id !== userId) throw new Error("Only the sender can pull that deal.");
+  getDb().prepare("UPDATE swap_offers SET status = 'cancelled' WHERE id = ?").run(offerId);
+  setEvent(userId, "Deal pulled. Your pack is free again.");
+}
+
+export function declineSwap(userId: number, offerId: number) {
+  resolveBusy(userId);
+  const offer = loadSwap(offerId);
+  if (offer.status !== "open") throw new Error("That deal is already closed.");
+  if (offer.to_user_id !== userId) throw new Error("That deal was not sent to you.");
+  getDb().prepare("UPDATE swap_offers SET status = 'declined' WHERE id = ?").run(offerId);
+  setEvent(offer.from_user_id, `${loadPlayerRow(userId).username} declined your deal.`);
+  setEvent(userId, `You declined ${offer.from_name}'s deal.`);
+}
+
+export function acceptSwap(userId: number, offerId: number) {
+  resolveBusy(userId);
+  const offer = loadSwap(offerId);
+  if (offer.status !== "open") throw new Error("That deal is already closed.");
+  if (offer.from_user_id === userId) throw new Error("You cannot take your own deal.");
+  if (offer.to_user_id != null && offer.to_user_id !== userId) {
+    throw new Error("That deal was sent to someone else.");
+  }
+  if (offer.want_gold > 0 && availableGold(userId) < offer.want_gold) {
+    throw new Error("Not enough free coin to take that deal.");
+  }
+  for (const leg of offer.want) {
+    if (availableItem(userId, leg.itemId) < leg.quantity) {
+      throw new Error(`Need more ${itemById[leg.itemId]?.name ?? leg.itemId} to take that deal.`);
+    }
+  }
+  for (const leg of offer.give) {
+    const have = inventoryMap(offer.from_user_id).get(leg.itemId) ?? 0;
+    if (have < leg.quantity) {
+      throw new Error("The sender no longer has those goods.");
+    }
+  }
+  if (offer.give_gold > 0 && loadPlayerRow(offer.from_user_id).gold < offer.give_gold) {
+    throw new Error("The sender no longer has the coin on that deal.");
+  }
+  for (const leg of offer.give) {
+    removeItem(offer.from_user_id, leg.itemId, leg.quantity);
+    addItem(userId, leg.itemId, leg.quantity);
+  }
+  for (const leg of offer.want) {
+    removeItem(userId, leg.itemId, leg.quantity);
+    addItem(offer.from_user_id, leg.itemId, leg.quantity);
+  }
+  if (offer.give_gold > 0) {
+    getDb().prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(offer.give_gold, offer.from_user_id);
+    getDb().prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?").run(offer.give_gold, userId);
+  }
+  if (offer.want_gold > 0) {
+    getDb().prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(offer.want_gold, userId);
+    getDb().prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?").run(offer.want_gold, offer.from_user_id);
+  }
+  getDb().prepare("UPDATE swap_offers SET status = 'accepted' WHERE id = ?").run(offerId);
+  const taker = loadPlayerRow(userId).username;
+  setEvent(
+    offer.from_user_id,
+    `${taker} took your deal. You gave ${describeBundle(offer.give_gold, offer.give)} for ${describeBundle(offer.want_gold, offer.want)}.`
+  );
+  setEvent(
+    userId,
+    `You took ${offer.from_name}'s deal. You gave ${describeBundle(offer.want_gold, offer.want)} for ${describeBundle(offer.give_gold, offer.give)}.`
+  );
+}
+
+function listTravelers(userId: number): TravelerRow[] {
+  return (
+    getDb()
+      .prepare(
+        `SELECT u.id, u.username, COALESCE(u.is_bot, 0) AS is_bot
+         FROM users u JOIN players p ON p.user_id = u.id
+         WHERE u.id != ? AND u.username != 'Banker' AND COALESCE(u.is_bot, 0) = 0
+         ORDER BY u.username COLLATE NOCASE ASC`
+      )
+      .all(userId) as { id: number; username: string; is_bot: number }[]
+  ).map((row) => ({ id: row.id, username: row.username, bot: Boolean(row.is_bot) }));
+}
+
+function decorateLegs(legs: { itemId: string; quantity: number }[]) {
+  return legs.map((leg) => {
+    const item = itemById[leg.itemId];
+    return {
+      itemId: leg.itemId,
+      name: item?.name ?? leg.itemId,
+      emoji: item?.emoji ?? "",
+      quantity: leg.quantity,
+    };
+  });
+}
+
+function mapSwap(row: ReturnType<typeof loadSwap>, userId: number): SwapOffer {
+  const yours = row.from_user_id === userId;
+  const incoming = row.to_user_id === userId;
+  return {
+    id: row.id,
+    fromId: row.from_user_id,
+    fromName: row.from_name,
+    toId: row.to_user_id,
+    toName: row.to_name,
+    giveGold: row.give_gold,
+    wantGold: row.want_gold,
+    give: decorateLegs(row.give),
+    want: decorateLegs(row.want),
+    createdAt: row.created_at,
+    yours,
+    incoming,
+    role: yours ? "mine" : incoming ? "inbox" : "open",
+  };
+}
+
+function listSwaps(userId: number): SwapOffer[] {
+  const ids = getDb()
+    .prepare(
+      `SELECT id FROM swap_offers
+       WHERE status = 'open' AND (from_user_id = ? OR to_user_id = ? OR to_user_id IS NULL)
+       ORDER BY created_at DESC
+       LIMIT 40`
+    )
+    .all(userId, userId) as { id: number }[];
+  return ids.map((row) => mapSwap(loadSwap(row.id), userId));
 }
 
 export function getGameState(userId: number, timeZone?: string): GameState {
@@ -1781,5 +2033,7 @@ export function getGameState(userId: number, timeZone?: string): GameState {
     areas: listAreas(player.location_id),
     bank: listBankQuotes(),
     festival,
+    swaps: listSwaps(userId),
+    travelers: listTravelers(userId),
   };
 }

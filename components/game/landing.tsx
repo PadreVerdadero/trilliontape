@@ -15,7 +15,7 @@ const highlights = [
   {
     emoji: "📒",
     title: "A real order book",
-    body: "The player market never closes. Buy cheap there, sell to a stall when they open — or post your own bid and ask.",
+    body: "The player market never closes, and you can post any whole-coin price. Bundle several items plus gold in a direct deal with another traveler — those swaps stay off the tape.",
   },
   {
     emoji: "🏆",

@@ -65,6 +65,10 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
       onOrder={(input) => run({ action: "order", ...input })}
       onTake={(orderId) => run({ action: "take", orderId })}
       onCancel={(orderId) => run({ action: "cancel", orderId })}
+      onProposeSwap={(input) => run({ action: "swapPropose", ...input })}
+      onAcceptSwap={(offerId) => run({ action: "swapAccept", offerId })}
+      onCancelSwap={(offerId) => run({ action: "swapCancel", offerId })}
+      onDeclineSwap={(offerId) => run({ action: "swapDecline", offerId })}
     />
   );
 
