@@ -1601,7 +1601,7 @@ export function getOrderBook(itemId: string): OrderBook {
       .filter((row) => row.side === "sell")
       .sort((a, b) => a.price - b.price || a.createdAt - b.createdAt),
     history: getPriceHistory(itemId),
-    trades: loadRecentTrades(16, itemId),
+    trades: loadRecentTrades(12, itemId),
   };
 }
 

@@ -7,14 +7,12 @@ export function PriceChart({
   mv,
   bestBid,
   bestAsk,
-  compact,
 }: {
   history: PricePoint[];
   basePrice: number;
   mv?: number | null;
   bestBid?: number | null;
   bestAsk?: number | null;
-  compact?: boolean;
 }) {
   const points =
     history.length >= 2
@@ -68,29 +66,22 @@ export function PriceChart({
   }
 
   return (
-    <div className="rounded-lg bg-background/40 p-2 ring-1 ring-foreground/10">
-      <div className="mb-1 flex items-end justify-between gap-3">
+    <div className="rounded-xl bg-background/40 p-3 ring-1 ring-foreground/10">
+      <div className="mb-2 flex items-end justify-between gap-3">
         <div>
-          <p className={compact ? "font-heading text-sm" : "font-heading text-lg"}>Price</p>
-          {compact ? null : (
-            <p className="text-xs text-muted-foreground">
-              {traded
-                ? "Each trade is a point, oldest to newest."
-                : "No trades yet. The line sits at the starting price."}{" "}
-              Dashed marks on the right are MV, best bid, and best ask.
-            </p>
-          )}
+          <p className="font-heading text-lg">Price</p>
+          <p className="text-xs text-muted-foreground">
+            {traded
+              ? "Each trade is a point, oldest to newest."
+              : "No trades yet. The line sits at the starting price."}{" "}
+            Dashed marks on the right are MV, best bid, and best ask.
+          </p>
         </div>
-        <p className={up ? "text-xs text-emerald-200" : "text-xs text-rose-200"}>
+        <p className={up ? "text-sm text-emerald-200" : "text-sm text-rose-200"}>
           {formatCoins(lastPrice)} {traded ? (up ? "▲" : "▼") : ""}
         </p>
       </div>
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className={compact ? "h-28 w-full" : "h-44 w-full"}
-        role="img"
-        aria-label="Price over time"
-      >
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-44 w-full" role="img" aria-label="Price over time">
         <path d={area} className={up ? "fill-emerald-400/15" : "fill-rose-400/15"} />
         <path
           d={line}

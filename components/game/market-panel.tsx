@@ -161,7 +161,7 @@ export function MarketPanel({
             </div>
           </div>
 
-          <div className="grid gap-2 lg:grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)] lg:items-stretch">
+          <div className="grid gap-2 lg:grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)] lg:items-start">
             <div className="rounded-lg bg-background/40 p-2 ring-1 ring-foreground/10">
               <p className="mb-1 font-heading text-sm">Post your own order</p>
               {state.player.isGov ? (
@@ -219,34 +219,48 @@ export function MarketPanel({
               ) : null}
             </div>
 
-            <div className="rounded-lg bg-background/40 p-2 ring-1 ring-foreground/10">
+            <div>
               <p className="mb-1 font-heading text-sm">
                 Recent {selected.emoji} {selected.name} trades
               </p>
               {(book?.trades ?? []).length === 0 ? (
-                <p className="text-xs text-muted-foreground">No prints for this item yet.</p>
+                <p className="rounded-lg bg-background/40 p-2 text-xs text-muted-foreground ring-1 ring-foreground/10">
+                  No prints for this item yet.
+                </p>
               ) : (
-                <ul className="max-h-20 space-y-0.5 overflow-y-auto text-xs">
-                  {(book?.trades ?? []).map((trade) => (
-                    <li
-                      key={trade.id}
-                      className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5"
-                    >
-                      <span>
-                        {formatNumber(trade.quantity)} @ {formatCoins(trade.price)}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {trade.buyUsername} bought from {trade.sellUsername}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {[0, 1, 2].map((column) => {
+                    const slice = (book?.trades ?? []).slice(column * 4, column * 4 + 4);
+                    return (
+                      <div
+                        key={column}
+                        className="rounded-lg bg-background/40 p-2 ring-1 ring-foreground/10"
+                      >
+                        {slice.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">—</p>
+                        ) : (
+                          <ul className="space-y-1 text-xs">
+                            {slice.map((trade) => (
+                              <li key={trade.id}>
+                                <span className="tabular-nums">
+                                  {formatNumber(trade.quantity)} @ {formatCoins(trade.price)}
+                                </span>
+                                <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
+                                  {trade.buyUsername} bought from {trade.sellUsername}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
 
           <PriceChart
-            compact
             history={book?.history ?? []}
             basePrice={selected.basePrice}
             mv={price?.vwap ?? selected.basePrice}
@@ -254,10 +268,10 @@ export function MarketPanel({
             bestAsk={price?.bestAsk}
           />
 
-          <div className="grid gap-2 lg:grid-cols-2">
-            <div className="rounded-lg bg-emerald-950/25 p-2 ring-1 ring-emerald-400/20">
-              <p className="mb-1 font-heading text-base text-emerald-100">Bids</p>
-              <p className="mb-1 text-[10px] text-muted-foreground">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
+              <p className="mb-2 font-heading text-lg text-emerald-100">Bids</p>
+              <p className="mb-2 text-[11px] text-muted-foreground">
                 Tap a row to sell 1. Tap yours to cancel 1.
               </p>
               <OrderList
@@ -276,9 +290,9 @@ export function MarketPanel({
                 }}
               />
             </div>
-            <div className="rounded-lg bg-rose-950/20 p-2 ring-1 ring-rose-400/20">
-              <p className="mb-1 font-heading text-base text-rose-100">Asks</p>
-              <p className="mb-1 text-[10px] text-muted-foreground">
+            <div className="rounded-xl bg-rose-950/20 p-3 ring-1 ring-rose-400/20">
+              <p className="mb-2 font-heading text-lg text-rose-100">Asks</p>
+              <p className="mb-2 text-[11px] text-muted-foreground">
                 Tap a row to buy 1. Tap yours to cancel 1.
               </p>
               <OrderList
@@ -461,7 +475,7 @@ function OrderList({
   }
   const units = unitRows(rows);
   return (
-    <ul className="max-h-28 space-y-0.5 overflow-y-auto pr-0.5">
+    <ul className="space-y-0.5 pr-0.5">
       {units.map((row) => {
         const yours = row.playerId === selfId;
         const govAsk = Boolean(row.isGov) && side === "sell";
