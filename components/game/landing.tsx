@@ -20,7 +20,7 @@ const highlights = [
   {
     emoji: "🤖",
     title: "Plaza regulars",
-    body: "Computer traders keep the book moving so you are never the only name on the tape.",
+    body: "Computer traders sit far from MV most of the time, and sometimes take a loss if they think the tape will turn.",
   },
 ];
 

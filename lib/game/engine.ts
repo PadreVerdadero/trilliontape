@@ -25,7 +25,7 @@ import {
 } from "@/lib/game/consumables";
 import { rarityFromHeld, rarityOf } from "@/lib/game/rarity";
 import { getDb } from "@/lib/game/db";
-import { BOT_PROFILES, botSpread } from "@/lib/game/bots";
+import { BOT_PROFILES, botQuoteMultipliers, botSpread, botWillTake } from "@/lib/game/bots";
 import { computeFairValue } from "@/lib/game/market";
 import {
   chalkboardItem,
@@ -1696,6 +1696,7 @@ export function tickBots() {
       if (!item) continue;
       const fair = marketPrice(itemId);
       const spread = botSpread(profile.style);
+      const feelingLucky = Math.random() < spread.lossChance;
       const ask = db
         .prepare(
           `SELECT id, price FROM orders
@@ -1703,7 +1704,11 @@ export function tickBots() {
            ORDER BY price ASC, id ASC LIMIT 1`
         )
         .get(itemId, user.id) as { id: number; price: number } | undefined;
-      if (ask && ask.price <= Math.round(fair * (1 - spread.take)) && availableGold(user.id) >= ask.price) {
+      if (
+        ask &&
+        availableGold(user.id) >= ask.price &&
+        botWillTake(spread, fair, "liftAsk", ask.price, feelingLucky)
+      ) {
         takeOrder(user.id, ask.id, 1);
         continue;
       }
@@ -1714,7 +1719,11 @@ export function tickBots() {
            ORDER BY price DESC, id ASC LIMIT 1`
         )
         .get(itemId, user.id) as { id: number; price: number } | undefined;
-      if (bid && bid.price >= Math.round(fair * (1 + spread.take)) && availableItem(user.id, itemId) >= 1) {
+      if (
+        bid &&
+        availableItem(user.id, itemId) >= 1 &&
+        botWillTake(spread, fair, "hitBid", bid.price, feelingLucky)
+      ) {
         takeOrder(user.id, bid.id, 1);
         continue;
       }
@@ -1722,23 +1731,19 @@ export function tickBots() {
         .prepare("SELECT COALESCE(SUM(remaining), 0) AS n FROM orders WHERE user_id = ? AND remaining > 0")
         .get(user.id) as { n: number };
       if (live.n >= 8) continue;
-      const qty = profile.style === "thin" || profile.style === "wild" ? 1 : 1 + Math.floor(Math.random() * 3);
-      const quoteBoth = live.n <= 4 && Math.random() < 0.45;
-      const chase = Math.random() < (profile.style === "wild" ? 0.7 : 0.5);
-      const drift = 0.9 + Math.random() * 0.2;
+      const quote = botQuoteMultipliers(spread);
+      const qty =
+        quote.kind !== "rest" || profile.style === "thin" || profile.style === "wild"
+          ? 1
+          : 1 + Math.floor(Math.random() * 3);
+      const quoteBoth = live.n <= 4 && Math.random() < 0.22;
       const buySide = Math.random() < 0.5;
       if (quoteBoth || buySide) {
-        const bidPx = Math.max(
-          1,
-          Math.round(fair * (chase ? 1.08 + Math.random() * 0.32 : spread.bid * drift))
-        );
+        const bidPx = Math.max(1, Math.round(fair * quote.bid));
         if (availableGold(user.id) >= bidPx * qty) placeOrder(user.id, itemId, "buy", bidPx, qty);
       }
       if (quoteBoth || !buySide) {
-        const askPx = Math.max(
-          1,
-          Math.round(fair * (chase ? 0.55 + Math.random() * 0.32 : spread.ask * drift))
-        );
+        const askPx = Math.max(1, Math.round(fair * quote.ask));
         if (availableItem(user.id, itemId) >= qty) {
           placeOrder(user.id, itemId, "sell", askPx, qty);
         }

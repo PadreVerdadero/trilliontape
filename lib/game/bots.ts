@@ -146,9 +146,108 @@ export function isBotUsername(name: string) {
   return BOT_USERNAMES.has(name);
 }
 
-export function botSpread(style: BotProfile["style"]) {
-  if (style === "tight") return { bid: 0.82, ask: 1.18, take: 0.05 };
-  if (style === "wide") return { bid: 0.68, ask: 1.38, take: 0.08 };
-  if (style === "thin") return { bid: 0.58, ask: 1.52, take: 0.12 };
-  return { bid: 0.42, ask: 1.85, take: 0.18 };
+export type BotSpread = {
+  bid: number;
+  ask: number;
+  take: number;
+  farBid: number;
+  farAsk: number;
+  farChance: number;
+  hopeQuoteChance: number;
+  lossChance: number;
+  hope: number;
+};
+
+export function botSpread(style: BotProfile["style"]): BotSpread {
+  if (style === "tight") {
+    return {
+      bid: 0.7,
+      ask: 1.38,
+      take: 0.16,
+      farBid: 0.32,
+      farAsk: 2.1,
+      farChance: 0.07,
+      hopeQuoteChance: 0.05,
+      lossChance: 0.05,
+      hope: 0.28,
+    };
+  }
+  if (style === "wide") {
+    return {
+      bid: 0.48,
+      ask: 1.75,
+      take: 0.2,
+      farBid: 0.18,
+      farAsk: 2.7,
+      farChance: 0.09,
+      hopeQuoteChance: 0.06,
+      lossChance: 0.07,
+      hope: 0.38,
+    };
+  }
+  if (style === "thin") {
+    return {
+      bid: 0.34,
+      ask: 2.05,
+      take: 0.24,
+      farBid: 0.1,
+      farAsk: 3.2,
+      farChance: 0.1,
+      hopeQuoteChance: 0.06,
+      lossChance: 0.06,
+      hope: 0.45,
+    };
+  }
+  return {
+    bid: 0.16,
+    ask: 2.85,
+    take: 0.3,
+    farBid: 0.05,
+    farAsk: 4.4,
+    farChance: 0.12,
+    hopeQuoteChance: 0.08,
+    lossChance: 0.1,
+    hope: 0.62,
+  };
+}
+
+export function botQuoteMultipliers(spread: BotSpread) {
+  const roll = Math.random();
+  if (roll < spread.farChance) {
+    return {
+      kind: "far" as const,
+      bid: spread.farBid * (0.6 + Math.random() * 0.7),
+      ask: spread.farAsk * (0.8 + Math.random() * 0.55),
+    };
+  }
+  if (roll < spread.farChance + spread.hopeQuoteChance) {
+    return {
+      kind: "hope" as const,
+      bid: 1.15 + Math.random() * spread.hope,
+      ask: Math.max(0.08, 0.9 - Math.random() * spread.hope),
+    };
+  }
+  const drift = 0.84 + Math.random() * 0.3;
+  return {
+    kind: "rest" as const,
+    bid: spread.bid * drift,
+    ask: spread.ask * drift,
+  };
+}
+
+export function botWillTake(
+  spread: BotSpread,
+  fair: number,
+  side: "liftAsk" | "hitBid",
+  price: number,
+  feelingLucky: boolean
+) {
+  if (side === "liftAsk") {
+    const bargain = price <= Math.round(fair * (1 - spread.take));
+    const overpay = feelingLucky && price <= Math.round(fair * (1 + spread.hope));
+    return bargain || overpay;
+  }
+  const rich = price >= Math.round(fair * (1 + spread.take));
+  const dump = feelingLucky && price >= Math.max(1, Math.round(fair * (1 - spread.hope)));
+  return rich || dump;
 }

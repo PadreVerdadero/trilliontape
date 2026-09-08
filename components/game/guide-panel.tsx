@@ -40,7 +40,8 @@ export function GuidePanel() {
           bid or ask at any whole-coin price of 1 or more. Each item shows how many units
           are listed for sale, how many sit on bids, and how many live in packs. Direct bundle deals
           (several items plus gold, named or open) do not print on the tape, so they do not move MV.
-          Plaza regulars (Piper, Reed, Anvil, and the rest) keep a live book so the plaza is never empty.
+          Plaza regulars (Piper, Reed, Anvil, and the rest) keep a live book so the plaza is never
+          empty. They usually sit far from MV; rarely they eat a loss, betting the tape will turn.
         </p>
       </section>
       <section className="space-y-2">
