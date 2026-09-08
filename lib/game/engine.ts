@@ -256,7 +256,7 @@ function busyState(player: PlayerRow): BusyState {
       endsAt: null,
       remainingMs: 0,
       label: "Ready",
-      detail: "You can forage, trade, or visit a stall.",
+      detail: "Post a bid or ask, or take a quote on the board.",
     };
   }
   const payload = player.busy_payload ? JSON.parse(player.busy_payload) : {};
@@ -1722,7 +1722,7 @@ function fundBotGold(userId: number, need: number) {
     .run(need - free + 20, userId);
 }
 
-function restockBot(userId: number, gold: number, specialty: string[], thin: boolean) {
+function restockBot(userId: number, gold: number, specialty: string[]) {
   let purseFloor = Math.max(350, Math.round(gold * 0.12));
   for (const itemId of specialty) {
     if (!itemById[itemId]) continue;
@@ -1731,12 +1731,6 @@ function restockBot(userId: number, gold: number, specialty: string[], thin: boo
       purseFloor,
       Math.round(fair * (itemId === WIN_ITEM_ID ? 3 : 1.25))
     );
-    if (itemId === WIN_ITEM_ID) {
-      const owned = inventoryMap(userId).get(itemId) ?? 0;
-      if (owned < 1) addItem(userId, itemId, 1);
-    } else if (availableItem(userId, itemId) < 3) {
-      addItem(userId, itemId, thin ? 4 : 10);
-    }
   }
   fundBotGold(userId, purseFloor);
 }
@@ -1855,7 +1849,6 @@ function chaseOneBotQuote(
     botWillTake(spread, fair, "hitBid", bid.price, true, slack)
   ) {
     cancelOrders(userId, [quote.id]);
-    if (availableItem(userId, itemId) < 1) addItem(userId, itemId, 1);
     if (availableItem(userId, itemId) >= 1) {
       takeOrder(userId, bid.id, 1);
       return true;
@@ -1905,7 +1898,7 @@ export function tickBots() {
       .get(profile.username) as { id: number } | undefined;
     if (!user) continue;
     try {
-      restockBot(user.id, profile.gold, profile.specialty, profile.style === "thin");
+      restockBot(user.id, profile.gold, profile.specialty);
       ensureRelicBook(user.id, profile.style, profile.specialty);
       if (chaseStaleBotQuote(user.id, profile.style, now)) continue;
       let itemId = profile.specialty[Math.floor(Math.random() * profile.specialty.length)];
@@ -1978,7 +1971,7 @@ export function tickBots() {
         }
       }
     } catch {
-      // One noisy step should not stall the plaza.
+      // One noisy step should not stall the book.
     }
   }
 }
@@ -2231,7 +2224,6 @@ function listSwaps(userId: number): SwapOffer[] {
 export function getGameState(userId: number, timeZone?: string): GameState {
   tickBots();
   resolveBusy(userId);
-  const clock = festivalClock(timeZone);
   const player = loadPlayerRow(userId);
   const inv = inventoryMap(userId);
   const reserved = reservedItems(userId);
@@ -2309,31 +2301,26 @@ export function getGameState(userId: number, timeZone?: string): GameState {
     .all() as { username: string; wonAt: number }[];
 
   const prices = priceSheet();
-  const titles = listTitles();
-  playerState.titles = playerTitles(player.username, titles);
   const festival: FestivalState = {
-    timeZone: clock.timeZone,
-    clockLabel: clock.label,
-    sundayMarket: sundayMarketOpen(clock),
+    timeZone: timeZone || "UTC",
+    clockLabel: "",
+    sundayMarket: false,
     vpToWin: VP_TO_WIN,
-    rumorCost: RUMOR_COST,
-    crateCost: CRATE_COST,
-    donationNextCost: donationCost(player.donate_count ?? 0),
-    forage: listForage(player.location_id),
-    stalls: listStallViews(userId, clock, prices),
-    contracts: listContracts(userId, clock),
-    titles,
-    leaders: (
-      getDb()
-        .prepare(
-          `SELECT u.username, COALESCE(p.vp, 0) AS vp
-           FROM players p JOIN users u ON u.id = p.user_id
-           WHERE COALESCE(u.is_bot, 0) = 0
-           ORDER BY p.vp DESC, p.won_at ASC, u.username ASC
-           LIMIT 8`
-        )
-        .all() as { username: string; vp: number }[]
-    ).filter((row) => row.vp > 0),
+    rumorCost: 0,
+    crateCost: 0,
+    donationNextCost: 0,
+    forage: {
+      locationId: player.location_id,
+      searchers: 0,
+      strain: 0,
+      cooldownMs: 0,
+      nextSearchCost: 0,
+      biasLocationId: null,
+    },
+    stalls: [],
+    contracts: [],
+    titles: [],
+    leaders: [],
   };
 
   return {

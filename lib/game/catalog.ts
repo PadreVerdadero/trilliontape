@@ -302,7 +302,7 @@ export const items: Item[] = [
     emoji: "🌟",
     name: "Celestial Relic",
     kind: "relic",
-    purpose: "Craft this in the plaza to win the festival.",
+    purpose: "The festival prize. Trade it on the board; only the treasury can mint more.",
     description: "Blade, jewel, candle, and stew bound at the altar.",
     basePrice: 200,
   },

@@ -2,11 +2,12 @@ import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
-import { ENERGY_MAX, STARTING_ENERGY, STARTING_GOLD, itemById } from "@/lib/game/catalog";
+import { ENERGY_MAX, STARTING_ENERGY, STARTING_GOLD, WIN_ITEM_ID, itemById } from "@/lib/game/catalog";
 import { BOT_PROFILES } from "@/lib/game/bots";
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: Database.Database;
+  bazaarRelicSweep?: boolean;
 };
 
 function migrate(db: Database.Database) {
@@ -208,7 +209,7 @@ function createPlayerWithDb(db: Database.Database, userId: number) {
     STARTING_GOLD,
     STARTING_ENERGY,
     ENERGY_MAX,
-    "You arrive in Lantern Plaza with a light pack and a stall token."
+    "You arrive with a light pack and a place at the desk."
   );
   const starter: Record<string, number> = { wheat: 3, wood: 2, flax: 1, berries: 3 };
   const insert = db.prepare(
@@ -217,6 +218,22 @@ function createPlayerWithDb(db: Database.Database, userId: number) {
   for (const [itemId, qty] of Object.entries(starter)) {
     insert.run(userId, itemId, qty);
   }
+}
+
+function sweepBotRelicMints(db: Database.Database) {
+  if (globalForDb.bazaarRelicSweep) return;
+  globalForDb.bazaarRelicSweep = true;
+  db.prepare(
+    `DELETE FROM inventory
+     WHERE item_id = ?
+       AND user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)`
+  ).run(WIN_ITEM_ID);
+  db.prepare(
+    `UPDATE orders
+     SET remaining = 0
+     WHERE item_id = ? AND side = 'sell' AND remaining > 0
+       AND user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)`
+  ).run(WIN_ITEM_ID);
 }
 
 function seedBots(db: Database.Database) {
@@ -243,12 +260,12 @@ function seedBots(db: Database.Database) {
       userId = Number(info.lastInsertRowid);
       db.prepare(
         "INSERT INTO players (user_id, gold, location_id, energy, energy_max, last_event) VALUES (?, ?, 'town', ?, ?, ?)"
-      ).run(userId, bot.gold, ENERGY_MAX, ENERGY_MAX, "A plaza regular keeping the board honest.");
+      ).run(userId, bot.gold, ENERGY_MAX, ENERGY_MAX, "A computer trader keeping the book honest.");
     } else {
       db.prepare("UPDATE users SET is_bot = 1 WHERE id = ?").run(userId);
     }
     for (const itemId of bot.specialty) {
-      if (!itemById[itemId]) continue;
+      if (!itemById[itemId] || itemId === WIN_ITEM_ID) continue;
       insertInv.run(userId, itemId, bot.style === "thin" ? 6 : 22);
     }
   }
@@ -265,11 +282,13 @@ export function getDb() {
     clearBankerBook(db);
     seedGuest(db);
     seedBots(db);
+    sweepBotRelicMints(db);
     globalForDb.bazaarDb = db;
   } else {
     migrate(globalForDb.bazaarDb);
     clearBankerBook(globalForDb.bazaarDb);
     seedBots(globalForDb.bazaarDb);
+    sweepBotRelicMints(globalForDb.bazaarDb);
   }
   return globalForDb.bazaarDb;
 }

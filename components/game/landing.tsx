@@ -19,8 +19,8 @@ const highlights = [
   },
   {
     emoji: "🤖",
-    title: "Plaza regulars",
-    body: "Computer traders sit far from MV most of the time, and sometimes take a loss if they think the tape will turn.",
+    title: "Computer traders",
+    body: "They sit far from MV most of the time, and sometimes take a loss if they think the tape will turn. They trade stock that already exists — they do not mint more of it.",
   },
 ];
 
@@ -75,7 +75,7 @@ export function Landing({ error, next }: { error?: string; next?: string }) {
 
           <Card className="overflow-visible bg-card/90 backdrop-blur">
             <CardHeader>
-              <CardTitle>Open a stall on the board</CardTitle>
+              <CardTitle>Sit at the desk</CardTitle>
               <CardDescription>
                 Use Guest or create your own traveler. Pack and gold are saved when you leave.
               </CardDescription>

@@ -1,23 +1,12 @@
 import { asJson, handleError, requireUser } from "@/lib/game/api";
 import {
   acceptSwap,
-  buyFromStall,
-  buyRumor,
   cancelOrders,
   cancelSwap,
-  completeContract,
-  craftItem,
   declineSwap,
-  donateLanterns,
   getGameState,
   placeOrder,
   proposeSwap,
-  arriveAt,
-  rentCrate,
-  sellToStall,
-  startMine,
-  startSearch,
-  startTravel,
   takeOrder,
   consumeItem,
   setGovernment,
@@ -68,20 +57,17 @@ export async function POST(request: Request) {
     const tz = body.timeZone;
     switch (body.action) {
       case "travel":
-        startTravel(userId, body.locationId);
-        break;
       case "arrive":
-        arriveAt(userId, body.locationId);
-        break;
       case "search":
-        startSearch(userId);
-        break;
       case "mine":
-        startMine(userId);
-        break;
       case "craft":
-        craftItem(userId, body.outputId);
-        break;
+      case "stallSell":
+      case "stallBuy":
+      case "rumor":
+      case "crate":
+      case "contract":
+      case "donate":
+        throw new Error("The stalls are gone. Trade on the board.");
       case "order":
         placeOrder(userId, body.itemId, body.side, Number(body.price), Number(body.quantity));
         break;
@@ -97,24 +83,6 @@ export async function POST(request: Request) {
       }
       case "use":
         consumeItem(userId, body.itemId);
-        break;
-      case "stallSell":
-        sellToStall(userId, body.stallId, body.itemId, Number(body.quantity), tz);
-        break;
-      case "stallBuy":
-        buyFromStall(userId, body.stallId, body.itemId, Number(body.quantity), tz);
-        break;
-      case "rumor":
-        buyRumor(userId, body.stallId, tz);
-        break;
-      case "crate":
-        rentCrate(userId, body.stallId, tz);
-        break;
-      case "contract":
-        completeContract(userId, body.contractId, tz);
-        break;
-      case "donate":
-        donateLanterns(userId);
         break;
       case "swapPropose":
         proposeSwap(userId, {

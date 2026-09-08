@@ -28,7 +28,7 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
   if (loading) {
     return (
       <div className="grid min-h-dvh place-items-center px-4">
-        <p className="text-muted-foreground">Lighting the plaza lanterns…</p>
+            <p className="text-muted-foreground">Opening the book…</p>
       </div>
     );
   }
