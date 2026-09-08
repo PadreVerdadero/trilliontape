@@ -33,7 +33,7 @@ export function InventoryPanel({
   const rows = packRows(player.inventory, rankedItemIds);
   return (
     <div>
-      <div className="grid w-full grid-cols-[1.25rem_minmax(0,1fr)_auto_auto_auto] items-center gap-1.5 rounded-lg px-1.5 py-1.5 sm:px-2">
+      <div className="grid w-full grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-1.5 rounded-lg px-1.5 py-1.5 sm:px-2">
         <span className="text-base leading-none">🪙</span>
         <span className="truncate text-xs font-medium sm:text-sm">Coins</span>
         <span
@@ -48,10 +48,6 @@ export function InventoryPanel({
           {player.availableGold !== player.gold ? (
             <span className="text-muted-foreground">/{formatNumber(player.gold)}</span>
           ) : null}
-        </span>
-        <span className="tabular-nums text-right text-xs text-muted-foreground">—</span>
-        <span className="tabular-nums text-right text-xs text-muted-foreground">
-          {player.isGov ? "∞" : "—"}
         </span>
       </div>
       {rows.map((row) => {
