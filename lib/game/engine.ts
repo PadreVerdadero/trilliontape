@@ -1634,7 +1634,6 @@ function netWorthLeaders(prices: MarketPrice[]): LeaderRow[] {
       netWorth: row.gold + (goods.get(row.id) ?? 0),
     }))
     .sort((a, b) => b.netWorth - a.netWorth || a.username.localeCompare(b.username))
-    .slice(0, 40)
     .map((row, index) => ({
       place: index + 1,
       username: row.username,

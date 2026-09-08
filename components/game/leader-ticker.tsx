@@ -1,8 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { formatCoins, formatCompact } from "@/lib/game/format";
 import { cn } from "@/lib/utils";
 import type { LeaderRow } from "@/lib/game/types";
+
+export const TICKER_PLACES = 10;
 
 function tape(leaders: LeaderRow[], you: string, copy: number) {
   return leaders.map((row, index) => {
@@ -33,20 +36,25 @@ export function LeaderTicker({
   leaders: LeaderRow[];
   you: string;
 }) {
-  if (leaders.length === 0) return null;
+  const top = leaders.filter((row) => row.place <= TICKER_PLACES).slice(0, TICKER_PLACES);
+  if (top.length === 0) return null;
 
-  const padded = [...leaders];
-  while (padded.length < 10) padded.push(...leaders);
-  const seconds = Math.max(28, padded.length * 2.4);
+  const padded = [...top];
+  while (padded.length < 8) padded.push(...top);
+  const seconds = Math.max(22, padded.length * 2.6);
 
   return (
-    <div className="flex items-stretch border-b border-border/70 bg-card/55">
+    <Link
+      href="/leaders"
+      className="flex items-stretch border-b border-border/70 bg-card/55 outline-none transition-colors hover:bg-card/80 focus-visible:bg-card/80"
+      title="Open the leaderboard"
+    >
       <p className="flex shrink-0 items-center border-r border-border/70 px-2.5 font-heading text-[11px] tracking-[0.14em] text-primary uppercase sm:px-3">
         Leaders
       </p>
       <div
         className="leader-ticker min-w-0 flex-1 overflow-hidden"
-        aria-label="Net worth leaderboard"
+        aria-label="Top ten net worth. Open the full leaderboard."
       >
         <div
           className="leader-ticker-track flex w-max items-center py-1.5 text-[11px] sm:text-xs"
@@ -58,6 +66,6 @@ export function LeaderTicker({
           </div>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
