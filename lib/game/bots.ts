@@ -211,7 +211,21 @@ export function botSpread(style: BotProfile["style"]): BotSpread {
   };
 }
 
-export function botQuoteMultipliers(spread: BotSpread) {
+export function hopeCoins(spread: BotSpread, fair: number) {
+  const value = Math.max(1, Math.round(fair));
+  const fromPct = Math.max(1, Math.round(value * spread.hope));
+  if (value > 12) return fromPct;
+  const cheap = Math.round(2 + spread.hope * 4);
+  return Math.max(fromPct, cheap);
+}
+
+export function botLossChance(spread: BotSpread, fair: number) {
+  const value = Math.max(1, fair);
+  if (value > 12) return spread.lossChance;
+  return Math.min(0.48, spread.lossChance + (12 - value) * 0.03);
+}
+
+export function botQuoteMultipliers(spread: BotSpread, fair: number) {
   const roll = Math.random();
   if (roll < spread.farChance) {
     return {
@@ -221,10 +235,13 @@ export function botQuoteMultipliers(spread: BotSpread) {
     };
   }
   if (roll < spread.farChance + spread.hopeQuoteChance) {
+    const slack = hopeCoins(spread, fair);
+    const coins = 1 + Math.floor(Math.random() * slack);
+    const mid = Math.max(1, fair);
     return {
       kind: "hope" as const,
-      bid: 1.15 + Math.random() * spread.hope,
-      ask: Math.max(0.08, 0.9 - Math.random() * spread.hope),
+      bid: (mid + coins) / mid,
+      ask: Math.max(0.08, (mid - coins) / mid),
     };
   }
   const drift = 0.84 + Math.random() * 0.3;
@@ -242,12 +259,14 @@ export function botWillTake(
   price: number,
   feelingLucky: boolean
 ) {
+  const fairPx = Math.max(1, Math.round(fair));
+  const slack = hopeCoins(spread, fairPx);
   if (side === "liftAsk") {
-    const bargain = price <= Math.round(fair * (1 - spread.take));
-    const overpay = feelingLucky && price <= Math.round(fair * (1 + spread.hope));
+    const bargain = price <= Math.round(fairPx * (1 - spread.take));
+    const overpay = feelingLucky && price <= fairPx + slack;
     return bargain || overpay;
   }
-  const rich = price >= Math.round(fair * (1 + spread.take));
-  const dump = feelingLucky && price >= Math.max(1, Math.round(fair * (1 - spread.hope)));
+  const rich = price >= Math.round(fairPx * (1 + spread.take));
+  const dump = feelingLucky && price >= Math.max(1, fairPx - slack);
   return rich || dump;
 }

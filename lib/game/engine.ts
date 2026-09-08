@@ -25,7 +25,13 @@ import {
 } from "@/lib/game/consumables";
 import { rarityFromHeld, rarityOf } from "@/lib/game/rarity";
 import { getDb } from "@/lib/game/db";
-import { BOT_PROFILES, botQuoteMultipliers, botSpread, botWillTake } from "@/lib/game/bots";
+import {
+  BOT_PROFILES,
+  botLossChance,
+  botQuoteMultipliers,
+  botSpread,
+  botWillTake,
+} from "@/lib/game/bots";
 import { computeFairValue } from "@/lib/game/market";
 import {
   chalkboardItem,
@@ -1741,7 +1747,7 @@ export function tickBots() {
       if (!item) continue;
       const fair = marketPrice(itemId);
       const spread = botSpread(profile.style);
-      const feelingLucky = Math.random() < spread.lossChance;
+      const feelingLucky = Math.random() < botLossChance(spread, fair);
       const ask = db
         .prepare(
           `SELECT id, price FROM orders
@@ -1776,7 +1782,7 @@ export function tickBots() {
         .prepare("SELECT COALESCE(SUM(remaining), 0) AS n FROM orders WHERE user_id = ? AND remaining > 0")
         .get(user.id) as { n: number };
       if (live.n >= 8) continue;
-      const quote = botQuoteMultipliers(spread);
+      const quote = botQuoteMultipliers(spread, fair);
       const qty =
         quote.kind !== "rest" || profile.style === "thin" || profile.style === "wild"
           ? 1
