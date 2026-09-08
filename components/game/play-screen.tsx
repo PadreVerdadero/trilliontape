@@ -121,14 +121,17 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
       </header>
 
       <div className="flex min-h-0 w-full flex-1 overflow-hidden">
-        <aside className="flex w-[12.5rem] shrink-0 flex-col overflow-hidden border-r border-border/70 bg-card/40 sm:w-[16rem] lg:w-[18rem]">
-          <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto_auto_auto] items-center gap-1.5 border-b border-border/60 px-2 py-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase sm:px-3">
+        <aside className="flex w-[13.5rem] shrink-0 flex-col overflow-hidden border-r border-border/70 bg-card/40 sm:w-[17.5rem] lg:w-[20.5rem]">
+          <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto_auto_auto_auto] items-center gap-1.5 border-b border-border/60 px-2 py-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase sm:px-3">
             <span />
             <span>Item</span>
             <span className="text-right" title="Free to trade — not sitting on a bid or ask">
               Free
             </span>
             <span className="text-right">MV</span>
+            <span className="text-right" title="Average price you paid for units you still hold">
+              Avg
+            </span>
             <span className="text-right">Total</span>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-1 py-1 sm:px-2" data-keep-scroll>

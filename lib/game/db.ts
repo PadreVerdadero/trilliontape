@@ -51,6 +51,7 @@ function migrate(db: Database.Database) {
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       item_id TEXT NOT NULL,
       quantity INTEGER NOT NULL,
+      cost_basis INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (user_id, item_id)
     );
 
@@ -181,12 +182,42 @@ function migrate(db: Database.Database) {
   ensureColumn(db, "players", "gold_donated", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "players", "donate_count", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "players", "wardrobe_vp", "INTEGER NOT NULL DEFAULT 0");
+  if (ensureColumn(db, "inventory", "cost_basis", "INTEGER NOT NULL DEFAULT 0")) {
+    seedInventoryCostBasis(db);
+  }
 }
 
 function ensureColumn(db: Database.Database, table: string, column: string, sql: string) {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
   if (!cols.some((col) => col.name === column)) {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${sql}`);
+    return true;
+  }
+  return false;
+}
+
+function seedInventoryCostBasis(db: Database.Database) {
+  const avgs = db
+    .prepare(
+      `SELECT buy_user_id, item_id, SUM(price * quantity) AS paid, SUM(quantity) AS qty
+       FROM trades GROUP BY buy_user_id, item_id`
+    )
+    .all() as { buy_user_id: number; item_id: string; paid: number; qty: number }[];
+  const avgPaid = new Map(
+    avgs
+      .filter((row) => row.qty > 0)
+      .map((row) => [`${row.buy_user_id}:${row.item_id}`, row.paid / row.qty])
+  );
+  const stacks = db
+    .prepare("SELECT user_id, item_id, quantity FROM inventory WHERE quantity > 0")
+    .all() as { user_id: number; item_id: string; quantity: number }[];
+  const upd = db.prepare(
+    "UPDATE inventory SET cost_basis = ? WHERE user_id = ? AND item_id = ?"
+  );
+  for (const row of stacks) {
+    const avg =
+      avgPaid.get(`${row.user_id}:${row.item_id}`) ?? itemById[row.item_id]?.basePrice ?? 1;
+    upd.run(Math.max(0, Math.round(avg * row.quantity)), row.user_id, row.item_id);
   }
 }
 
@@ -199,19 +230,20 @@ function clearBankerBook(db: Database.Database) {
 function takeFromPack(db: Database.Database, userId: number, itemId: string, qty: number) {
   if (qty <= 0) return 0;
   const row = db
-    .prepare("SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?")
-    .get(userId, itemId) as { quantity: number } | undefined;
+    .prepare(
+      "SELECT quantity, COALESCE(cost_basis, 0) AS cost_basis FROM inventory WHERE user_id = ? AND item_id = ?"
+    )
+    .get(userId, itemId) as { quantity: number; cost_basis: number } | undefined;
   const have = row?.quantity ?? 0;
   const take = Math.min(have, qty);
   if (take <= 0) return 0;
   const left = have - take;
   if (left <= 0) db.prepare("DELETE FROM inventory WHERE user_id = ? AND item_id = ?").run(userId, itemId);
   else {
-    db.prepare("UPDATE inventory SET quantity = ? WHERE user_id = ? AND item_id = ?").run(
-      left,
-      userId,
-      itemId
-    );
+    const nextBasis = Math.round((row?.cost_basis ?? 0) * (left / have));
+    db.prepare(
+      "UPDATE inventory SET quantity = ?, cost_basis = ? WHERE user_id = ? AND item_id = ?"
+    ).run(left, nextBasis, userId, itemId);
   }
   return take;
 }
@@ -333,10 +365,11 @@ function createPlayerWithDb(db: Database.Database, userId: number) {
   );
   const starter: Record<string, number> = { wheat: 3, wood: 2, berries: 3 };
   const insert = db.prepare(
-    "INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)"
+    "INSERT INTO inventory (user_id, item_id, quantity, cost_basis) VALUES (?, ?, ?, ?)"
   );
   for (const [itemId, qty] of Object.entries(starter)) {
-    insert.run(userId, itemId, qty);
+    const unit = itemById[itemId]?.basePrice ?? 1;
+    insert.run(userId, itemId, qty, unit * qty);
   }
 }
 

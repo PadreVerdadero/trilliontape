@@ -176,29 +176,37 @@ function availableGold(userId: number) {
   return gold - reservedGold(userId);
 }
 
-function addItem(userId: number, itemId: string, qty: number) {
+function addItem(userId: number, itemId: string, qty: number, unitCost?: number) {
   if (qty <= 0) return;
+  const unit = Math.max(0, Math.round(unitCost ?? marketPrice(itemId)));
+  const addedCost = unit * qty;
   getDb()
     .prepare(
-      `INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)
-       ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = quantity + excluded.quantity`
+      `INSERT INTO inventory (user_id, item_id, quantity, cost_basis) VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id, item_id) DO UPDATE SET
+         quantity = quantity + excluded.quantity,
+         cost_basis = COALESCE(cost_basis, 0) + excluded.cost_basis`
     )
-    .run(userId, itemId, qty);
+    .run(userId, itemId, qty, addedCost);
 }
 
 function removeItem(userId: number, itemId: string, qty: number) {
-  const have = inventoryMap(userId).get(itemId) ?? 0;
+  const row = getDb()
+    .prepare(
+      "SELECT quantity, COALESCE(cost_basis, 0) AS cost_basis FROM inventory WHERE user_id = ? AND item_id = ?"
+    )
+    .get(userId, itemId) as { quantity: number; cost_basis: number } | undefined;
+  const have = row?.quantity ?? 0;
   if (have < qty) throw new Error(`Not enough ${itemById[itemId]?.name ?? itemId}.`);
   const next = have - qty;
   const db = getDb();
   if (next === 0) {
     db.prepare("DELETE FROM inventory WHERE user_id = ? AND item_id = ?").run(userId, itemId);
   } else {
-    db.prepare("UPDATE inventory SET quantity = ? WHERE user_id = ? AND item_id = ?").run(
-      next,
-      userId,
-      itemId
-    );
+    const nextBasis = Math.round((row?.cost_basis ?? 0) * (next / have));
+    db.prepare(
+      "UPDATE inventory SET quantity = ?, cost_basis = ? WHERE user_id = ? AND item_id = ?"
+    ).run(next, nextBasis, userId, itemId);
   }
 }
 
@@ -461,7 +469,7 @@ function executeFill(
     );
   }
   if (!govSell) removeItem(sell.user_id, itemId, quantity);
-  if (!govBuy) addItem(buy.user_id, itemId, quantity);
+  if (!govBuy) addItem(buy.user_id, itemId, quantity, price);
   const buyLeft = buy.remaining - quantity;
   const sellLeft = sell.remaining - quantity;
   if (buyLeft <= 0) db.prepare("DELETE FROM orders WHERE id = ?").run(buy.id);
@@ -1011,10 +1019,11 @@ export function adminSetItem(userId: number, itemId: string, quantity: number) {
   if (quantity === 0) {
     db.prepare("DELETE FROM inventory WHERE user_id = ? AND item_id = ?").run(userId, itemId);
   } else {
+    const unit = marketPrice(itemId);
     db.prepare(
-      `INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)
-       ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = excluded.quantity`
-    ).run(userId, itemId, quantity);
+      `INSERT INTO inventory (user_id, item_id, quantity, cost_basis) VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = excluded.quantity, cost_basis = excluded.cost_basis`
+    ).run(userId, itemId, quantity, unit * quantity);
   }
   setEvent(userId, `Admin set ${item.emoji} ${item.name} to ${formatNumber(quantity)}.`);
 }
@@ -1234,7 +1243,7 @@ export function buyFromStall(
   const total = price * quantity;
   if (availableGold(userId) < total) throw new Error("Not enough free coin.");
   getDb().prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(total, userId);
-  addItem(userId, itemId, quantity);
+  addItem(userId, itemId, quantity, price);
   setEvent(
     userId,
     `Bought ${item.emoji} ${item.name} ×${formatNumber(quantity)} from ${stall.name} for ${formatCoins(total)}.`
@@ -2104,11 +2113,21 @@ export function getGameState(userId: number, timeZone?: string): GameState {
   tickBots();
   resolveBusy(userId);
   const player = loadPlayerRow(userId);
-  const inv = inventoryMap(userId);
+  const stacks = getDb()
+    .prepare(
+      "SELECT item_id, quantity, COALESCE(cost_basis, 0) AS cost_basis FROM inventory WHERE user_id = ? AND quantity > 0"
+    )
+    .all(userId) as { item_id: string; quantity: number; cost_basis: number }[];
   const reserved = reservedItems(userId);
-  const inventory: InventoryRow[] = [...inv.entries()]
-    .filter(([, qty]) => qty > 0)
-    .map(([itemId, quantity]) => ({ itemId, quantity }))
+  const inventory: InventoryRow[] = stacks
+    .map((row) => ({
+      itemId: row.item_id,
+      quantity: row.quantity,
+      avgCost:
+        row.cost_basis > 0 && row.quantity > 0
+          ? Math.max(1, Math.round(row.cost_basis / row.quantity))
+          : null,
+    }))
     .sort((a, b) => a.itemId.localeCompare(b.itemId));
   const owned = getDb()
     .prepare("SELECT cosmetic_id FROM cosmetics WHERE user_id = ?")

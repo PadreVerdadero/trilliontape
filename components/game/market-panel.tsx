@@ -742,6 +742,7 @@ export function MarketPanel({
         travelers={state.travelers ?? []}
         pending={pending}
         rarityMap={rarityMap}
+        prices={state.prices}
         onPropose={onProposeSwap}
         onAccept={onAcceptSwap}
         onCancel={onCancelSwap}

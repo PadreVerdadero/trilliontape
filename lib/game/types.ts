@@ -41,6 +41,7 @@ export type Cosmetic = {
 export type InventoryRow = {
   itemId: string;
   quantity: number;
+  avgCost?: number | null;
 };
 
 export type OrderRow = {

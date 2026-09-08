@@ -5,12 +5,16 @@ import { cn } from "@/lib/utils";
 import type { InventoryRow, MarketPrice, PlayerState } from "@/lib/game/types";
 
 function packRows(inventory: InventoryRow[], rankedIds: string[]) {
-  const held = new Map(inventory.map((row) => [row.itemId, row.quantity]));
+  const held = new Map(inventory.map((row) => [row.itemId, row]));
   const ids = rankedIds.length > 0 ? rankedIds : items.map((item) => item.id);
-  return ids.map((itemId) => ({
-    itemId,
-    quantity: held.get(itemId) ?? 0,
-  }));
+  return ids.map((itemId) => {
+    const stack = held.get(itemId);
+    return {
+      itemId,
+      quantity: stack?.quantity ?? 0,
+      avgCost: stack?.avgCost ?? null,
+    };
+  });
 }
 
 export function InventoryPanel({
@@ -59,6 +63,7 @@ export function InventoryPanel({
         const total = row.quantity * mv;
         const active = selectedItemId === row.itemId;
         const empty = row.quantity <= 0;
+        const avg = empty ? null : row.avgCost;
         return (
           <button
             key={row.itemId}
@@ -67,9 +72,9 @@ export function InventoryPanel({
             onClick={() => onSelect?.(row.itemId)}
             title={`${item?.name ?? row.itemId} · ${formatNumber(free)} free of ${formatNumber(row.quantity)}${
               reserved ? ` · ${formatNumber(reserved)} listed` : ""
-            } · ${formatCoins(mv)} each = ${formatCoins(total)}`}
+            } · MV ${formatCoins(mv)}${avg != null ? ` · avg paid ${formatCoins(avg)}` : ""} = ${formatCoins(total)}`}
             className={cn(
-              "grid w-full grid-cols-[1.25rem_minmax(0,1fr)_auto_auto_auto] items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-sm hover:bg-background/70 sm:px-2 sm:py-1.5",
+              "grid w-full grid-cols-[1.25rem_minmax(0,1fr)_auto_auto_auto_auto] items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-sm hover:bg-background/70 sm:px-2 sm:py-1.5",
               active && "bg-primary/15",
               empty && "opacity-60",
               rarityClass(row.itemId, rarityMap)
@@ -85,6 +90,21 @@ export function InventoryPanel({
             </span>
             <span className="tabular-nums text-right text-xs font-medium text-sky-200">
               {formatCoins(mv)}
+            </span>
+            <span
+              className={cn(
+                "tabular-nums text-right text-xs font-medium",
+                avg == null
+                  ? "text-muted-foreground"
+                  : avg < mv
+                    ? "text-emerald-200"
+                    : avg > mv
+                      ? "text-rose-200"
+                      : "text-amber-200"
+              )}
+              title="Average price you paid for units you still hold"
+            >
+              {avg == null ? "—" : formatCoins(avg)}
             </span>
             <span className="tabular-nums text-right text-xs font-medium sm:text-sm">
               {empty ? "—" : formatCoins(total)}

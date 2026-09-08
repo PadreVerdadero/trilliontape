@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { itemById, itemsByCommonness } from "@/lib/game/catalog";
+import { bundleMarketValue } from "@/lib/game/deal-value";
 import { formatCoins, formatNumber } from "@/lib/game/format";
 import { rarityClass, type RarityMap } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
-import type { InventoryRow, SwapOffer, TravelerRow } from "@/lib/game/types";
+import type { InventoryRow, MarketPrice, SwapOffer, TravelerRow } from "@/lib/game/types";
 
 type LegDraft = { itemId: string; quantity: number };
 
@@ -43,6 +44,7 @@ export function SwapPanel({
   travelers,
   pending,
   rarityMap,
+  prices,
   onPropose,
   onAccept,
   onCancel,
@@ -54,6 +56,7 @@ export function SwapPanel({
   travelers: TravelerRow[];
   pending: boolean;
   rarityMap?: RarityMap;
+  prices: MarketPrice[];
   onPropose: (payload: {
     toUsername: string | null;
     giveGold: number;
@@ -106,6 +109,16 @@ export function SwapPanel({
   const inbox = swaps.filter((offer) => offer.role === "inbox");
   const mine = swaps.filter((offer) => offer.role === "mine");
   const open = swaps.filter((offer) => offer.role === "open");
+  const draftGive = bundleMarketValue(
+    prices,
+    Math.max(0, Math.floor(Number(giveGold) || 0)),
+    cleanLegs(giveLegs)
+  );
+  const draftWant = bundleMarketValue(
+    prices,
+    Math.max(0, Math.floor(Number(wantGold) || 0)),
+    cleanLegs(wantLegs)
+  );
 
   return (
     <div className="space-y-4 rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
@@ -148,6 +161,7 @@ export function SwapPanel({
           legs={giveLegs}
           itemChoices={owned}
           rarityMap={rarityMap}
+          total={draftGive}
           onPick={(itemId) =>
             setGiveLegs((rows) => pickLeg(rows, itemId))
           }
@@ -164,6 +178,7 @@ export function SwapPanel({
           legs={wantLegs}
           itemChoices={itemsByCommonness.map((item) => ({ itemId: item.id, name: item.name }))}
           rarityMap={rarityMap}
+          total={draftWant}
           onPick={(itemId) => setWantLegs((rows) => pickLeg(rows, itemId))}
           onChange={(index, patch) => updateLeg("want", index, patch)}
           onRemove={(index) =>
@@ -171,6 +186,8 @@ export function SwapPanel({
           }
         />
       </div>
+
+      <DealScore pay={draftGive} get={draftWant} />
 
       <Button className="h-11 w-full sm:w-auto" disabled={pending} onClick={() => void propose()}>
         Post deal
@@ -181,6 +198,7 @@ export function SwapPanel({
         empty="No named deals waiting on you."
         offers={inbox}
         pending={pending}
+        prices={prices}
         onAccept={onAccept}
         onDecline={onDecline}
       />
@@ -189,6 +207,7 @@ export function SwapPanel({
         empty="You have no open offers."
         offers={mine}
         pending={pending}
+        prices={prices}
         onCancel={onCancel}
       />
       <OfferList
@@ -196,9 +215,38 @@ export function SwapPanel({
         empty="No public bundles on the board."
         offers={open}
         pending={pending}
+        prices={prices}
         onAccept={onAccept}
       />
     </div>
+  );
+}
+
+function DealScore({ pay, get }: { pay: number; get: number }) {
+  const delta = get - pay;
+  if (pay <= 0 && get <= 0) return null;
+  if (delta === 0) {
+    return (
+      <p className="rounded-lg bg-muted/50 px-3 py-2 text-sm">
+        Even on MV · {formatCoins(get)} each way.
+      </p>
+    );
+  }
+  const gain = delta > 0;
+  return (
+    <p
+      className={cn(
+        "rounded-lg px-3 py-2 text-sm",
+        gain ? "bg-emerald-950/40 text-emerald-100" : "bg-rose-950/40 text-rose-100"
+      )}
+    >
+      {gain ? "You would gain " : "You would lose "}
+      {formatCoins(Math.abs(delta))} on MV
+      <span className="text-muted-foreground">
+        {" "}
+        · give {formatCoins(pay)} · get {formatCoins(get)}
+      </span>
+    </p>
   );
 }
 
@@ -210,6 +258,7 @@ function LegEditor({
   legs,
   itemChoices,
   rarityMap,
+  total,
   onPick,
   onChange,
   onRemove,
@@ -221,6 +270,7 @@ function LegEditor({
   legs: LegDraft[];
   itemChoices: { itemId: string; name: string; quantity?: number }[];
   rarityMap?: RarityMap;
+  total: number;
   onPick: (itemId: string) => void;
   onChange: (index: number, patch: Partial<LegDraft>) => void;
   onRemove: (index: number) => void;
@@ -291,6 +341,9 @@ function LegEditor({
             );
           })}
       </div>
+      <p className="border-t border-border/50 pt-2 text-sm font-medium tabular-nums">
+        Worth {formatCoins(total)} <span className="font-normal text-muted-foreground">on MV</span>
+      </p>
     </div>
   );
 }
@@ -300,6 +353,7 @@ function OfferList({
   empty,
   offers,
   pending,
+  prices,
   onAccept,
   onCancel,
   onDecline,
@@ -308,6 +362,7 @@ function OfferList({
   empty: string;
   offers: SwapOffer[];
   pending: boolean;
+  prices: MarketPrice[];
   onAccept?: (id: number) => void;
   onCancel?: (id: number) => void;
   onDecline?: (id: number) => void;
@@ -316,7 +371,12 @@ function OfferList({
     <div className="space-y-2">
       <p className="text-sm font-medium">{title}</p>
       {offers.length === 0 ? <p className="text-sm text-muted-foreground">{empty}</p> : null}
-      {offers.map((offer) => (
+      {offers.map((offer) => {
+        const giveValue = bundleMarketValue(prices, offer.giveGold, offer.give);
+        const wantValue = bundleMarketValue(prices, offer.wantGold, offer.want);
+        const youPay = offer.role === "mine" ? giveValue : wantValue;
+        const youGet = offer.role === "mine" ? wantValue : giveValue;
+        return (
         <div key={offer.id} className="rounded-xl bg-background/50 p-3 text-sm ring-1 ring-foreground/10">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
@@ -361,20 +421,36 @@ function OfferList({
               label={offer.role === "mine" ? "You give" : "They give"}
               gold={offer.giveGold}
               legs={offer.give}
+              total={giveValue}
             />
             <SwapSide
               label={offer.role === "mine" ? "You want" : "They want"}
               gold={offer.wantGold}
               legs={offer.want}
+              total={wantValue}
             />
           </div>
+          <div className="mt-2">
+            <DealScore pay={youPay} get={youGet} />
+          </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-function SwapSide({ label, gold, legs }: { label: string; gold: number; legs: SwapOffer["give"] }) {
+function SwapSide({
+  label,
+  gold,
+  legs,
+  total,
+}: {
+  label: string;
+  gold: number;
+  legs: SwapOffer["give"];
+  total: number;
+}) {
   return (
     <div className="rounded-lg bg-muted/40 p-2">
       <p className="text-[11px] tracking-wide text-muted-foreground uppercase">{label}</p>
@@ -385,6 +461,9 @@ function SwapSide({ label, gold, legs }: { label: string; gold: number; legs: Sw
         </p>
       ))}
       {gold === 0 && legs.length === 0 ? <p className="text-muted-foreground">Nothing</p> : null}
+      <p className="mt-2 border-t border-border/40 pt-1.5 text-xs font-medium tabular-nums">
+        {formatCoins(total)} <span className="font-normal text-muted-foreground">on MV</span>
+      </p>
     </div>
   );
 }
