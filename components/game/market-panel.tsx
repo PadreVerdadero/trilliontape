@@ -93,8 +93,9 @@ export function MarketPanel({
             Post a buy or sell at any whole-coin price of 1 or more. Tap a listing to take one;
             tap your highlighted bid or ask to cancel it.
             MV is the average of the last 100 board trades. Bid/ask is units on the book
-            (bids/asks). Volume is how many exist in packs — it rises when stock is minted (treasury
-            asks, regular restocks) and falls when it is burned (treasury bids).
+            (bids/asks). Volume is how many exist in packs — it rises when a treasury ask fills or
+            regulars restock, and falls when a treasury bid fills. Posting a treasury quote does not
+            change volume until it trades.
           </p>
         </div>
         {state.recentTrades[0] ? (
@@ -152,9 +153,10 @@ export function MarketPanel({
             <p className="mb-3 font-heading text-lg">Post your own order</p>
             {state.player.isGov ? (
               <p className="mb-3 text-xs leading-5 text-amber-100/90">
-                Treasury desk: unlimited, and it does not spend or add to your purse. White asks mint
-                new units when they fill (volume up). Black bids pay the seller with new coin and
-                burn the goods (volume down).
+                Treasury desk: unlimited, and it does not spend your purse. Posting does not change
+                volume yet. A white ask mints new units when someone buys it (volume up). A black
+                bid burns goods when someone sells into it (volume down). Those quotes stay on the
+                book after you leave office.
               </p>
             ) : null}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[auto_1fr_1fr_auto]">

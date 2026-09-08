@@ -123,13 +123,11 @@ function reservedItems(userId: number) {
   const bump = (itemId: string, qty: number) => {
     map[itemId] = (map[itemId] ?? 0) + qty;
   };
-  const listed = isGov(userId)
-    ? []
-    : (getDb()
-        .prepare(
-          "SELECT item_id, COALESCE(SUM(remaining), 0) AS qty FROM orders WHERE user_id = ? AND side = 'sell' AND remaining > 0 GROUP BY item_id"
-        )
-        .all(userId) as { item_id: string; qty: number }[]);
+  const listed = getDb()
+    .prepare(
+      "SELECT item_id, COALESCE(SUM(remaining), 0) AS qty FROM orders WHERE user_id = ? AND side = 'sell' AND remaining > 0 AND COALESCE(treasury, 0) = 0 GROUP BY item_id"
+    )
+    .all(userId) as { item_id: string; qty: number }[];
   for (const row of listed) bump(row.item_id, row.qty);
   const offered = getDb()
     .prepare(
@@ -145,13 +143,11 @@ function reservedItems(userId: number) {
 }
 
 function reservedGold(userId: number) {
-  const bids = isGov(userId)
-    ? { gold: 0 }
-    : (getDb()
-        .prepare(
-          "SELECT COALESCE(SUM(price * remaining), 0) AS gold FROM orders WHERE user_id = ? AND side = 'buy' AND remaining > 0"
-        )
-        .get(userId) as { gold: number });
+  const bids = getDb()
+    .prepare(
+      "SELECT COALESCE(SUM(price * remaining), 0) AS gold FROM orders WHERE user_id = ? AND side = 'buy' AND remaining > 0 AND COALESCE(treasury, 0) = 0"
+    )
+    .get(userId) as { gold: number };
   const swaps = getDb()
     .prepare(
       "SELECT COALESCE(SUM(give_gold), 0) AS gold FROM swap_offers WHERE from_user_id = ? AND status = 'open'"
@@ -433,14 +429,14 @@ function recordTrade(
 }
 
 function executeFill(
-  buy: { id: number; user_id: number; price: number; remaining: number },
-  sell: { id: number; user_id: number; price: number; remaining: number },
+  buy: { id: number; user_id: number; price: number; remaining: number; treasury?: number },
+  sell: { id: number; user_id: number; price: number; remaining: number; treasury?: number },
   itemId: string,
   quantity: number,
   price: number
 ) {
-  const govBuy = isGov(buy.user_id);
-  const govSell = isGov(sell.user_id);
+  const govBuy = Boolean(buy.treasury);
+  const govSell = Boolean(sell.treasury);
   const db = getDb();
   if (!govBuy) {
     db.prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(
@@ -479,14 +475,26 @@ function matchItem(itemId: string) {
   while (true) {
     const buy = db
       .prepare(
-        "SELECT id, user_id, price, remaining FROM orders WHERE item_id = ? AND side = 'buy' AND remaining > 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker') ORDER BY price DESC, created_at ASC, id ASC"
+        "SELECT id, user_id, price, remaining, COALESCE(treasury, 0) AS treasury FROM orders WHERE item_id = ? AND side = 'buy' AND remaining > 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker') ORDER BY price DESC, created_at ASC, id ASC"
       )
-      .all(itemId) as { id: number; user_id: number; price: number; remaining: number }[];
+      .all(itemId) as {
+      id: number;
+      user_id: number;
+      price: number;
+      remaining: number;
+      treasury: number;
+    }[];
     const sell = db
       .prepare(
-        "SELECT id, user_id, price, remaining FROM orders WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker') ORDER BY price ASC, created_at ASC, id ASC"
+        "SELECT id, user_id, price, remaining, COALESCE(treasury, 0) AS treasury FROM orders WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker') ORDER BY price ASC, created_at ASC, id ASC"
       )
-      .all(itemId) as { id: number; user_id: number; price: number; remaining: number }[];
+      .all(itemId) as {
+      id: number;
+      user_id: number;
+      price: number;
+      remaining: number;
+      treasury: number;
+    }[];
 
     let pair: {
       buy: (typeof buy)[number];
@@ -806,6 +814,22 @@ export function craftItem(userId: number, outputId: string) {
   setEvent(userId, `Crafted ${output.emoji} ${output.name} ×${formatNumber(recipe.outputQty)}.`);
 }
 
+function insertLiveOrder(
+  userId: number,
+  itemId: string,
+  side: "buy" | "sell",
+  price: number,
+  quantity: number,
+  treasury: boolean
+) {
+  const info = getDb()
+    .prepare(
+      "INSERT INTO orders (user_id, item_id, side, price, remaining, created_at, treasury) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    )
+    .run(userId, itemId, side, price, quantity, nowMs(), treasury ? 1 : 0);
+  return Number(info.lastInsertRowid);
+}
+
 export function placeOrder(
   userId: number,
   itemId: string,
@@ -819,32 +843,29 @@ export function placeOrder(
   if (!Number.isInteger(price) || price < 1) {
     throw new Error("Price must be a whole number of at least 1.");
   }
-  const maxQty = isGov(userId) ? 999 : 99;
+  const treasury = isGov(userId);
+  const maxQty = treasury ? 999 : 99;
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > maxQty) {
     throw new Error(
-      isGov(userId)
+      treasury
         ? "Quantity must be a whole number from 1 to 999."
         : "Quantity must be a whole number from 1 to 99."
     );
   }
-  if (side === "buy" && !isGov(userId) && availableGold(userId) < price * quantity) {
+  if (side === "buy" && !treasury && availableGold(userId) < price * quantity) {
     throw new Error("Not enough free coin. Cancel a bid or sell something.");
   }
-  if (side === "sell" && !isGov(userId) && availableItem(userId, itemId) < quantity) {
+  if (side === "sell" && !treasury && availableItem(userId, itemId) < quantity) {
     throw new Error("Not enough unbound stock. Cancel a sell order first.");
   }
-  getDb()
-    .prepare(
-      "INSERT INTO orders (user_id, item_id, side, price, remaining, created_at) VALUES (?, ?, ?, ?, ?, ?)"
-    )
-    .run(userId, itemId, side, price, quantity, nowMs());
+  insertLiveOrder(userId, itemId, side, price, quantity, treasury);
   matchItem(itemId);
   setEvent(
     userId,
-    isGov(userId)
+    treasury
       ? side === "buy"
-        ? `Treasury bid: will burn ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(price)}.`
-        : `Treasury ask: will mint ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(price)}.`
+        ? `Treasury bid: will burn ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(price)} when it fills.`
+        : `Treasury ask: will mint ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(price)} when it fills.`
       : side === "buy"
         ? `Bid posted: ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(price)}.`
         : `Ask posted: ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(price)}.`
@@ -856,10 +877,18 @@ export function takeOrder(userId: number, orderId: number, quantity = 1) {
   const db = getDb();
   const order = db
     .prepare(
-      "SELECT id, user_id, item_id, side, price, remaining FROM orders WHERE id = ? AND remaining > 0"
+      "SELECT id, user_id, item_id, side, price, remaining, COALESCE(treasury, 0) AS treasury FROM orders WHERE id = ? AND remaining > 0"
     )
     .get(orderId) as
-    | { id: number; user_id: number; item_id: string; side: string; price: number; remaining: number }
+    | {
+        id: number;
+        user_id: number;
+        item_id: string;
+        side: string;
+        price: number;
+        remaining: number;
+        treasury: number;
+      }
     | undefined;
   if (!order) throw new Error("That order is gone.");
   if (order.user_id === userId) throw new Error("That is your own order.");
@@ -872,15 +901,16 @@ export function takeOrder(userId: number, orderId: number, quantity = 1) {
     if (!isGov(userId) && availableGold(userId) < order.price * fillQty) {
       throw new Error("Not enough coin to take that ask.");
     }
-    const info = db
-      .prepare(
-        "INSERT INTO orders (user_id, item_id, side, price, remaining, created_at) VALUES (?, ?, 'buy', ?, ?, ?)"
-      )
-      .run(userId, order.item_id, order.price, fillQty, nowMs());
-    const buyId = Number(info.lastInsertRowid);
+    const buyId = insertLiveOrder(userId, order.item_id, "buy", order.price, fillQty, isGov(userId));
     executeFill(
-      { id: buyId, user_id: userId, price: order.price, remaining: fillQty },
-      { id: order.id, user_id: order.user_id, price: order.price, remaining: order.remaining },
+      { id: buyId, user_id: userId, price: order.price, remaining: fillQty, treasury: isGov(userId) ? 1 : 0 },
+      {
+        id: order.id,
+        user_id: order.user_id,
+        price: order.price,
+        remaining: order.remaining,
+        treasury: order.treasury,
+      },
       order.item_id,
       fillQty,
       order.price
@@ -889,15 +919,16 @@ export function takeOrder(userId: number, orderId: number, quantity = 1) {
     if (!isGov(userId) && availableItem(userId, order.item_id) < fillQty) {
       throw new Error("Not enough stock to fill that bid.");
     }
-    const info = db
-      .prepare(
-        "INSERT INTO orders (user_id, item_id, side, price, remaining, created_at) VALUES (?, ?, 'sell', ?, ?, ?)"
-      )
-      .run(userId, order.item_id, order.price, fillQty, nowMs());
-    const sellId = Number(info.lastInsertRowid);
+    const sellId = insertLiveOrder(userId, order.item_id, "sell", order.price, fillQty, isGov(userId));
     executeFill(
-      { id: order.id, user_id: order.user_id, price: order.price, remaining: order.remaining },
-      { id: sellId, user_id: userId, price: order.price, remaining: fillQty },
+      {
+        id: order.id,
+        user_id: order.user_id,
+        price: order.price,
+        remaining: order.remaining,
+        treasury: order.treasury,
+      },
+      { id: sellId, user_id: userId, price: order.price, remaining: fillQty, treasury: isGov(userId) ? 1 : 0 },
       order.item_id,
       fillQty,
       order.price
@@ -934,8 +965,10 @@ export function setGovernment(userId: number, on: boolean) {
       "You hold the treasury. It is unlimited and does not touch your purse. Asks mint new stock. Bids pay sellers with new coin and burn the goods."
     );
   } else {
-    getDb().prepare("DELETE FROM orders WHERE user_id = ? AND remaining > 0").run(userId);
-    setEvent(userId, "You left office. Open treasury orders were pulled.");
+    setEvent(
+      userId,
+      "You left office. Treasury quotes stay on the book until they fill or you cancel them. Volume changes when they trade, not when you post."
+    );
   }
 }
 
@@ -1461,7 +1494,7 @@ export function getOrderBook(itemId: string): OrderBook {
   const rows = getDb()
     .prepare(
       `SELECT o.id, o.user_id, u.username, o.item_id, o.side, o.price, o.remaining, o.created_at,
-              COALESCE(u.is_gov, 0) AS is_gov
+              COALESCE(o.treasury, 0) AS is_gov
        FROM orders o JOIN users u ON u.id = o.user_id
        WHERE o.item_id = ? AND o.remaining > 0 AND u.username != 'Banker'`
     )
@@ -1974,7 +2007,7 @@ export function getGameState(userId: number, timeZone?: string): GameState {
     getDb()
       .prepare(
       `SELECT o.id, o.user_id, u.username, o.item_id, o.side, o.price, o.remaining, o.created_at,
-              COALESCE(u.is_gov, 0) AS is_gov
+              COALESCE(o.treasury, 0) AS is_gov
          FROM orders o JOIN users u ON u.id = o.user_id
          WHERE o.user_id = ? AND o.remaining > 0
          ORDER BY o.created_at DESC`
