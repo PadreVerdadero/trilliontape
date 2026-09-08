@@ -134,7 +134,7 @@ export function MarketPanel({
                 {selected.emoji} {selected.name}
               </p>
             </div>
-            <div className="grid grid-cols-5 gap-1.5">
+            <div className="grid grid-cols-2 gap-2 sm:min-w-[24rem] sm:grid-cols-3 lg:grid-cols-5">
               <Stat
                 label="Best bid"
                 value={price?.bestBid != null ? formatCoins(price.bestBid) : "none"}
@@ -242,9 +242,7 @@ export function MarketPanel({
                           <ul className="space-y-1 text-xs">
                             {slice.map((trade) => (
                               <li key={trade.id}>
-                                <span className="tabular-nums">
-                                  {formatNumber(trade.quantity)} @ {formatCoins(trade.price)}
-                                </span>
+                                <span className="tabular-nums">{formatCoins(trade.price)}</span>
                                 <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
                                   {trade.buyUsername} bought from {trade.sellUsername}
                                 </span>
@@ -428,7 +426,7 @@ function Stat({
     <div
       title={title}
       className={cn(
-        "rounded-lg px-2 py-1 ring-1 ring-foreground/10",
+        "rounded-xl px-3 py-2 ring-1 ring-foreground/10",
         tone === "bid" && "bg-emerald-950/30",
         tone === "ask" && "bg-rose-950/25",
         tone === "mv" && "bg-sky-950/30",
@@ -436,10 +434,10 @@ function Stat({
         tone === "supply" && "bg-violet-950/30"
       )}
     >
-      <p className="text-[10px] tracking-wide text-muted-foreground uppercase">{label}</p>
+      <p className="text-[11px] tracking-wide text-muted-foreground uppercase">{label}</p>
       <p
         className={cn(
-          "font-heading text-sm tabular-nums",
+          "font-heading text-lg tabular-nums",
           tone === "bid" && "text-emerald-200",
           tone === "ask" && "text-rose-200",
           tone === "mv" && "text-sky-200",
