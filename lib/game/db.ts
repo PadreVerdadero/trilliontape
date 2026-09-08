@@ -197,46 +197,115 @@ function clearBankerBook(db: Database.Database) {
   ).run("Banker");
 }
 
+function takeFromPack(db: Database.Database, userId: number, itemId: string, qty: number) {
+  if (qty <= 0) return 0;
+  const row = db
+    .prepare("SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?")
+    .get(userId, itemId) as { quantity: number } | undefined;
+  const have = row?.quantity ?? 0;
+  const take = Math.min(have, qty);
+  if (take <= 0) return 0;
+  const left = have - take;
+  if (left <= 0) db.prepare("DELETE FROM inventory WHERE user_id = ? AND item_id = ?").run(userId, itemId);
+  else {
+    db.prepare("UPDATE inventory SET quantity = ? WHERE user_id = ? AND item_id = ?").run(
+      left,
+      userId,
+      itemId
+    );
+  }
+  return take;
+}
+
+function bankerRecipients(db: Database.Database) {
+  const guest = db.prepare("SELECT id FROM users WHERE username = ?").get("Guest") as
+    | { id: number }
+    | undefined;
+  const bots = db
+    .prepare("SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1 ORDER BY username COLLATE NOCASE")
+    .all() as { id: number }[];
+  return [...(guest ? [guest.id] : []), ...bots.map((row) => row.id)];
+}
+
+function dealStacksEvenly(
+  db: Database.Database,
+  recipients: number[],
+  stacks: { item_id: string; quantity: number }[]
+) {
+  if (recipients.length === 0) return;
+  const grant = db.prepare(
+    `INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)
+     ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = quantity + excluded.quantity`
+  );
+  const units: string[] = [];
+  for (const stack of stacks) {
+    for (let n = 0; n < stack.quantity; n += 1) units.push(stack.item_id);
+  }
+  for (let i = 0; i < units.length; i += 1) {
+    grant.run(recipients[i % recipients.length], units[i], 1);
+  }
+}
+
+const BANKER_V1_STACKS: { item_id: string; quantity: number }[] = [
+  { item_id: "wheat", quantity: 23 },
+  { item_id: "wood", quantity: 23 },
+  { item_id: "stone", quantity: 18 },
+  { item_id: "fish", quantity: 14 },
+  { item_id: "flax", quantity: 12 },
+  { item_id: "flower", quantity: 10 },
+  { item_id: "herbs", quantity: 10 },
+  { item_id: "salt", quantity: 10 },
+  { item_id: "shell", quantity: 8 },
+  { item_id: "coal", quantity: 6 },
+  { item_id: "iron", quantity: 4 },
+  { item_id: "bread", quantity: 2 },
+];
+
+const BANKER_SPLIT_DONE = "The bank closed. Remaining stock was split evenly by count.";
+const BANKER_SPLIT_V1 = "The bank closed. Remaining stock was split across the desk.";
+
 function shareBankerHoldings(db: Database.Database) {
   const banker = db.prepare("SELECT id FROM users WHERE username = ?").get("Banker") as
     | { id: number }
     | undefined;
   if (!banker) return;
-  const stacks = db
-    .prepare("SELECT item_id, quantity FROM inventory WHERE user_id = ? AND quantity > 0")
-    .all(banker.id) as { item_id: string; quantity: number }[];
-  if (stacks.length === 0) return;
-
-  const bots = db
-    .prepare("SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1 ORDER BY username COLLATE NOCASE")
-    .all() as { id: number }[];
-  const guest = db.prepare("SELECT id FROM users WHERE username = ?").get("Guest") as
-    | { id: number }
+  const note = db.prepare("SELECT last_event FROM players WHERE user_id = ?").get(banker.id) as
+    | { last_event: string | null }
     | undefined;
-  const recipients = [...bots.map((row) => row.id), ...(guest ? [guest.id] : [])];
+  if (note?.last_event === BANKER_SPLIT_DONE) return;
+
+  const recipients = bankerRecipients(db);
   if (recipients.length === 0) return;
 
-  const grant = db.prepare(
-    `INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)
-     ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = quantity + excluded.quantity`
-  );
+  const live = db
+    .prepare("SELECT item_id, quantity FROM inventory WHERE user_id = ? AND quantity > 0")
+    .all(banker.id) as { item_id: string; quantity: number }[];
 
   db.transaction(() => {
-    for (const stack of stacks) {
-      const order = rotateIds(recipients, stack.item_id);
-      const each = Math.floor(stack.quantity / order.length);
-      let leftover = stack.quantity % order.length;
-      for (let i = 0; i < order.length; i += 1) {
-        const qty = each + (leftover > 0 ? 1 : 0);
-        if (leftover > 0) leftover -= 1;
-        if (qty > 0) grant.run(order[i], stack.item_id, qty);
+    let stacks = live;
+    if (stacks.length === 0 && note?.last_event === BANKER_SPLIT_V1) {
+      const recovered: Record<string, number> = {};
+      const v1Order = bankerRecipients(db);
+      const guest = v1Order[0];
+      const botsOnly = v1Order.filter((id) => id !== guest);
+      const oldRecipients = [...botsOnly, ...(guest ? [guest] : [])];
+      for (const stack of BANKER_V1_STACKS) {
+        const order = rotateIds(oldRecipients, stack.item_id);
+        const each = Math.floor(stack.quantity / order.length);
+        let leftover = stack.quantity % order.length;
+        for (let i = 0; i < order.length; i += 1) {
+          const qty = each + (leftover > 0 ? 1 : 0);
+          if (leftover > 0) leftover -= 1;
+          const got = takeFromPack(db, order[i], stack.item_id, qty);
+          if (got > 0) recovered[stack.item_id] = (recovered[stack.item_id] ?? 0) + got;
+        }
       }
+      stacks = Object.entries(recovered).map(([item_id, quantity]) => ({ item_id, quantity }));
     }
+    if (stacks.length === 0) return;
+    dealStacksEvenly(db, recipients, stacks);
     db.prepare("DELETE FROM inventory WHERE user_id = ?").run(banker.id);
-    db.prepare("UPDATE players SET last_event = ? WHERE user_id = ?").run(
-      "The bank closed. Remaining stock was split across the desk.",
-      banker.id
-    );
+    db.prepare("UPDATE players SET last_event = ? WHERE user_id = ?").run(BANKER_SPLIT_DONE, banker.id);
   })();
   clearBankerBook(db);
 }
