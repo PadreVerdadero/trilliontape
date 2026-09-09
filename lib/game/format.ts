@@ -23,16 +23,28 @@ export function formatNumber(amount: number) {
   return Math.round(amount).toLocaleString("en-US");
 }
 
+const COMPACT_NAMED: [divisor: number, suffix: string][] = [
+  [1_000, "k"],
+  [1_000_000, "M"],
+  [1_000_000_000, "B"],
+  [1_000_000_000_000, "T"],
+];
+
 export function formatCompact(amount: number) {
   if (!Number.isFinite(amount)) return "0";
   const sign = amount < 0 ? "-" : "";
   const n = Math.abs(Math.round(amount));
   if (n < 1000) return `${sign}${n.toLocaleString("en-US")}`;
-  const thousands = Math.round(n / 1000);
-  if (thousands < 1000) return `${sign}${thousands}k`;
-  const millions = Math.round(n / 1_000_000);
-  if (millions < 1000) return `${sign}${millions}M`;
-  return `${sign}${Math.round(n / 1_000_000_000)}B`;
+  for (const [divisor, suffix] of COMPACT_NAMED) {
+    const scaled = Math.round(n / divisor);
+    if (scaled < 1000) return `${sign}${scaled}${suffix}`;
+  }
+  for (let exp = 15; exp <= 306; exp += 3) {
+    const scaled = Math.round(n / 10 ** exp);
+    if (!Number.isFinite(scaled)) break;
+    if (scaled < 1000) return `${sign}${scaled}E${exp}`;
+  }
+  return `${sign}∞`;
 }
 
 export function formatCoins(amount: number) {
