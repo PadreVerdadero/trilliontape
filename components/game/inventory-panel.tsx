@@ -4,6 +4,9 @@ import { rarityClass, rarityMapFromPrices } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
 import type { InventoryRow, MarketPrice, PlayerState } from "@/lib/game/types";
 
+const PACK_GRID =
+  "grid w-full grid-cols-[1.25rem_minmax(0,1fr)_2.7rem_2.35rem_2.35rem_2.7rem] items-center gap-x-1.5 px-1.5 sm:grid-cols-[1.25rem_minmax(0,1fr)_3.1rem_2.7rem_2.7rem_3.2rem] sm:px-2 lg:grid-cols-[1.25rem_minmax(0,1fr)_3.4rem_2.9rem_2.9rem_3.5rem]";
+
 function packRows(inventory: InventoryRow[], rankedIds: string[]) {
   const held = new Map(inventory.map((row) => [row.itemId, row]));
   const ids = rankedIds.length > 0 ? rankedIds : items.map((item) => item.id);
@@ -15,6 +18,14 @@ function packRows(inventory: InventoryRow[], rankedIds: string[]) {
       avgCost: stack?.avgCost ?? null,
     };
   });
+}
+
+function cell(value: string, className?: string) {
+  return (
+    <span className={cn("min-w-0 truncate text-right tabular-nums text-xs sm:text-sm", className)}>
+      {value}
+    </span>
+  );
 }
 
 export function InventoryPanel({
@@ -45,30 +56,50 @@ export function InventoryPanel({
   const net = player.gold + goods;
   return (
     <div>
-      <div className="grid w-full grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-1.5 rounded-lg px-1.5 py-1.5 sm:px-2">
+      <div
+        className={cn(
+          PACK_GRID,
+          "border-b border-border/60 py-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase"
+        )}
+      >
+        <span />
+        <span>Item</span>
+        <span className="text-right" title="Free to trade — not sitting on a bid or ask">
+          Free
+        </span>
+        <span className="text-right">MV</span>
+        <span className="text-right" title="Average price you paid for units you still hold">
+          Avg
+        </span>
+        <span className="text-right">Total</span>
+      </div>
+      <div className={cn(PACK_GRID, "rounded-lg py-1.5")}>
         <span className="text-base leading-none">🪙</span>
-        <span className="truncate text-xs font-medium sm:text-sm">Coins</span>
+        <span className="min-w-0">
+          <span className="block truncate text-xs font-medium sm:text-sm">Coins</span>
+          <span
+            className="block truncate text-[10px] font-normal text-muted-foreground"
+            title="Coins sitting in every purse on the desk"
+          >
+            Vol {formatNumber(coinVolume)}
+          </span>
+        </span>
         <span
-          className="tabular-nums text-right text-xs font-medium text-primary sm:text-sm"
+          className="min-w-0 truncate text-right tabular-nums text-xs font-medium text-primary sm:text-sm"
           title={
             player.availableGold !== player.gold
               ? `${formatNumber(player.availableGold)} free · ${formatNumber(player.gold - player.availableGold)} on bids`
               : `${formatNumber(player.availableGold)} free`
           }
         >
-          <span className="block">
-            {formatNumber(player.availableGold)}
-            {player.availableGold !== player.gold ? (
-              <span className="text-muted-foreground">/{formatNumber(player.gold)}</span>
-            ) : null}
-          </span>
-          <span
-            className="block text-[10px] font-normal text-muted-foreground"
-            title="Coins sitting in every purse on the desk"
-          >
-            Vol {formatNumber(coinVolume)}
-          </span>
+          {formatNumber(player.availableGold)}
+          {player.availableGold !== player.gold ? (
+            <span className="text-muted-foreground">/{formatNumber(player.gold)}</span>
+          ) : null}
         </span>
+        <span />
+        <span />
+        <span />
       </div>
       {rows.map((row) => {
         const item = itemById[row.itemId];
@@ -90,7 +121,8 @@ export function InventoryPanel({
               reserved ? ` · ${formatNumber(reserved)} listed` : ""
             } · MV ${formatCoins(mv)}${avg != null ? ` · avg paid ${formatCoins(avg)}` : ""} = ${formatCoins(total)}`}
             className={cn(
-              "grid w-full grid-cols-[1.25rem_minmax(0,1fr)_auto_auto_auto_auto] items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-sm hover:bg-background/70 sm:px-2 sm:py-1.5",
+              PACK_GRID,
+              "rounded-lg py-1 text-left hover:bg-background/70 sm:py-1.5",
               active && "bg-primary/15",
               empty && "opacity-60",
               rarityClass(row.itemId, rarityMap)
@@ -98,18 +130,17 @@ export function InventoryPanel({
           >
             <span className="text-base leading-none">{item?.emoji}</span>
             <span className="truncate text-xs font-medium sm:text-sm">{item?.name}</span>
-            <span className="tabular-nums text-right text-xs sm:text-sm">
+            <span className="min-w-0 truncate text-right tabular-nums text-xs sm:text-sm">
               <span className="font-medium">{formatCompact(free)}</span>
               {reserved ? (
                 <span className="text-muted-foreground">/{formatCompact(row.quantity)}</span>
               ) : null}
             </span>
-            <span className="tabular-nums text-right text-xs font-medium text-sky-200">
-              {formatCompact(mv)}
-            </span>
-            <span
-              className={cn(
-                "tabular-nums text-right text-xs font-medium",
+            {cell(formatCompact(mv), "font-medium text-sky-200")}
+            {cell(
+              avg == null ? "—" : formatCompact(avg),
+              cn(
+                "font-medium",
                 avg == null
                   ? "text-muted-foreground"
                   : avg < mv
@@ -117,31 +148,28 @@ export function InventoryPanel({
                     : avg > mv
                       ? "text-rose-200"
                       : "text-amber-200"
-              )}
-              title="Average price you paid for units you still hold"
-            >
-              {avg == null ? "—" : formatCompact(avg)}
-            </span>
-            <span className="tabular-nums text-right text-xs font-medium sm:text-sm">
-              {empty ? "—" : formatCompact(total)}
-            </span>
+              )
+            )}
+            {cell(empty ? "—" : formatCompact(total), "font-medium")}
           </button>
         );
       })}
-      <div className="grid w-full grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-1.5 rounded-lg px-1.5 py-1.5 sm:px-2">
+      <div className={cn(PACK_GRID, "rounded-lg py-1.5")}>
         <span className="text-base leading-none">💰</span>
         <span className="truncate text-xs font-medium sm:text-sm">Net worth</span>
+        <span />
+        <span />
+        <span />
         <span
-          className="tabular-nums text-right text-xs font-medium text-primary sm:text-sm"
+          className="min-w-0 text-right text-xs font-medium text-primary sm:text-sm"
           title={`${formatNetWorth(net)} · ${formatCoins(player.gold)} coin · ${formatCoins(goods)} goods`}
         >
-          <span className="block">{formatNumber(net)}</span>
-          <span className="block text-[10px] font-normal text-muted-foreground">
-            {formatNumber(player.gold)}🪙 · {formatNumber(goods)} goods
+          <span className="block truncate tabular-nums">{formatNumber(net)}</span>
+          <span className="block truncate text-[10px] font-normal text-muted-foreground">
+            {formatCompact(goods)} goods
           </span>
         </span>
       </div>
     </div>
   );
 }
-

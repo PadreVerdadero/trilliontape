@@ -3,9 +3,18 @@
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useGame } from "@/hooks/use-game";
-import { formatCompactNetWorth, formatNetWorth } from "@/lib/game/format";
+import {
+  formatCoins,
+  formatCompact,
+  formatCompactNetWorth,
+  formatNetWorth,
+  formatNumber,
+} from "@/lib/game/format";
 import { cn } from "@/lib/utils";
 import type { GameState } from "@/lib/game/types";
+
+const BOARD_GRID =
+  "grid grid-cols-[2.6rem_minmax(0,1fr)_minmax(3.4rem,auto)_minmax(3.4rem,auto)_minmax(4.2rem,auto)] items-baseline gap-x-2 sm:grid-cols-[3.25rem_minmax(0,1fr)_minmax(5.5rem,auto)_minmax(5.5rem,auto)_minmax(7rem,auto)]";
 
 export function LeaderboardScreen({ initialState }: { initialState: GameState }) {
   const { state, error, loading } = useGame(initialState);
@@ -38,7 +47,7 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-20 border-b border-border/80 bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur">
-        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-3 py-2 sm:px-4">
+        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3 px-3 py-2 sm:px-4">
           <div className="flex min-w-0 items-center gap-3">
             <p className="font-heading text-lg">🏮 Lantern Bazaar</p>
             <span className="hidden truncate text-sm text-muted-foreground sm:inline">
@@ -54,11 +63,12 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 px-3 py-6 sm:px-4">
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-5 px-3 py-6 sm:px-4">
         <div className="space-y-1">
           <h1 className="font-heading text-3xl">Leaderboard</h1>
           <p className="text-sm text-muted-foreground">
-            Place by net worth — coin plus goods at market value. The old Banker is not listed.
+            Place by net worth. Coins are the purse, items are goods at market value. The old Banker
+            is not listed.
           </p>
         </div>
 
@@ -80,20 +90,30 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
             </p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-border/70 bg-card/50">
-            <div className="grid grid-cols-[3.25rem_minmax(0,1fr)_auto] gap-2 border-b border-border/60 px-3 py-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase sm:px-4">
+          <div className="overflow-x-auto rounded-xl border border-border/70 bg-card/50">
+            <div
+              className={cn(
+                BOARD_GRID,
+                "border-b border-border/60 px-3 py-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase sm:px-4"
+              )}
+            >
               <span>Place</span>
               <span>Traveler</span>
+              <span className="text-right">Coins</span>
+              <span className="text-right">Items</span>
               <span className="text-right">Net worth</span>
             </div>
             <ol>
               {leaders.map((row) => {
                 const mine = row.username === player.username;
+                const gold = row.gold ?? 0;
+                const goods = row.goods ?? 0;
                 return (
                   <li
                     key={`${row.place}-${row.username}`}
                     className={cn(
-                      "grid grid-cols-[3.25rem_minmax(0,1fr)_auto] items-baseline gap-2 border-b border-border/40 px-3 py-2.5 last:border-b-0 sm:px-4",
+                      BOARD_GRID,
+                      "border-b border-border/40 px-3 py-2.5 last:border-b-0 sm:px-4",
                       mine && "bg-primary/10"
                     )}
                   >
@@ -110,7 +130,21 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
                       {mine ? <span className="text-muted-foreground"> · you</span> : null}
                     </span>
                     <span
-                      className="tabular-nums text-sm text-primary"
+                      className="truncate text-right tabular-nums text-sm"
+                      title={formatCoins(gold)}
+                    >
+                      <span className="sm:hidden">{formatCompact(gold)}🪙</span>
+                      <span className="hidden sm:inline">{formatNumber(gold)}🪙</span>
+                    </span>
+                    <span
+                      className="truncate text-right tabular-nums text-sm"
+                      title={formatCoins(goods)}
+                    >
+                      <span className="sm:hidden">{formatCompact(goods)}</span>
+                      <span className="hidden sm:inline">{formatNumber(goods)}</span>
+                    </span>
+                    <span
+                      className="truncate text-right tabular-nums text-sm font-medium text-primary"
                       title={formatNetWorth(row.netWorth)}
                     >
                       <span className="sm:hidden">{formatCompactNetWorth(row.netWorth)}</span>

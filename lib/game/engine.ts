@@ -1629,14 +1629,21 @@ function netWorthLeaders(prices: MarketPrice[]): LeaderRow[] {
     goods.set(row.user_id, (goods.get(row.user_id) ?? 0) + row.quantity * unit);
   }
   return purses
-    .map((row) => ({
-      username: row.username,
-      netWorth: row.gold + (goods.get(row.id) ?? 0),
-    }))
+    .map((row) => {
+      const itemValue = goods.get(row.id) ?? 0;
+      return {
+        username: row.username,
+        gold: row.gold,
+        goods: itemValue,
+        netWorth: row.gold + itemValue,
+      };
+    })
     .sort((a, b) => b.netWorth - a.netWorth || a.username.localeCompare(b.username))
     .map((row, index) => ({
       place: index + 1,
       username: row.username,
+      gold: row.gold,
+      goods: row.goods,
       netWorth: row.netWorth,
     }));
 }

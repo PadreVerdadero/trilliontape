@@ -233,6 +233,8 @@ export type FestivalState = {
 export type LeaderRow = {
   place: number;
   username: string;
+  gold: number;
+  goods: number;
   netWorth: number;
 };
 
