@@ -14,6 +14,7 @@ export function AdminPanel({
   pending,
   onSetGold,
   onSetItem,
+  onNewGame,
   authorized,
   issued,
 }: {
@@ -22,6 +23,7 @@ export function AdminPanel({
   pending: boolean;
   onSetGold: (gold: number) => Promise<unknown>;
   onSetItem: (itemId: string, quantity: number) => Promise<unknown>;
+  onNewGame: () => Promise<unknown>;
   authorized: number;
   issued: number;
 }) {
@@ -90,6 +92,20 @@ export function AdminPanel({
             </Button>
           </div>
         </div>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-11 shrink-0 border-amber-400/50 text-amber-100 md:h-8"
+          disabled={pending}
+          onClick={() => {
+            const ok = window.confirm(
+              "Start a new game? This clears packs, the book, and the tape. Everyone starts with 1,000 coins and no goods. The treasury lists Issued at opening MV (wheat 10 through gem 100)."
+            );
+            if (ok) void onNewGame();
+          }}
+        >
+          New game
+        </Button>
       </div>
     </div>
   );

@@ -9,7 +9,9 @@ import {
   locationById,
   materialsAt,
   ENERGY_MAX,
+  LOGIN_GOLD,
   SEARCH_COOLDOWN_MS,
+  STARTING_GOLD,
   searchEnergyCost,
   searchWeight,
   travelSeconds,
@@ -573,11 +575,39 @@ function utcDayKey(now = nowMs()) {
 function touchDaily(userId: number, dayKey: string) {
   getDb()
     .prepare(
-      `INSERT INTO player_daily (user_id, day_key, first_trade, special_sold)
-       VALUES (?, ?, 0, '')
+      `INSERT INTO player_daily (user_id, day_key, first_trade, special_sold, login_paid)
+       VALUES (?, ?, 0, '', 0)
        ON CONFLICT(user_id, day_key) DO NOTHING`
     )
     .run(userId, dayKey);
+}
+
+function grantDailyLogin(userId: number, timeZone?: string) {
+  if (isBot(userId)) return;
+  const name = loadPlayerRow(userId).username;
+  if (name === "Banker" || name === DESK_USERNAME) return;
+  const day = festivalClock(timeZone).dateKey;
+  touchDaily(userId, day);
+  const row = getDb()
+    .prepare(
+      "SELECT COALESCE(login_paid, 0) AS login_paid FROM player_daily WHERE user_id = ? AND day_key = ?"
+    )
+    .get(userId, day) as { login_paid: number } | undefined;
+  if (row?.login_paid) return;
+  const created = getDb()
+    .prepare("SELECT created_at FROM users WHERE id = ?")
+    .get(userId) as { created_at: number } | undefined;
+  if (created && festivalClock(timeZone, created.created_at).dateKey === day) {
+    getDb()
+      .prepare("UPDATE player_daily SET login_paid = 1 WHERE user_id = ? AND day_key = ?")
+      .run(userId, day);
+    return;
+  }
+  getDb().prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?").run(LOGIN_GOLD, userId);
+  getDb()
+    .prepare("UPDATE player_daily SET login_paid = 1 WHERE user_id = ? AND day_key = ?")
+    .run(userId, day);
+  setEvent(userId, `Daily purse: +${formatCoins(LOGIN_GOLD)} for sitting down today.`);
 }
 
 function awardVp(userId: number, amount: number) {
@@ -1054,6 +1084,52 @@ export function adminSetItem(userId: number, itemId: string, quantity: number) {
     ).run(userId, itemId, quantity, unit * quantity);
   }
   setEvent(userId, `Admin set ${item.emoji} ${item.name} to ${formatNumber(quantity)}.`);
+}
+
+export function adminStartGame(userId: number, timeZone?: string) {
+  requireAdmin(userId);
+  const db = getDb();
+  const dayKey = festivalClock(timeZone).dateKey;
+  db.transaction(() => {
+    db.exec(`
+      DELETE FROM swap_legs;
+      DELETE FROM swap_offers;
+      DELETE FROM orders;
+      DELETE FROM trades;
+      DELETE FROM inventory;
+      DELETE FROM item_float;
+      DELETE FROM player_buffs;
+      DELETE FROM player_daily;
+      DELETE FROM player_rumors;
+      DELETE FROM stall_crates;
+      DELETE FROM contract_completions;
+      DELETE FROM festival_contracts;
+      DELETE FROM area_strain;
+    `);
+    db.prepare(
+      `UPDATE players SET gold = ?, energy = ?, energy_max = ?, busy_type = 'idle', busy_until = NULL,
+         busy_payload = NULL, last_event = ?
+       WHERE user_id IN (SELECT id FROM users WHERE username NOT IN ('Banker', 'Government'))`
+    ).run(STARTING_GOLD, ENERGY_MAX, ENERGY_MAX, "A new game. 1,000 coins. Buy from the treasury asks.");
+    db.prepare(
+      `UPDATE players SET gold = 0, last_event = 'The treasury desk is open.'
+       WHERE user_id IN (SELECT id FROM users WHERE username IN ('Banker', 'Government'))`
+    ).run();
+    const travelers = db
+      .prepare(
+        `SELECT id FROM users WHERE username NOT IN ('Banker', 'Government') AND COALESCE(is_bot, 0) = 0`
+      )
+      .all() as { id: number }[];
+    const mark = db.prepare(
+      `INSERT INTO player_daily (user_id, day_key, first_trade, special_sold, login_paid)
+       VALUES (?, ?, 0, '', 1)
+       ON CONFLICT(user_id, day_key) DO UPDATE SET login_paid = 1`
+    );
+    for (const row of travelers) mark.run(row.id, dayKey);
+  })();
+  deskClock.bazaarDeskFloat = 0;
+  alignIssuedToAuthorized(true);
+  setEvent(userId, "New game started. Packs are empty, purses are 1,000, treasury is listing Issued at opening MV.");
 }
 
 function mapOrder(row: {
@@ -1756,9 +1832,9 @@ function noteIssuedCap(itemId: string) {
   if (desk) clearDeskBook(desk.id, itemId, "sell");
 }
 
-function alignIssuedToAuthorized() {
+function alignIssuedToAuthorized(force = false) {
   const now = nowMs();
-  if (deskClock.bazaarDeskFloat && now - deskClock.bazaarDeskFloat < DESK_REQUOTE_MS) return;
+  if (!force && deskClock.bazaarDeskFloat && now - deskClock.bazaarDeskFloat < DESK_REQUOTE_MS) return;
   deskClock.bazaarDeskFloat = now;
   const deskId = ensureDeskUser();
   for (const item of items) {
@@ -2327,6 +2403,7 @@ export function getGameState(
     alignIssuedToAuthorized();
   }
   resolveBusy(userId);
+  grantDailyLogin(userId, timeZone);
   const player = loadPlayerRow(userId);
   const stacks = getDb()
     .prepare(

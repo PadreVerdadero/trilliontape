@@ -97,6 +97,7 @@ export function PlayScreen({
             issued={state.prices.find((row) => row.itemId === itemId)?.issued ?? 0}
             onSetGold={(gold) => run({ action: "adminGold", gold })}
             onSetItem={(itemId, quantity) => run({ action: "adminItem", itemId, quantity })}
+            onNewGame={() => run({ action: "adminNewGame" })}
           />
         ) : null}
         {player.lastEvent ? (

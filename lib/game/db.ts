@@ -7,7 +7,7 @@ import { BOT_PROFILES } from "@/lib/game/bots";
 
 export const DESK_USERNAME = "Government";
 
-const BOOTSTRAP_REV = 6;
+const BOOTSTRAP_REV = 7;
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: Database.Database;
@@ -193,6 +193,7 @@ function migrate(db: Database.Database) {
   ensureColumn(db, "players", "donate_count", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "players", "wardrobe_vp", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "inventory", "cost_basis", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "player_daily", "login_paid", "INTEGER NOT NULL DEFAULT 0");
   seedInventoryCostBasis(db);
 }
 
@@ -392,16 +393,8 @@ function createPlayerWithDb(db: Database.Database, userId: number) {
     STARTING_GOLD,
     STARTING_ENERGY,
     ENERGY_MAX,
-    "You arrive with a light pack and a place at the desk."
+    "You arrive with 1,000 coins and a place at the desk."
   );
-  const starter: Record<string, number> = { wheat: 3, wood: 2, berries: 3 };
-  const insert = db.prepare(
-    "INSERT INTO inventory (user_id, item_id, quantity, cost_basis) VALUES (?, ?, ?, ?)"
-  );
-  for (const [itemId, qty] of Object.entries(starter)) {
-    const unit = itemById[itemId]?.basePrice ?? 1;
-    insert.run(userId, itemId, qty, unit * qty);
-  }
 }
 
 function purgeRetiredItems(db: Database.Database) {
@@ -433,10 +426,6 @@ function seedBots(db: Database.Database) {
   const insertUser = db.prepare(
     "INSERT INTO users (username, password_hash, created_at, is_bot) VALUES (?, ?, ?, 1)"
   );
-  const insertInv = db.prepare(
-    `INSERT INTO inventory (user_id, item_id, quantity) VALUES (?, ?, ?)
-     ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = MAX(quantity, excluded.quantity)`
-  );
   for (const bot of BOT_PROFILES) {
     const existing = db
       .prepare("SELECT id FROM users WHERE username = ?")
@@ -447,13 +436,9 @@ function seedBots(db: Database.Database) {
       userId = Number(info.lastInsertRowid);
       db.prepare(
         "INSERT INTO players (user_id, gold, location_id, energy, energy_max, last_event) VALUES (?, ?, 'town', ?, ?, ?)"
-      ).run(userId, bot.gold, ENERGY_MAX, ENERGY_MAX, "A computer trader keeping the book honest.");
+      ).run(userId, STARTING_GOLD, ENERGY_MAX, ENERGY_MAX, "A computer trader keeping the book honest.");
     } else {
       db.prepare("UPDATE users SET is_bot = 1 WHERE id = ?").run(userId);
-    }
-    for (const itemId of bot.specialty) {
-      if (!itemById[itemId]) continue;
-      insertInv.run(userId, itemId, bot.style === "thin" ? 6 : 22);
     }
   }
 }

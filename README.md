@@ -13,13 +13,13 @@ The UI is built for a phone in the pocket and a computer at the desk.
 5. **Direct deals** let two travelers swap several different items plus gold. Those swaps do not print and do not move MV. Each side of a deal shows its total worth at current MV, plus whether you would gain or lose on that mark.
 6. Twenty-two computer traders keep the book lively. Most of their resting quotes sit well away from MV. Now and then one will take a loss — lift an ask above MV or hit a bid below it — hoping the next prints pull the price their way. On cheap goods they will eat a few extra coins of loss (a 7-coin berry when MV is 4) more often than they would on a high-priced gem. If a bid sits unfilled, they keep bidding up with no cap on price — the longer it waits, the more they will pay, until it fills or they run out of free coin. They do not mint coin. If an ask sits unfilled, they keep cutting with no cap — the longer it waits, the less they will take, down to 1 coin, until it fills. Unfilled quotes stay until they trade.
 7. **Play as government** (practice) uses a treasury that does not change your personal coins. Treasury **asks** are white on the book and mint units into the buyer’s pack when they **fill** (outstanding up) until Outstanding reaches Authorized. Treasury **bids** are black with white text and pay the seller with new coin while destroying the goods when they **fill** (outstanding down, coin volume up). Posting a quote does not change outstanding. Leaving office leaves those quotes on the board until they fill or you cancel them.
-8. **Admin** lets you set your coin balance and the quantity of the selected pack item. Use this to correct a purse after testing.
+8. **Admin** lets you set your coin balance and the quantity of the selected pack item. **New game** wipes packs, the book, and the tape, sets every traveler and computer to 1,000 coins (empty packs), and has the treasury list the full Issued amount of each good at opening MV. That is the IPO: nobody is handed goods. Buy the white treasury asks, or wait for computers to lift them.
 
-You start with a little gold, wheat, wood, and berries.
+You start with 1,000 coins and an empty pack. Buy the opening treasury asks. Each later calendar day you sit down, +100 coins (not on the day you join or on the day a new game starts).
 
 ## The catalog
 
-**10 goods**, in board order: wheat, berries, wood, fish, flower, stone, mushrooms, coal, shell, gem. Trade them on the board. There is no crafting — every item stands on its own.
+**10 goods**, in board order: wheat, berries, wood, fish, flower, stone, mushrooms, coal, shell, gem. Opening MV (and the IPO ask) is 10, 20, 30, 40, 50, 60, 70, 80, 90, 100. Issued caps stay 250, 225, 200, 175, 150, 125, 100, 75, 50, 25. Trade them on the board. There is no crafting — every item stands on its own.
 
 ## Run locally
 
