@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { AdminPanel } from "@/components/game/admin-panel";
 import { InventoryPanel } from "@/components/game/inventory-panel";
@@ -8,12 +7,19 @@ import { LeaderTicker } from "@/components/game/leader-ticker";
 import { MarketPanel } from "@/components/game/market-panel";
 import { OpenOrdersPanel } from "@/components/game/open-orders-panel";
 import { useGame } from "@/hooks/use-game";
+import { useSelectedItem } from "@/hooks/use-selected-item";
 import { useMarketSort } from "@/hooks/use-market-sort";
 import type { GameState } from "@/lib/game/types";
 
-export function PlayScreen({ initialState }: { initialState: GameState }) {
+export function PlayScreen({
+  initialState,
+  initialItemId,
+}: {
+  initialState: GameState;
+  initialItemId?: string;
+}) {
   const { state, error, loading, pending, run, setError } = useGame(initialState);
-  const [itemId, setItemId] = useState("wheat");
+  const [itemId, setItemId] = useSelectedItem(initialItemId);
   const marketSort = useMarketSort(state?.prices ?? []);
 
   if (loading) {

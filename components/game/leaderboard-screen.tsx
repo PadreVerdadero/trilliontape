@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useGame } from "@/hooks/use-game";
-import { formatCoins, formatNetWorth, formatNumber } from "@/lib/game/format";
+import { formatCoins, formatCompact, formatCompactNetWorth, formatNetWorth } from "@/lib/game/format";
 import { cn } from "@/lib/utils";
 import type { GameState } from "@/lib/game/types";
 
@@ -82,7 +82,14 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
           </div>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-border/70 bg-card/50">
-            <table className="w-full min-w-[40rem] border-collapse text-sm">
+            <table className="w-full min-w-[36rem] table-fixed border-collapse text-sm">
+              <colgroup>
+                <col className="w-[4.25rem]" />
+                <col />
+                <col className="w-[7.5rem]" />
+                <col className="w-[7.5rem]" />
+                <col className="w-[8.5rem]" />
+              </colgroup>
               <thead>
                 <tr className="border-b border-border/60 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
                   <th className="px-3 py-2 text-left font-medium sm:px-4">Place</th>
@@ -115,24 +122,30 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
                       </td>
                       <td
                         className={cn(
-                          "max-w-[10rem] truncate px-3 py-2.5 sm:max-w-none sm:px-4",
+                          "truncate px-3 py-2.5 sm:px-4",
                           mine && "font-medium text-primary"
                         )}
                       >
                         {row.username}
                         {mine ? <span className="text-muted-foreground"> · you</span> : null}
                       </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums sm:px-4" title={formatCoins(gold)}>
-                        {formatNumber(gold)}🪙
-                      </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums sm:px-4" title={formatCoins(goods)}>
-                        {formatNumber(goods)}
+                      <td
+                        className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums sm:px-4"
+                        title={formatCoins(gold)}
+                      >
+                        {formatCompact(gold)}🪙
                       </td>
                       <td
-                        className="px-3 py-2.5 text-right tabular-nums font-medium text-primary sm:px-4"
+                        className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums sm:px-4"
+                        title={formatCoins(goods)}
+                      >
+                        {formatCompact(goods)}
+                      </td>
+                      <td
+                        className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums font-medium text-primary sm:px-4"
                         title={formatNetWorth(row.netWorth)}
                       >
-                        {formatNetWorth(row.netWorth)}
+                        {formatCompactNetWorth(row.netWorth)}
                       </td>
                     </tr>
                   );
