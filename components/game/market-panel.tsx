@@ -826,7 +826,9 @@ function Stat({
       <p
         className={cn(
           "uppercase leading-tight",
-          compactLabel ? "text-[9px] tracking-tight sm:text-[10px]" : "text-[11px] tracking-wide",
+          compactLabel
+            ? "text-[8px] tracking-tight sm:text-[9px]"
+            : "text-[11px] tracking-wide",
           tone === "valueDown" || tone === "valueNone"
             ? "text-zinc-300"
             : tone === "valueUp"
@@ -834,7 +836,15 @@ function Stat({
               : "text-muted-foreground"
         )}
       >
-        {label}
+        {compactLabel && label.includes("/") ? (
+          <>
+            {label.slice(0, label.indexOf("/") + 1)}
+            <br />
+            {label.slice(label.indexOf("/") + 1)}
+          </>
+        ) : (
+          label
+        )}
       </p>
       <p
         className={cn(
