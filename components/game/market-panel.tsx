@@ -20,18 +20,52 @@ import { PriceChart } from "@/components/game/price-chart";
 import { SwapPanel } from "@/components/game/swap-panel";
 import type { GameState, Item, OrderRow, OrderSide } from "@/lib/game/types";
 
-function playerAsks(rows: OrderRow[]) {
+function playerQuotes(rows: OrderRow[]) {
   return rows.filter((row) => !row.isGov);
 }
 
-function cheapestTreasuryAsk(rows: OrderRow[]) {
+function treasuryAtBest(rows: OrderRow[]) {
   const treasury = rows.filter((row) => row.isGov);
   if (treasury.length === 0) return null;
+  const price = treasury[0].price;
   return {
     id: treasury[0].id,
-    price: treasury[0].price,
-    remaining: treasury.reduce((sum, row) => sum + row.remaining, 0),
+    price,
+    remaining: treasury.filter((row) => row.price === price).reduce((sum, row) => sum + row.remaining, 0),
   };
+}
+
+function TreasuryButton({
+  kind,
+  quote,
+  pending,
+  onTake,
+}: {
+  kind: "buy" | "sell";
+  quote: { id: number; price: number; remaining: number };
+  pending: boolean;
+  onTake: (id: number) => void;
+}) {
+  const buy = kind === "buy";
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      title={`${buy ? "Buy" : "Sell"} ${formatNumber(quote.remaining)} at ${formatCoins(quote.price)}`}
+      onClick={() => onTake(quote.id)}
+      className={cn(
+        "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium ring-1 disabled:opacity-50",
+        buy
+          ? "bg-white text-zinc-950 ring-zinc-300 hover:bg-zinc-100"
+          : "bg-black text-white ring-white/50 hover:bg-zinc-900"
+      )}
+    >
+      {buy ? "Buy from treasury" : "Sell to treasury"}
+      <span className={cn("tabular-nums", buy ? "text-zinc-600" : "text-white/75")}>
+        {formatCoins(quote.price)} ×{formatNumber(quote.remaining)}
+      </span>
+    </button>
+  );
 }
 
 function SortHead({
@@ -221,7 +255,8 @@ export function MarketPanel({
   const suggested = useMemo(() => {
     return String(Math.max(1, Math.round(Number(price?.bestAsk ?? price?.vwap ?? selected?.basePrice ?? 5))));
   }, [price, selected]);
-  const deskAsk = cheapestTreasuryAsk(book?.asks ?? []);
+  const deskAsk = treasuryAtBest(book?.asks ?? []);
+  const deskBid = treasuryAtBest(book?.bids ?? []);
   const mvCoins = Math.max(1, Math.round(Number(price?.vwap ?? selected?.basePrice ?? 1)));
   const draftQty = Number(qtyInput);
   const draftPrice = Number(priceInput || suggested);
@@ -271,18 +306,22 @@ export function MarketPanel({
   }, [priceInput, qtyInput]);
 
   function firstTakeable(side: "buy" | "ask") {
-    const rows = side === "buy" ? book?.bids ?? [] : playerAsks(book?.asks ?? []);
-    return rows.find((row) => row.isGov || row.playerId !== state.player.id) ?? null;
+    const rows = side === "buy" ? playerQuotes(book?.bids ?? []) : playerQuotes(book?.asks ?? []);
+    return rows.find((row) => row.playerId !== state.player.id) ?? null;
+  }
+
+  async function takeQuote(orderId: number) {
+    const shot = snapshotScrolls();
+    await onTake(orderId);
+    await reloadBook();
+    restoreScrolls(shot);
+    requestAnimationFrame(() => restoreScrolls(shot));
   }
 
   async function takeBest(side: "buy" | "ask") {
     const row = firstTakeable(side);
     if (!row) return;
-    const shot = snapshotScrolls();
-    await onTake(row.id);
-    await reloadBook();
-    restoreScrolls(shot);
-    requestAnimationFrame(() => restoreScrolls(shot));
+    await takeQuote(row.id);
   }
 
   useEffect(() => {
@@ -357,6 +396,16 @@ export function MarketPanel({
       if (key === "e") {
         event.preventDefault();
         if (!pending) void takeBest("ask");
+        return;
+      }
+      if (key === "t") {
+        event.preventDefault();
+        if (!pending && deskAsk) void takeQuote(deskAsk.id);
+        return;
+      }
+      if (key === "r") {
+        event.preventDefault();
+        if (!pending && deskBid) void takeQuote(deskBid.id);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -371,7 +420,7 @@ export function MarketPanel({
           <p className="text-xs text-muted-foreground">
             Crossing bids fill at the ask. Bid/Ask is units on the book. Volume is trades today.
             Tap a column to sort. Bid/Ask: two taps on bids, then two on asks. Pack on the left
-            follows this order. W/S select · A fills MV · D qty 1 · arrows nudge · Shift/Ctrl step place · V buy · X sell · Q take bid · E take ask.
+            follows this order. W/S select · A fills MV · D qty 1 · arrows nudge · Shift/Ctrl step place · V buy · X sell · Q take bid · E take ask · T buy treasury · R sell treasury.
           </p>
         </div>
         {state.recentTrades[0] ? (
@@ -574,15 +623,25 @@ export function MarketPanel({
 
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
-              <p className="mb-2 font-heading text-lg text-emerald-100">Bids</p>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="font-heading text-lg text-emerald-100">Bids</p>
+                {deskBid ? (
+                  <TreasuryButton
+                    kind="sell"
+                    quote={deskBid}
+                    pending={pending}
+                    onTake={(id) => void takeQuote(id)}
+                  />
+                ) : null}
+              </div>
               <p className="mb-2 text-[11px] text-muted-foreground">
                 Tap a row to sell 1. Tap yours to cancel 1. <kbd className="text-foreground">Q</kbd> takes
-                the best bid.
+                the best traveler bid. <kbd className="text-foreground">R</kbd> sells 1 to the treasury.
               </p>
               <OrderList
-                empty="No bids. Post one above if you want this."
+                empty="No traveler bids. Post one above if you want this."
                 side="buy"
-                rows={book?.bids ?? []}
+                rows={playerQuotes(book?.bids ?? [])}
                 selfId={state.player.id}
                 pending={pending}
                 onTake={async (id) => {
@@ -599,29 +658,22 @@ export function MarketPanel({
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <p className="font-heading text-lg text-rose-100">Asks</p>
                 {deskAsk ? (
-                  <button
-                    type="button"
-                    disabled={pending}
-                    title={`${formatNumber(deskAsk.remaining)} in treasury at ${formatCoins(deskAsk.price)}`}
-                    onClick={async () => {
-                      await onTake(deskAsk.id);
-                      await reloadBook();
-                    }}
-                    className="inline-flex h-7 items-center gap-1.5 rounded-md bg-white px-2 text-xs font-medium text-zinc-950 ring-1 ring-zinc-300 hover:bg-zinc-100 disabled:opacity-50"
-                  >
-                    Buy from treasury
-                    <span className="tabular-nums text-zinc-600">{formatCoins(deskAsk.price)}</span>
-                  </button>
+                  <TreasuryButton
+                    kind="buy"
+                    quote={deskAsk}
+                    pending={pending}
+                    onTake={(id) => void takeQuote(id)}
+                  />
                 ) : null}
               </div>
               <p className="mb-2 text-[11px] text-muted-foreground">
                 Tap a row to buy 1. Tap yours to cancel 1. <kbd className="text-foreground">E</kbd> takes
-                the best traveler ask. The white button buys 1 from the treasury.
+                the best traveler ask. <kbd className="text-foreground">T</kbd> buys 1 from the treasury.
               </p>
               <OrderList
                 empty="No traveler asks. Post your own, or buy from the treasury if it is offering."
                 side="sell"
-                rows={playerAsks(book?.asks ?? [])}
+                rows={playerQuotes(book?.asks ?? [])}
                 selfId={state.player.id}
                 pending={pending}
                 onTake={async (id) => {
