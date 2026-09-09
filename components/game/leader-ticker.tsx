@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { formatCoins, formatCompact } from "@/lib/game/format";
+import { formatCompactNetWorth, formatNetWorth } from "@/lib/game/format";
 import { cn } from "@/lib/utils";
 import type { LeaderRow } from "@/lib/game/types";
 
@@ -17,13 +17,13 @@ function tape(leaders: LeaderRow[], you: string, copy: number) {
           "inline-flex shrink-0 items-baseline gap-1.5 border-r border-border/40 px-3 font-medium tracking-wide",
           mine ? "text-primary" : "text-foreground/90"
         )}
-        title={`${row.username} · place ${row.place} · ${formatCoins(row.netWorth)}`}
+        title={`${row.username} · place ${row.place} · ${formatNetWorth(row.netWorth)}`}
       >
         <span className={cn("tabular-nums", mine ? "text-primary" : "text-muted-foreground")}>
           #{row.place}
         </span>
         <span className="max-w-[9rem] truncate">{row.username}</span>
-        <span className="tabular-nums text-primary/90">{formatCompact(row.netWorth)}🪙</span>
+        <span className="tabular-nums text-primary/90">{formatCompactNetWorth(row.netWorth)}</span>
       </span>
     );
   });

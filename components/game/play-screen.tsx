@@ -10,7 +10,7 @@ import { OpenOrdersPanel } from "@/components/game/open-orders-panel";
 import { useGame } from "@/hooks/use-game";
 import { useMarketSort } from "@/hooks/use-market-sort";
 import { itemById } from "@/lib/game/catalog";
-import { formatCoins, formatNumber } from "@/lib/game/format";
+import { formatCoins, formatNetWorth, formatNumber } from "@/lib/game/format";
 import type { GameState, MarketPrice } from "@/lib/game/types";
 
 function itemValue(prices: MarketPrice[], itemId: string) {
@@ -190,7 +190,7 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
       <footer className="shrink-0 border-t border-border/80 bg-background/95 pb-[env(safe-area-inset-bottom)]">
         <div className="flex w-full flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 py-2 text-sm sm:px-4">
           <p className="font-heading text-base">
-            Net worth {formatCoins(net)}
+            Net worth {formatNetWorth(net)}
           </p>
           <p className="text-muted-foreground">
             {formatCoins(player.gold)} coin · {formatCoins(goods)} goods

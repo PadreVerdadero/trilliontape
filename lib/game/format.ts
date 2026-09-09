@@ -51,6 +51,14 @@ export function formatCoins(amount: number) {
   return `${formatNumber(amount)}🪙`;
 }
 
+export function formatNetWorth(amount: number) {
+  return `${formatNumber(amount)}💰`;
+}
+
+export function formatCompactNetWorth(amount: number) {
+  return `${formatCompact(amount)}💰`;
+}
+
 export function formatMilitary(hour: number, minute = 0) {
   const h = ((Math.round(hour) % 24) + 24) % 24;
   const m = Math.min(59, Math.max(0, Math.round(minute)));

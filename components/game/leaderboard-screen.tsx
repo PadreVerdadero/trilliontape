@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useGame } from "@/hooks/use-game";
-import { formatCoins, formatCompact, formatNumber } from "@/lib/game/format";
+import { formatCompactNetWorth, formatNetWorth } from "@/lib/game/format";
 import { cn } from "@/lib/utils";
 import type { GameState } from "@/lib/game/types";
 
@@ -66,8 +66,8 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
           <p className="rounded-lg bg-primary/10 px-3 py-2 text-sm">
             You are <span className="font-medium text-primary">#{you.place}</span>
             <span className="text-muted-foreground"> · </span>
-            <span className="tabular-nums" title={formatCoins(you.netWorth)}>
-              {formatCoins(you.netWorth)}
+            <span className="tabular-nums" title={formatNetWorth(you.netWorth)}>
+              {formatNetWorth(you.netWorth)}
             </span>
           </p>
         ) : null}
@@ -111,10 +111,10 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
                     </span>
                     <span
                       className="tabular-nums text-sm text-primary"
-                      title={formatCoins(row.netWorth)}
+                      title={formatNetWorth(row.netWorth)}
                     >
-                      <span className="sm:hidden">{formatCompact(row.netWorth)}🪙</span>
-                      <span className="hidden sm:inline">{formatNumber(row.netWorth)}🪙</span>
+                      <span className="sm:hidden">{formatCompactNetWorth(row.netWorth)}</span>
+                      <span className="hidden sm:inline">{formatNetWorth(row.netWorth)}</span>
                     </span>
                   </li>
                 );
