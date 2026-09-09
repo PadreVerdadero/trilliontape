@@ -3,18 +3,9 @@
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useGame } from "@/hooks/use-game";
-import {
-  formatCoins,
-  formatCompact,
-  formatCompactNetWorth,
-  formatNetWorth,
-  formatNumber,
-} from "@/lib/game/format";
+import { formatCoins, formatNetWorth, formatNumber } from "@/lib/game/format";
 import { cn } from "@/lib/utils";
 import type { GameState } from "@/lib/game/types";
-
-const BOARD_GRID =
-  "grid grid-cols-[2.6rem_minmax(0,1fr)_minmax(3.4rem,auto)_minmax(3.4rem,auto)_minmax(4.2rem,auto)] items-baseline gap-x-2 sm:grid-cols-[3.25rem_minmax(0,1fr)_minmax(5.5rem,auto)_minmax(5.5rem,auto)_minmax(7rem,auto)]";
 
 export function LeaderboardScreen({ initialState }: { initialState: GameState }) {
   const { state, error, loading } = useGame(initialState);
@@ -91,69 +82,63 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
           </div>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-border/70 bg-card/50">
-            <div
-              className={cn(
-                BOARD_GRID,
-                "border-b border-border/60 px-3 py-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase sm:px-4"
-              )}
-            >
-              <span>Place</span>
-              <span>Traveler</span>
-              <span className="text-right">Coins</span>
-              <span className="text-right">Items</span>
-              <span className="text-right">Net worth</span>
-            </div>
-            <ol>
-              {leaders.map((row) => {
-                const mine = row.username === player.username;
-                const gold = row.gold ?? 0;
-                const goods = row.goods ?? 0;
-                return (
-                  <li
-                    key={`${row.place}-${row.username}`}
-                    className={cn(
-                      BOARD_GRID,
-                      "border-b border-border/40 px-3 py-2.5 last:border-b-0 sm:px-4",
-                      mine && "bg-primary/10"
-                    )}
-                  >
-                    <span
+            <table className="w-full min-w-[40rem] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border/60 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                  <th className="px-3 py-2 text-left font-medium sm:px-4">Place</th>
+                  <th className="px-3 py-2 text-left font-medium sm:px-4">Traveler</th>
+                  <th className="px-3 py-2 text-right font-medium sm:px-4">Coins</th>
+                  <th className="px-3 py-2 text-right font-medium sm:px-4">Items</th>
+                  <th className="px-3 py-2 text-right font-medium sm:px-4">Net worth</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leaders.map((row) => {
+                  const mine = row.username === player.username;
+                  const gold = row.gold ?? 0;
+                  const goods = row.goods ?? 0;
+                  return (
+                    <tr
+                      key={`${row.place}-${row.username}`}
                       className={cn(
-                        "tabular-nums text-sm",
-                        row.place <= 3 ? "font-medium text-primary" : "text-muted-foreground"
+                        "border-b border-border/40 last:border-b-0",
+                        mine && "bg-primary/10"
                       )}
                     >
-                      #{row.place}
-                    </span>
-                    <span className={cn("truncate text-sm", mine && "font-medium text-primary")}>
-                      {row.username}
-                      {mine ? <span className="text-muted-foreground"> · you</span> : null}
-                    </span>
-                    <span
-                      className="truncate text-right tabular-nums text-sm"
-                      title={formatCoins(gold)}
-                    >
-                      <span className="sm:hidden">{formatCompact(gold)}🪙</span>
-                      <span className="hidden sm:inline">{formatNumber(gold)}🪙</span>
-                    </span>
-                    <span
-                      className="truncate text-right tabular-nums text-sm"
-                      title={formatCoins(goods)}
-                    >
-                      <span className="sm:hidden">{formatCompact(goods)}</span>
-                      <span className="hidden sm:inline">{formatNumber(goods)}</span>
-                    </span>
-                    <span
-                      className="truncate text-right tabular-nums text-sm font-medium text-primary"
-                      title={formatNetWorth(row.netWorth)}
-                    >
-                      <span className="sm:hidden">{formatCompactNetWorth(row.netWorth)}</span>
-                      <span className="hidden sm:inline">{formatNetWorth(row.netWorth)}</span>
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
+                      <td
+                        className={cn(
+                          "px-3 py-2.5 tabular-nums sm:px-4",
+                          row.place <= 3 ? "font-medium text-primary" : "text-muted-foreground"
+                        )}
+                      >
+                        #{row.place}
+                      </td>
+                      <td
+                        className={cn(
+                          "max-w-[10rem] truncate px-3 py-2.5 sm:max-w-none sm:px-4",
+                          mine && "font-medium text-primary"
+                        )}
+                      >
+                        {row.username}
+                        {mine ? <span className="text-muted-foreground"> · you</span> : null}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums sm:px-4" title={formatCoins(gold)}>
+                        {formatNumber(gold)}🪙
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums sm:px-4" title={formatCoins(goods)}>
+                        {formatNumber(goods)}
+                      </td>
+                      <td
+                        className="px-3 py-2.5 text-right tabular-nums font-medium text-primary sm:px-4"
+                        title={formatNetWorth(row.netWorth)}
+                      >
+                        {formatNetWorth(row.netWorth)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </main>
