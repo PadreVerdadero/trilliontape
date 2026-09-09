@@ -15,7 +15,7 @@ const highlights = [
   {
     emoji: "🎒",
     title: "Your pack, priced",
-    body: "The left rail shows how many you hold and each item’s current market value. Coin sits at the top. Net worth is at the bottom.",
+    body: "The left rail shows how many you hold and each item’s current market value. Coin sits at the top. Net worth sits under the pack.",
   },
   {
     emoji: "🤖",

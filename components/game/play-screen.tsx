@@ -9,19 +9,7 @@ import { MarketPanel } from "@/components/game/market-panel";
 import { OpenOrdersPanel } from "@/components/game/open-orders-panel";
 import { useGame } from "@/hooks/use-game";
 import { useMarketSort } from "@/hooks/use-market-sort";
-import { itemById } from "@/lib/game/catalog";
-import { formatCoins, formatNetWorth, formatNumber } from "@/lib/game/format";
-import type { GameState, MarketPrice } from "@/lib/game/types";
-
-function itemValue(prices: MarketPrice[], itemId: string) {
-  return prices.find((row) => row.itemId === itemId)?.vwap ?? itemById[itemId]?.basePrice ?? 0;
-}
-
-function holdingsValue(state: GameState) {
-  return state.player.inventory.reduce((sum, row) => {
-    return sum + row.quantity * itemValue(state.prices, row.itemId);
-  }, 0);
-}
+import type { GameState } from "@/lib/game/types";
 
 export function PlayScreen({ initialState }: { initialState: GameState }) {
   const { state, error, loading, pending, run, setError } = useGame(initialState);
@@ -51,11 +39,9 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
   }
 
   const { player } = state;
-  const goods = holdingsValue(state);
-  const net = player.gold + goods;
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden">
+    <div className="flex h-dvh flex-col overflow-hidden pb-[env(safe-area-inset-bottom)]">
       <header className="z-20 shrink-0 border-b border-border/80 bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur">
         <LeaderTicker leaders={state.leaders ?? []} you={player.username} />
         <div className="flex w-full items-center justify-between gap-3 px-3 py-2 sm:px-4">
@@ -186,23 +172,6 @@ export function PlayScreen({ initialState }: { initialState: GameState }) {
           />
         </aside>
       </div>
-
-      <footer className="shrink-0 border-t border-border/80 bg-background/95 pb-[env(safe-area-inset-bottom)]">
-        <div className="flex w-full flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 py-2 text-sm sm:px-4">
-          <p className="font-heading text-base">
-            Net worth {formatNetWorth(net)}
-          </p>
-          <p className="text-muted-foreground">
-            {formatCoins(player.gold)} coin · {formatCoins(goods)} goods
-            {player.inventory.length ? (
-              <span className="hidden sm:inline">
-                {" "}
-                · {formatNumber(player.inventory.reduce((n, row) => n + row.quantity, 0))} items
-              </span>
-            ) : null}
-          </p>
-        </div>
-      </footer>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { itemById, items } from "@/lib/game/catalog";
-import { formatCoins, formatCompact, formatNumber } from "@/lib/game/format";
+import { formatCoins, formatCompact, formatNetWorth, formatNumber } from "@/lib/game/format";
 import { rarityClass, rarityMapFromPrices } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
 import type { InventoryRow, MarketPrice, PlayerState } from "@/lib/game/types";
@@ -37,6 +37,12 @@ export function InventoryPanel({
     prices
   );
   const rows = packRows(player.inventory, rankedItemIds);
+  const goods = rows.reduce((sum, row) => {
+    const mv =
+      prices.find((quote) => quote.itemId === row.itemId)?.vwap ?? itemById[row.itemId]?.basePrice ?? 0;
+    return sum + row.quantity * mv;
+  }, 0);
+  const net = player.gold + goods;
   return (
     <div>
       <div className="grid w-full grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-1.5 rounded-lg px-1.5 py-1.5 sm:px-2">
@@ -122,6 +128,19 @@ export function InventoryPanel({
           </button>
         );
       })}
+      <div className="grid w-full grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-1.5 rounded-lg px-1.5 py-1.5 sm:px-2">
+        <span className="text-base leading-none">💰</span>
+        <span className="truncate text-xs font-medium sm:text-sm">Net worth</span>
+        <span
+          className="tabular-nums text-right text-xs font-medium text-primary sm:text-sm"
+          title={`${formatNetWorth(net)} · ${formatCoins(player.gold)} coin · ${formatCoins(goods)} goods`}
+        >
+          <span className="block">{formatNumber(net)}</span>
+          <span className="block text-[10px] font-normal text-muted-foreground">
+            {formatNumber(player.gold)}🪙 · {formatNumber(goods)} goods
+          </span>
+        </span>
+      </div>
     </div>
   );
 }
