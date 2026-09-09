@@ -380,7 +380,7 @@ export function MarketPanel({
             </div>
             <div className="grid grid-cols-2 gap-2 sm:min-w-[28rem] sm:grid-cols-3 lg:grid-cols-6">
               <Stat
-                label="Value"
+                label="Price"
                 value={price?.last != null ? formatCoins(price.last) : "none"}
                 tone={
                   price?.last == null
