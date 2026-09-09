@@ -3,6 +3,7 @@ import {
   FORAGE_STRAIN_ID,
   isFoodItem,
   isLegendaryItem,
+  itemAuthorized,
   itemById,
   locationById,
   materialsAt,
@@ -42,6 +43,7 @@ import {
   CRATE_COST,
   donationCost,
   festivalClock,
+  startOfLocalDayMs,
   nextStallChange,
   RUMOR_COST,
   shiftDateKey,
@@ -541,7 +543,15 @@ function matchItem(itemId: string) {
       }
     }
     if (!pair) break;
-    const qty = Math.min(pair.buy.remaining, pair.sell.remaining);
+    let qty = Math.min(pair.buy.remaining, pair.sell.remaining);
+    if (pair.sell.treasury) {
+      const room = remainingToIssue(itemId);
+      if (room <= 0) {
+        db.prepare("DELETE FROM orders WHERE id = ?").run(pair.sell.id);
+        continue;
+      }
+      qty = Math.min(qty, room);
+    }
     executeFill(pair.buy, pair.sell, itemId, qty, pair.sell.price);
   }
 }
@@ -840,6 +850,16 @@ export function placeOrder(
   if (side === "sell" && !treasury && availableItem(userId, itemId) < quantity) {
     throw new Error("Not enough unbound stock. Cancel a sell order first.");
   }
+  if (treasury && side === "sell") {
+    const room = Math.max(0, remainingToIssue(itemId) - listedTreasuryAsks(itemId));
+    if (quantity > room) {
+      throw new Error(
+        room <= 0
+          ? `Nothing left to issue. Outstanding already meets Authorized (${formatNumber(itemAuthorized(item))}).`
+          : `Only ${formatNumber(room)} left to issue under Authorized (${formatNumber(itemAuthorized(item))}).`
+      );
+    }
+  }
   for (let n = 0; n < quantity; n += 1) {
     insertLiveOrder(userId, itemId, side, price, 1, treasury);
   }
@@ -880,7 +900,12 @@ export function takeOrder(userId: number, orderId: number, quantity = 1) {
   if (!Number.isInteger(quantity) || quantity < 1) {
     throw new Error("Choose how many to take.");
   }
-  const fillQty = Math.min(quantity, order.remaining);
+  let fillQty = Math.min(quantity, order.remaining);
+  if (order.side === "sell" && treasuryQuote) {
+    const room = remainingToIssue(order.item_id);
+    if (room <= 0) throw new Error("Nothing left to issue under Authorized.");
+    fillQty = Math.min(fillQty, room);
+  }
 
   if (order.side === "sell") {
     if (availableGold(userId) < order.price * fillQty) {
@@ -972,12 +997,12 @@ export function setGovernment(userId: number, on: boolean) {
   if (on) {
     setEvent(
       userId,
-      "You hold the treasury. It is unlimited and does not touch your purse. Asks mint new stock. Bids pay sellers with new coin and burn the goods."
+      "You hold the treasury. It does not touch your purse. Asks mint until Outstanding reaches Authorized. Bids pay sellers with new coin and burn the goods."
     );
   } else {
     setEvent(
       userId,
-      "You left office. Treasury quotes stay on the book until they fill or you cancel them. Volume changes when they trade, not when you post."
+      "You left office. Treasury quotes stay on the book until they fill or you cancel them. Outstanding changes when they trade, not when you post."
     );
   }
 }
@@ -1610,6 +1635,48 @@ function packTotals() {
   return Object.fromEntries(rows.map((row) => [row.item_id, row.qty])) as Record<string, number>;
 }
 
+function qtyByItem(sql: string, params: unknown[] = []) {
+  const rows = getDb()
+    .prepare(sql)
+    .all(...params) as { item_id: string; qty: number }[];
+  const map: Record<string, number> = {};
+  for (const row of rows) map[row.item_id] = row.qty;
+  return map;
+}
+
+function outstandingOf(itemId: string) {
+  const row = getDb()
+    .prepare("SELECT COALESCE(SUM(quantity), 0) AS qty FROM inventory WHERE item_id = ?")
+    .get(itemId) as { qty: number };
+  return row.qty;
+}
+
+function listedTreasuryAsks(itemId: string) {
+  const row = getDb()
+    .prepare(
+      `SELECT COALESCE(SUM(remaining), 0) AS qty FROM orders
+       WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND COALESCE(treasury, 0) = 1
+         AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')`
+    )
+    .get(itemId) as { qty: number };
+  return row.qty;
+}
+
+function remainingToIssue(itemId: string) {
+  const item = itemById[itemId];
+  return Math.max(0, itemAuthorized(item) - outstandingOf(itemId));
+}
+
+function shareStructure(itemId: string, outstanding: number, listedTreasury: number) {
+  const cap = itemAuthorized(itemById[itemId]);
+  const authorized = Math.max(cap, outstanding);
+  return {
+    authorized,
+    issued: Math.min(authorized, outstanding + listedTreasury),
+    treasury: Math.max(0, authorized - outstanding),
+  };
+}
+
 function netWorthLeaders(prices: MarketPrice[]): LeaderRow[] {
   const db = getDb();
   const mv = new Map(prices.map((row) => [row.itemId, row.vwap]));
@@ -1654,10 +1721,21 @@ function netWorthLeaders(prices: MarketPrice[]): LeaderRow[] {
     }));
 }
 
-function priceSheet(): MarketPrice[] {
+function priceSheet(timeZone?: string): MarketPrice[] {
   const db = getDb();
   const depth = bookDepth();
   const packs = packTotals();
+  const dayStart = startOfLocalDayMs(timeZone);
+  const tradesToday = qtyByItem(
+    "SELECT item_id, COUNT(*) AS qty FROM trades WHERE created_at >= ? GROUP BY item_id",
+    [dayStart]
+  );
+  const treasuryListed = qtyByItem(
+    `SELECT item_id, COALESCE(SUM(remaining), 0) AS qty FROM orders
+     WHERE side = 'sell' AND remaining > 0 AND COALESCE(treasury, 0) = 1
+       AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')
+     GROUP BY item_id`
+  );
   return Object.keys(itemById).map((itemId) => {
     const stats = db
       .prepare(
@@ -1686,15 +1764,21 @@ function priceSheet(): MarketPrice[] {
     const prints = marketPrints(itemId);
     const vwap = computeFairValue(itemById[itemId].basePrice, [...prints].reverse());
     const book = depth[itemId] ?? { listed: 0, wanted: 0 };
+    const outstanding = packs[itemId] ?? 0;
+    const shares = shareStructure(itemId, outstanding, treasuryListed[itemId] ?? 0);
     return {
       itemId,
       vwap,
       last: last?.price ?? null,
       volume: stats.volume ?? 0,
+      tradesToday: tradesToday[itemId] ?? 0,
       prints: prints.length,
       listed: book.listed,
       wanted: book.wanted,
-      held: packs[itemId] ?? 0,
+      held: outstanding,
+      authorized: shares.authorized,
+      issued: shares.issued,
+      treasury: shares.treasury,
       bestBid: bid.p,
       bestAsk: ask.p,
     };
@@ -2229,7 +2313,7 @@ export function getGameState(
     )
     .all() as { username: string; wonAt: number }[];
 
-  const prices = priceSheet();
+  const prices = priceSheet(timeZone);
   const leaders = netWorthLeaders(prices);
   const coinVolume = (
     getDb()

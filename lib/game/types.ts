@@ -12,6 +12,7 @@ export type Item = {
   description: string;
   purpose: string;
   basePrice: number;
+  authorized?: number;
   mine?: {
     locationId: string;
     seconds: number;
@@ -113,10 +114,14 @@ export type MarketPrice = {
   vwap: number;
   last: number | null;
   volume: number;
+  tradesToday: number;
   prints: number;
   listed: number;
   wanted: number;
   held: number;
+  authorized: number;
+  issued: number;
+  treasury: number;
   bestBid: number | null;
   bestAsk: number | null;
 };

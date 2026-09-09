@@ -354,7 +354,7 @@ export function MarketPanel({
         <div>
           <p className="font-heading text-xl sm:text-2xl">Player market</p>
           <p className="text-xs text-muted-foreground">
-            Crossing bids fill at the ask. Bid/Ask is units on the book. Volume is stock in packs.
+            Crossing bids fill at the ask. Bid/Ask is units on the book. Volume is trades today.
             Tap a column to sort. Bid/Ask: two taps on bids, then two on asks. Pack on the left
             follows this order. W/S select · A fills MV · D qty 1 · arrows nudge · Shift/Ctrl step place · V buy · X sell · Q take bid · E take ask.
           </p>
@@ -372,13 +372,13 @@ export function MarketPanel({
 
       {selected ? (
         <div className="space-y-2 rounded-2xl bg-card p-3 ring-1 ring-foreground/10">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-2">
             <div className="min-w-0">
               <p className="font-heading text-xl">
                 {selected.emoji} {selected.name}
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:min-w-[28rem] sm:grid-cols-3 lg:grid-cols-6">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 xl:grid-cols-10">
               <Stat
                 label="Price"
                 value={price?.last != null ? formatCoins(price.last) : "none"}
@@ -410,9 +410,33 @@ export function MarketPanel({
               />
               <Stat
                 label="Volume"
-                value={formatNumber(price?.held ?? 0)}
+                value={formatNumber(price?.tradesToday ?? 0)}
                 tone="supply"
-                title="Total in packs that could trade"
+                title="Board prints today (local midnight)"
+              />
+              <Stat
+                label="Authorized"
+                value={formatNumber(price?.authorized ?? 0)}
+                tone="shareAuth"
+                title="Max units that can be issued"
+              />
+              <Stat
+                label="Issued"
+                value={formatNumber(price?.issued ?? 0)}
+                tone="shareIssued"
+                title="Purchased plus treasury asks still on the book"
+              />
+              <Stat
+                label="Outstanding"
+                value={formatNumber(price?.held ?? 0)}
+                tone="shareOut"
+                title="Units already purchased and sitting in packs"
+              />
+              <Stat
+                label="Treasury"
+                value={formatNumber(price?.treasury ?? 0)}
+                tone="shareTreas"
+                title="Authorized minus Outstanding — not yet purchased"
               />
             </div>
           </div>
@@ -427,7 +451,7 @@ export function MarketPanel({
               </p>
               {state.player.isGov ? (
                 <p className="mb-1 text-[10px] leading-4 text-amber-100/90">
-                  Treasury is unlimited. Asks mint on fill, bids burn on fill.
+                  Asks mint on fill until Outstanding reaches Authorized. Bids burn on fill.
                 </p>
               ) : null}
               <div className="grid grid-cols-2 gap-1.5">
@@ -656,7 +680,7 @@ export function MarketPanel({
             const active = item.id === selectedItemId;
             const wanted = quote?.wanted ?? 0;
             const listed = quote?.listed ?? 0;
-            const volume = quote?.held ?? 0;
+            const volume = quote?.tradesToday ?? 0;
             const rarity = rarityOf(item.id, rarityMap);
             return (
               <button
@@ -707,7 +731,7 @@ export function MarketPanel({
                   </span>
                 </span>
                 <span className="font-medium text-violet-200">
-                  {volume > 0 ? formatNumber(volume) : "—"}
+                  {formatNumber(volume)}
                 </span>
               </button>
             );
@@ -765,7 +789,19 @@ function Stat({
 }: {
   label: string;
   value: string;
-  tone?: "valueNone" | "valueUp" | "valueDown" | "bid" | "ask" | "mv" | "vol" | "supply";
+  tone?:
+    | "valueNone"
+    | "valueUp"
+    | "valueDown"
+    | "bid"
+    | "ask"
+    | "mv"
+    | "vol"
+    | "supply"
+    | "shareAuth"
+    | "shareIssued"
+    | "shareOut"
+    | "shareTreas";
   title?: string;
 }) {
   return (
@@ -780,7 +816,11 @@ function Stat({
         tone === "ask" && "bg-rose-950/25",
         tone === "mv" && "bg-sky-950/30",
         tone === "vol" && "bg-amber-950/30",
-        tone === "supply" && "bg-violet-950/30"
+        tone === "supply" && "bg-violet-950/30",
+        tone === "shareAuth" && "bg-slate-950/40",
+        tone === "shareIssued" && "bg-indigo-950/35",
+        tone === "shareOut" && "bg-teal-950/35",
+        tone === "shareTreas" && "bg-stone-950/40"
       )}
     >
       <p
@@ -805,7 +845,11 @@ function Stat({
           tone === "ask" && "text-rose-200",
           tone === "mv" && "text-sky-200",
           tone === "vol" && "text-amber-200",
-          tone === "supply" && "text-violet-200"
+          tone === "supply" && "text-violet-200",
+          tone === "shareAuth" && "text-slate-200",
+          tone === "shareIssued" && "text-indigo-200",
+          tone === "shareOut" && "text-teal-200",
+          tone === "shareTreas" && "text-stone-200"
         )}
       >
         {value}

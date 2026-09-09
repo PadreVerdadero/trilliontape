@@ -62,7 +62,7 @@ export function rankCatalogItems(
       const da = (qa?.listed ?? 0) > 0 ? qa?.listed : null;
       const db = (qb?.listed ?? 0) > 0 ? qb?.listed : null;
       cmp = cmpMissingLast(da, db, dir);
-    } else if (sort === "volume") cmp = ((qa?.held ?? 0) - (qb?.held ?? 0)) * dir;
+    } else if (sort === "volume") cmp = ((qa?.tradesToday ?? 0) - (qb?.tradesToday ?? 0)) * dir;
     else cmp = compareByCommonness(a, b, rarityMap) * dir;
     if (cmp !== 0) return cmp;
     return a.name.localeCompare(b.name);

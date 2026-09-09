@@ -55,7 +55,7 @@ export function PlayScreen({
             <p className="font-heading text-lg">🏮 Lantern Bazaar</p>
             <span className="hidden truncate text-sm text-muted-foreground sm:inline">
               {player.username}
-              {player.isGov ? " · treasury ∞" : ""}
+              {player.isGov ? " · treasury" : ""}
               {player.isAdmin ? " · admin" : ""}
             </span>
           </div>

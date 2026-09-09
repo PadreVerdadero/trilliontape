@@ -162,6 +162,19 @@ export function festivalClock(timeZone: string | null | undefined, now = Date.no
   return { timeZone: tz, now, weekday, hour, minute, dateKey, label };
 }
 
+export function startOfLocalDayMs(timeZone: string | null | undefined, now = Date.now()) {
+  const tz = safeTimeZone(timeZone);
+  const today = festivalClock(tz, now).dateKey;
+  let left = now - 36 * 3_600_000;
+  let right = now;
+  while (right - left > 1) {
+    const mid = Math.floor((left + right) / 2);
+    if (festivalClock(tz, mid).dateKey === today) right = mid;
+    else left = mid;
+  }
+  return right;
+}
+
 export function shiftDateKey(dateKey: string, days: number) {
   const [year, month, day] = dateKey.split("-").map(Number);
   const utc = Date.UTC(year, month - 1, day + days);

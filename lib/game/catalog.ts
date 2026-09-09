@@ -264,6 +264,14 @@ const TRAVEL: Record<string, Record<string, number>> = {
   fields: { town: 12, woods: 22, ridge: 20, shore: 24 },
 };
 
+/** Max units the treasury may mint for a good unless the catalog sets `authorized`. */
+export const ITEM_AUTHORIZED = 1_000_000;
+
+export function itemAuthorized(item: Item | undefined) {
+  if (!item) return ITEM_AUTHORIZED;
+  return item.authorized ?? ITEM_AUTHORIZED;
+}
+
 export const itemById = Object.fromEntries(items.map((item) => [item.id, item]));
 export const itemsByCommonness = [...items].sort((a, b) => a.name.localeCompare(b.name));
 export const locationById = Object.fromEntries(
