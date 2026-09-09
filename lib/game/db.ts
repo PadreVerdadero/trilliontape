@@ -2,12 +2,19 @@ import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
-import { ENERGY_MAX, RETIRED_ITEM_IDS, STARTING_ENERGY, STARTING_GOLD, itemById } from "@/lib/game/catalog";
+import {
+  ENERGY_MAX,
+  RETIRED_ITEM_IDS,
+  STARTING_ENERGY,
+  STARTING_GOLD,
+  seatGold,
+  itemById,
+} from "@/lib/game/catalog";
 import { BOT_PROFILES } from "@/lib/game/bots";
 
 export const DESK_USERNAME = "Government";
 
-const BOOTSTRAP_REV = 7;
+const BOOTSTRAP_REV = 8;
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: Database.Database;
@@ -176,6 +183,11 @@ function migrate(db: Database.Database) {
     CREATE TABLE IF NOT EXISTS item_float (
       item_id TEXT PRIMARY KEY,
       floated INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS game_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
     );
   `);
   ensureColumn(db, "users", "is_bot", "INTEGER NOT NULL DEFAULT 0");
@@ -386,14 +398,15 @@ function seedGuest(db: Database.Database) {
 }
 
 function createPlayerWithDb(db: Database.Database, userId: number) {
+  const gold = seatGold(computersEnabled(db));
   db.prepare(
     "INSERT INTO players (user_id, gold, location_id, energy, energy_max, last_event) VALUES (?, ?, 'town', ?, ?, ?)"
   ).run(
     userId,
-    STARTING_GOLD,
+    gold,
     STARTING_ENERGY,
     ENERGY_MAX,
-    "You arrive with 1,000 coins and a place at the desk."
+    `You arrive with ${gold.toLocaleString("en-US")} coins and a place at the desk.`
   );
 }
 
@@ -451,6 +464,20 @@ function bootstrap(db: Database.Database) {
   seedBots(db);
   purgeRetiredItems(db);
   shareBankerHoldings(db);
+}
+
+export function computersEnabled(db: Database.Database = getDb()) {
+  const row = db.prepare("SELECT value FROM game_meta WHERE key = 'computers'").get() as
+    | { value: string }
+    | undefined;
+  return row?.value !== "0";
+}
+
+export function setComputersEnabled(on: boolean, db: Database.Database = getDb()) {
+  db.prepare(
+    `INSERT INTO game_meta (key, value) VALUES ('computers', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run(on ? "1" : "0");
 }
 
 export function getDb() {

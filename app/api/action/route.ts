@@ -14,6 +14,7 @@ import {
   adminSetGold,
   adminSetItem,
   adminStartGame,
+  adminSetComputers,
 } from "@/lib/game/engine";
 
 type ActionBody = {
@@ -50,6 +51,7 @@ type ActionBody = {
   | { action: "adminGold"; gold: number }
   | { action: "adminItem"; itemId: string; quantity: number }
   | { action: "adminNewGame" }
+  | { action: "adminComputers"; on: boolean }
 );
 
 export async function POST(request: Request) {
@@ -119,6 +121,9 @@ export async function POST(request: Request) {
         break;
       case "adminNewGame":
         adminStartGame(userId, tz);
+        break;
+      case "adminComputers":
+        adminSetComputers(userId, Boolean(body.on));
         break;
       default:
         throw new Error("Unknown action.");

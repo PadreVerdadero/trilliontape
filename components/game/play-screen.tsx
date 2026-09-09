@@ -98,6 +98,8 @@ export function PlayScreen({
             onSetGold={(gold) => run({ action: "adminGold", gold })}
             onSetItem={(itemId, quantity) => run({ action: "adminItem", itemId, quantity })}
             onNewGame={() => run({ action: "adminNewGame" })}
+            onSetComputers={(on) => run({ action: "adminComputers", on })}
+            computers={state.computers}
           />
         ) : null}
         {player.lastEvent ? (

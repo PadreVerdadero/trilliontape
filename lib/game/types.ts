@@ -256,6 +256,7 @@ export type GameState = {
   swaps: SwapOffer[];
   travelers: TravelerRow[];
   coinVolume: number;
+  computers: boolean;
   leaders: LeaderRow[];
 };
 

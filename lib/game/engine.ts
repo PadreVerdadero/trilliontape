@@ -12,6 +12,7 @@ import {
   LOGIN_GOLD,
   SEARCH_COOLDOWN_MS,
   STARTING_GOLD,
+  TABLE_GOLD,
   searchEnergyCost,
   searchWeight,
   travelSeconds,
@@ -26,7 +27,7 @@ import {
   type BuffKind,
 } from "@/lib/game/consumables";
 import { rarityFromHeld, rarityOf } from "@/lib/game/rarity";
-import { DESK_USERNAME, getDb } from "@/lib/game/db";
+import { DESK_USERNAME, computersEnabled, getDb, setComputersEnabled } from "@/lib/game/db";
 import {
   BOT_PROFILES,
   botLossChance,
@@ -1054,7 +1055,7 @@ export function setAdmin(userId: number, on: boolean) {
   resolveBusy(userId);
   if (isBot(userId)) throw new Error("Plaza regulars cannot open admin.");
   getDb().prepare("UPDATE users SET is_admin = ? WHERE id = ?").run(on ? 1 : 0, userId);
-  setEvent(userId, on ? "Admin mode on. You can set coins and pack quantities." : "Admin mode off.");
+  setEvent(userId, on ? "Admin mode on. Set coins, pack qty, or start a new game." : "Admin mode off.");
 }
 
 export function adminSetGold(userId: number, gold: number) {
@@ -1106,11 +1107,24 @@ export function adminStartGame(userId: number, timeZone?: string) {
       DELETE FROM festival_contracts;
       DELETE FROM area_strain;
     `);
+    setComputersEnabled(false, db);
     db.prepare(
       `UPDATE players SET gold = ?, energy = ?, energy_max = ?, busy_type = 'idle', busy_until = NULL,
          busy_payload = NULL, last_event = ?
-       WHERE user_id IN (SELECT id FROM users WHERE username NOT IN ('Banker', 'Government'))`
-    ).run(STARTING_GOLD, ENERGY_MAX, ENERGY_MAX, "A new game. 1,000 coins. Buy from the treasury asks.");
+       WHERE user_id IN (
+         SELECT id FROM users
+         WHERE username NOT IN ('Banker', 'Government') AND COALESCE(is_bot, 0) = 0
+       )`
+    ).run(
+      TABLE_GOLD,
+      ENERGY_MAX,
+      ENERGY_MAX,
+      "A new game. Computers sit out. 2,000 coins. Buy from the treasury asks."
+    );
+    db.prepare(
+      `UPDATE players SET gold = 0, last_event = 'Sitting this table out.'
+       WHERE user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)`
+    ).run();
     db.prepare(
       `UPDATE players SET gold = 0, last_event = 'The treasury desk is open.'
        WHERE user_id IN (SELECT id FROM users WHERE username IN ('Banker', 'Government'))`
@@ -1129,7 +1143,52 @@ export function adminStartGame(userId: number, timeZone?: string) {
   })();
   deskClock.bazaarDeskFloat = 0;
   alignIssuedToAuthorized(true);
-  setEvent(userId, "New game started. Packs are empty, purses are 1,000, treasury is listing Issued at opening MV.");
+  setEvent(
+    userId,
+    "New game started. Computers sit out. Packs are empty, purses are 2,000, treasury is listing Issued at opening MV."
+  );
+}
+
+function plazaRegularIds() {
+  return getDb()
+    .prepare("SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1")
+    .all() as { id: number }[];
+}
+
+export function adminSetComputers(userId: number, on: boolean) {
+  requireAdmin(userId);
+  const db = getDb();
+  db.transaction(() => {
+    setComputersEnabled(on, db);
+    const bots = plazaRegularIds();
+    if (on) {
+      const pay = db.prepare("UPDATE players SET gold = ?, last_event = ? WHERE user_id = ?");
+      for (const row of bots) {
+        pay.run(STARTING_GOLD, "A computer trader keeping the book honest.", row.id);
+      }
+    } else {
+      db.prepare(
+        `DELETE FROM orders WHERE user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)`
+      ).run();
+      db.prepare(
+        `DELETE FROM inventory WHERE user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)`
+      ).run();
+      db.prepare(
+        `UPDATE players SET gold = 0, last_event = 'Sitting this table out.'
+         WHERE user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)`
+      ).run();
+    }
+  })();
+  if (!on) {
+    deskClock.bazaarDeskFloat = 0;
+    alignIssuedToAuthorized(true);
+  }
+  setEvent(
+    userId,
+    on
+      ? "Computers sat down with 1,000 coins and will quote the book."
+      : "Computers sat out. Their packs went back to the treasury."
+  );
 }
 
 function mapOrder(row: {
@@ -1858,11 +1917,13 @@ function alignIssuedToAuthorized(force = false) {
 function netWorthLeaders(prices: MarketPrice[]): LeaderRow[] {
   const db = getDb();
   const mv = new Map(prices.map((row) => [row.itemId, row.vwap]));
+  const computers = computersEnabled(db);
   const purses = db
     .prepare(
       `SELECT u.id, u.username, p.gold
        FROM players p JOIN users u ON u.id = p.user_id
-       WHERE u.username NOT IN ('Banker', 'Government')`
+       WHERE u.username NOT IN ('Banker', 'Government')
+         ${computers ? "" : "AND COALESCE(u.is_bot, 0) = 0"}`
     )
     .all() as { id: number; username: string; gold: number }[];
   const stacks = db
@@ -2073,6 +2134,7 @@ function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: num
 }
 
 export function tickBots() {
+  if (!computersEnabled()) return;
   const now = nowMs();
   if (botClock.bazaarBotTick && now - botClock.bazaarBotTick < 3500) return;
   botClock.bazaarBotTick = now;
@@ -2492,12 +2554,14 @@ export function getGameState(
 
   const prices = priceSheet(timeZone);
   const leaders = netWorthLeaders(prices);
+  const computers = computersEnabled();
   const coinVolume = (
     getDb()
       .prepare(
         `SELECT COALESCE(SUM(p.gold), 0) AS gold
          FROM players p JOIN users u ON u.id = p.user_id
-         WHERE u.username NOT IN ('Banker', 'Government')`
+         WHERE u.username NOT IN ('Banker', 'Government')
+           ${computers ? "" : "AND COALESCE(u.is_bot, 0) = 0"}`
       )
       .get() as { gold: number }
   ).gold;
@@ -2535,6 +2599,7 @@ export function getGameState(
     swaps: listSwaps(userId),
     travelers: listTravelers(userId),
     coinVolume,
+    computers,
     leaders,
   };
 }

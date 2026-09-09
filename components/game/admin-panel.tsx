@@ -15,6 +15,8 @@ export function AdminPanel({
   onSetGold,
   onSetItem,
   onNewGame,
+  onSetComputers,
+  computers,
   authorized,
   issued,
 }: {
@@ -24,6 +26,8 @@ export function AdminPanel({
   onSetGold: (gold: number) => Promise<unknown>;
   onSetItem: (itemId: string, quantity: number) => Promise<unknown>;
   onNewGame: () => Promise<unknown>;
+  onSetComputers: (on: boolean) => Promise<unknown>;
+  computers: boolean;
   authorized: number;
   issued: number;
 }) {
@@ -94,12 +98,30 @@ export function AdminPanel({
         </div>
         <Button
           size="sm"
+          variant={computers ? "secondary" : "outline"}
+          className="h-11 shrink-0 border-amber-400/50 text-amber-100 md:h-8"
+          disabled={pending}
+          onClick={() => {
+            if (computers) {
+              const ok = window.confirm(
+                "Sit the computers out? They leave the book, and their packs go back to the treasury."
+              );
+              if (ok) void onSetComputers(false);
+            } else {
+              void onSetComputers(true);
+            }
+          }}
+        >
+          {computers ? "Computers on" : "Computers off"}
+        </Button>
+        <Button
+          size="sm"
           variant="outline"
           className="h-11 shrink-0 border-amber-400/50 text-amber-100 md:h-8"
           disabled={pending}
           onClick={() => {
             const ok = window.confirm(
-              "Start a new game? This clears packs, the book, and the tape. Everyone starts with 1,000 coins and no goods. The treasury lists Issued at opening MV (wheat 10 through gem 100)."
+              "Start a new game? This clears packs, the book, and the tape. Computers sit out. Travelers start with 2,000 coins and no goods. The treasury lists Issued at opening MV (wheat 10 through gem 100)."
             );
             if (ok) void onNewGame();
           }}
