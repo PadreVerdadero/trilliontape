@@ -1753,6 +1753,7 @@ function bookDepth() {
       `SELECT item_id, side, COALESCE(SUM(remaining), 0) AS qty
        FROM orders
        WHERE remaining > 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')
+         AND NOT (side = 'sell' AND COALESCE(treasury, 0) = 1)
        GROUP BY item_id, side`
     )
     .all() as { item_id: string; side: string; qty: number }[];
@@ -1992,7 +1993,7 @@ function priceSheet(timeZone?: string): MarketPrice[] {
       .get(itemId) as { p: number | null };
     const ask = db
       .prepare(
-        "SELECT MIN(price) AS p FROM orders WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')"
+        "SELECT MIN(price) AS p FROM orders WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND COALESCE(treasury, 0) = 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')"
       )
       .get(itemId) as { p: number | null };
     const prints = marketPrints(itemId);

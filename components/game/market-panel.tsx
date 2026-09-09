@@ -18,7 +18,21 @@ import { cn } from "@/lib/utils";
 import { useOrderBook } from "@/hooks/use-game";
 import { PriceChart } from "@/components/game/price-chart";
 import { SwapPanel } from "@/components/game/swap-panel";
-import type { GameState, Item, OrderSide } from "@/lib/game/types";
+import type { GameState, Item, OrderRow, OrderSide } from "@/lib/game/types";
+
+function playerAsks(rows: OrderRow[]) {
+  return rows.filter((row) => !row.isGov);
+}
+
+function cheapestTreasuryAsk(rows: OrderRow[]) {
+  const treasury = rows.filter((row) => row.isGov);
+  if (treasury.length === 0) return null;
+  return {
+    id: treasury[0].id,
+    price: treasury[0].price,
+    remaining: treasury.reduce((sum, row) => sum + row.remaining, 0),
+  };
+}
 
 function SortHead({
   label,
@@ -207,6 +221,7 @@ export function MarketPanel({
   const suggested = useMemo(() => {
     return String(Math.max(1, Math.round(Number(price?.bestAsk ?? price?.vwap ?? selected?.basePrice ?? 5))));
   }, [price, selected]);
+  const deskAsk = cheapestTreasuryAsk(book?.asks ?? []);
   const mvCoins = Math.max(1, Math.round(Number(price?.vwap ?? selected?.basePrice ?? 1)));
   const draftQty = Number(qtyInput);
   const draftPrice = Number(priceInput || suggested);
@@ -256,7 +271,7 @@ export function MarketPanel({
   }, [priceInput, qtyInput]);
 
   function firstTakeable(side: "buy" | "ask") {
-    const rows = side === "buy" ? book?.bids ?? [] : book?.asks ?? [];
+    const rows = side === "buy" ? book?.bids ?? [] : playerAsks(book?.asks ?? []);
     return rows.find((row) => row.isGov || row.playerId !== state.player.id) ?? null;
   }
 
@@ -581,15 +596,32 @@ export function MarketPanel({
               />
             </div>
             <div className="rounded-xl bg-rose-950/20 p-3 ring-1 ring-rose-400/20">
-              <p className="mb-2 font-heading text-lg text-rose-100">Asks</p>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="font-heading text-lg text-rose-100">Asks</p>
+                {deskAsk ? (
+                  <button
+                    type="button"
+                    disabled={pending}
+                    title={`${formatNumber(deskAsk.remaining)} in treasury at ${formatCoins(deskAsk.price)}`}
+                    onClick={async () => {
+                      await onTake(deskAsk.id);
+                      await reloadBook();
+                    }}
+                    className="inline-flex h-7 items-center gap-1.5 rounded-md bg-white px-2 text-xs font-medium text-zinc-950 ring-1 ring-zinc-300 hover:bg-zinc-100 disabled:opacity-50"
+                  >
+                    Buy from treasury
+                    <span className="tabular-nums text-zinc-600">{formatCoins(deskAsk.price)}</span>
+                  </button>
+                ) : null}
+              </div>
               <p className="mb-2 text-[11px] text-muted-foreground">
                 Tap a row to buy 1. Tap yours to cancel 1. <kbd className="text-foreground">E</kbd> takes
-                the best ask.
+                the best traveler ask. The white button buys 1 from the treasury.
               </p>
               <OrderList
-                empty="No asks. Post your own, or wait for a regular."
+                empty="No traveler asks. Post your own, or buy from the treasury if it is offering."
                 side="sell"
-                rows={book?.asks ?? []}
+                rows={playerAsks(book?.asks ?? [])}
                 selfId={state.player.id}
                 pending={pending}
                 onTake={async (id) => {
