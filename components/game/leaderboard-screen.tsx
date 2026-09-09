@@ -3,9 +3,31 @@
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useGame } from "@/hooks/use-game";
-import { formatCoins, formatCompact, formatCompactNetWorth, formatNetWorth } from "@/lib/game/format";
+import { items } from "@/lib/game/catalog";
+import {
+  formatCoins,
+  formatCompact,
+  formatNetWorth,
+  formatNumber,
+} from "@/lib/game/format";
 import { cn } from "@/lib/utils";
 import type { GameState } from "@/lib/game/types";
+
+function qtyCell(amount: number, title: string, className?: string) {
+  const empty = amount <= 0;
+  return (
+    <td
+      className={cn(
+        "px-1.5 py-2 text-center tabular-nums text-xs sm:px-2 sm:text-sm",
+        empty ? "text-muted-foreground/50" : "text-foreground",
+        className
+      )}
+      title={title}
+    >
+      {empty ? "—" : formatCompact(amount)}
+    </td>
+  );
+}
 
 export function LeaderboardScreen({ initialState }: { initialState: GameState }) {
   const { state, error, loading } = useGame(initialState);
@@ -34,11 +56,12 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
 
   const { player, leaders } = state;
   const you = leaders.find((row) => row.username === player.username);
+  const goods = items;
 
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-20 border-b border-border/80 bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3 px-3 py-2 sm:px-4">
+        <div className="mx-auto flex w-full max-w-[90rem] items-center justify-between gap-3 px-3 py-2 sm:px-4">
           <div className="flex min-w-0 items-center gap-3">
             <p className="font-heading text-lg">🏮 Lantern Bazaar</p>
             <span className="hidden truncate text-sm text-muted-foreground sm:inline">
@@ -54,12 +77,12 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-5 px-3 py-6 sm:px-4">
+      <main className="mx-auto flex w-full max-w-[90rem] flex-1 flex-col gap-5 px-3 py-6 sm:px-4">
         <div className="space-y-1">
           <h1 className="font-heading text-3xl">Leaderboard</h1>
           <p className="text-sm text-muted-foreground">
-            Place by net worth. Coins are the purse, items are goods at market value. The old Banker
-            is not listed.
+            Place by net worth. Counts under each mark — coin, every good, then the bag. Hover a
+            number for the exact amount.
           </p>
         </div>
 
@@ -81,29 +104,37 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-border/70 bg-card/50">
-            <table className="w-full min-w-[36rem] table-fixed border-collapse text-sm">
-              <colgroup>
-                <col className="w-[4.25rem]" />
-                <col />
-                <col className="w-[7.5rem]" />
-                <col className="w-[7.5rem]" />
-                <col className="w-[8.5rem]" />
-              </colgroup>
+          <div className="overflow-auto rounded-xl border border-border/70 bg-card/50">
+            <table className="w-max min-w-full border-collapse text-sm">
               <thead>
-                <tr className="border-b border-border/60 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                  <th className="px-3 py-2 text-left font-medium sm:px-4">Place</th>
-                  <th className="px-3 py-2 text-left font-medium sm:px-4">Traveler</th>
-                  <th className="px-3 py-2 text-right font-medium sm:px-4">Coins</th>
-                  <th className="px-3 py-2 text-right font-medium sm:px-4">Items</th>
-                  <th className="px-3 py-2 text-right font-medium sm:px-4">Net worth</th>
+                <tr className="border-b border-border/60">
+                  <th className="sticky left-0 z-20 w-8 min-w-8 bg-card px-2 py-2 text-left text-[10px] font-medium tracking-wide text-muted-foreground uppercase sm:px-3">
+                    #
+                  </th>
+                  <th className="sticky left-8 z-20 min-w-[6.5rem] bg-card px-2 py-2 text-left text-[10px] font-medium tracking-wide text-muted-foreground uppercase sm:left-10 sm:px-3">
+                    Traveler
+                  </th>
+                  <th className="px-1.5 py-2 text-center text-lg sm:px-2" title="Coins">
+                    🪙
+                  </th>
+                  {goods.map((item) => (
+                    <th
+                      key={item.id}
+                      className="px-1.5 py-2 text-center text-lg sm:px-2"
+                      title={item.name}
+                    >
+                      {item.emoji}
+                    </th>
+                  ))}
+                  <th className="px-1.5 py-2 text-center text-lg sm:px-2" title="Net worth">
+                    💰
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {leaders.map((row) => {
                   const mine = row.username === player.username;
-                  const gold = row.gold ?? 0;
-                  const goods = row.goods ?? 0;
+                  const pack = row.holdings ?? {};
                   return (
                     <tr
                       key={`${row.place}-${row.username}`}
@@ -114,38 +145,42 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
                     >
                       <td
                         className={cn(
-                          "px-3 py-2.5 tabular-nums sm:px-4",
+                          "sticky left-0 z-10 px-2 py-2 tabular-nums sm:px-3",
+                          mine ? "bg-primary/10" : "bg-card",
                           row.place <= 3 ? "font-medium text-primary" : "text-muted-foreground"
                         )}
                       >
-                        #{row.place}
+                        {row.place}
                       </td>
                       <td
                         className={cn(
-                          "truncate px-3 py-2.5 sm:px-4",
-                          mine && "font-medium text-primary"
+                          "sticky left-8 z-10 max-w-[7.5rem] truncate px-2 py-2 sm:left-10 sm:max-w-[10rem] sm:px-3",
+                          mine ? "bg-primary/10 font-medium text-primary" : "bg-card"
                         )}
                       >
                         {row.username}
-                        {mine ? <span className="text-muted-foreground"> · you</span> : null}
                       </td>
+                      {qtyCell(row.gold ?? 0, formatCoins(row.gold ?? 0))}
+                      {goods.map((item) => {
+                        const qty = pack[item.id] ?? 0;
+                        return (
+                          <td
+                            key={item.id}
+                            className={cn(
+                              "px-1.5 py-2 text-center tabular-nums text-xs sm:px-2 sm:text-sm",
+                              qty <= 0 ? "text-muted-foreground/50" : "text-foreground"
+                            )}
+                            title={`${item.name} · ${formatNumber(qty)}`}
+                          >
+                            {qty <= 0 ? "—" : formatCompact(qty)}
+                          </td>
+                        );
+                      })}
                       <td
-                        className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums sm:px-4"
-                        title={formatCoins(gold)}
-                      >
-                        {formatCompact(gold)}🪙
-                      </td>
-                      <td
-                        className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums sm:px-4"
-                        title={formatCoins(goods)}
-                      >
-                        {formatCompact(goods)}
-                      </td>
-                      <td
-                        className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums font-medium text-primary sm:px-4"
+                        className="px-1.5 py-2 text-center tabular-nums text-xs font-medium text-primary sm:px-2 sm:text-sm"
                         title={formatNetWorth(row.netWorth)}
                       >
-                        {formatCompactNetWorth(row.netWorth)}
+                        {formatCompact(row.netWorth)}
                       </td>
                     </tr>
                   );

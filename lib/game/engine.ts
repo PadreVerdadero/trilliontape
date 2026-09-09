@@ -1624,9 +1624,13 @@ function netWorthLeaders(prices: MarketPrice[]): LeaderRow[] {
     .prepare("SELECT user_id, item_id, quantity FROM inventory WHERE quantity > 0")
     .all() as { user_id: number; item_id: string; quantity: number }[];
   const goods = new Map<number, number>();
+  const holdings = new Map<number, Record<string, number>>();
   for (const row of stacks) {
     const unit = mv.get(row.item_id) ?? itemById[row.item_id]?.basePrice ?? 0;
     goods.set(row.user_id, (goods.get(row.user_id) ?? 0) + row.quantity * unit);
+    const bag = holdings.get(row.user_id) ?? {};
+    bag[row.item_id] = (bag[row.item_id] ?? 0) + row.quantity;
+    holdings.set(row.user_id, bag);
   }
   return purses
     .map((row) => {
@@ -1635,6 +1639,7 @@ function netWorthLeaders(prices: MarketPrice[]): LeaderRow[] {
         username: row.username,
         gold: row.gold,
         goods: itemValue,
+        holdings: holdings.get(row.id) ?? {},
         netWorth: row.gold + itemValue,
       };
     })
@@ -1644,6 +1649,7 @@ function netWorthLeaders(prices: MarketPrice[]): LeaderRow[] {
       username: row.username,
       gold: row.gold,
       goods: row.goods,
+      holdings: row.holdings,
       netWorth: row.netWorth,
     }));
 }

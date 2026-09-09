@@ -235,6 +235,7 @@ export type LeaderRow = {
   username: string;
   gold: number;
   goods: number;
+  holdings: Record<string, number>;
   netWorth: number;
 };
 
