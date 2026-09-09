@@ -378,7 +378,7 @@ export function MarketPanel({
                 {selected.emoji} {selected.name}
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 xl:grid-cols-10">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
               <Stat
                 label="Price"
                 value={price?.last != null ? formatCoins(price.last) : "none"}
@@ -415,28 +415,16 @@ export function MarketPanel({
                 title="Board prints today (local midnight)"
               />
               <Stat
-                label="Authorized"
-                value={formatNumber(price?.authorized ?? 0)}
+                label="Authorized/Issued"
+                value={`${formatNumber(price?.authorized ?? 0)}/${formatNumber(price?.issued ?? 0)}`}
                 tone="shareAuth"
-                title="Max units that can be issued"
+                title="Max that can be issued / already issued (packs plus treasury asks)"
               />
               <Stat
-                label="Issued"
-                value={formatNumber(price?.issued ?? 0)}
-                tone="shareIssued"
-                title="Purchased plus treasury asks still on the book"
-              />
-              <Stat
-                label="Outstanding"
-                value={formatNumber(price?.held ?? 0)}
+                label="Outstanding/Treasury"
+                value={`${formatNumber(price?.held ?? 0)}/${formatNumber(price?.treasury ?? 0)}`}
                 tone="shareOut"
-                title="Units already purchased and sitting in packs"
-              />
-              <Stat
-                label="Treasury"
-                value={formatNumber(price?.treasury ?? 0)}
-                tone="shareTreas"
-                title="Authorized minus Outstanding — not yet purchased"
+                title="Purchased and in packs / issued but not yet purchased"
               />
             </div>
           </div>
@@ -609,8 +597,8 @@ export function MarketPanel({
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
-        <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.05fr)_minmax(0,1.05fr)_minmax(0,0.85fr)_minmax(0,1fr)_minmax(0,0.85fr)] gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium text-muted-foreground sm:px-4">
+      <div className="overflow-x-auto rounded-2xl bg-card ring-1 ring-foreground/10">
+        <div className="grid min-w-[52rem] grid-cols-[minmax(7rem,0.9fr)_minmax(9rem,1.25fr)_minmax(9rem,1.25fr)_minmax(8.5rem,1.15fr)_minmax(4.5rem,0.55fr)_minmax(4.5rem,0.55fr)] gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium text-muted-foreground sm:px-4">
           <SortHead label="Item" column="item" sort={sort} dir={sortDir} onSort={cycleSort} />
           <SortHead
             label="Best bid"
@@ -689,7 +677,7 @@ export function MarketPanel({
                 data-market-item={item.id}
                 onClick={() => pick(item.id)}
                 className={cn(
-                  "grid w-full grid-cols-[minmax(0,1.2fr)_minmax(0,1.05fr)_minmax(0,1.05fr)_minmax(0,0.85fr)_minmax(0,1fr)_minmax(0,0.85fr)] items-center gap-2 border-b border-border/40 px-3 py-2.5 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4 sm:py-3",
+                  "grid w-full min-w-[52rem] grid-cols-[minmax(7rem,0.9fr)_minmax(9rem,1.25fr)_minmax(9rem,1.25fr)_minmax(8.5rem,1.15fr)_minmax(4.5rem,0.55fr)_minmax(4.5rem,0.55fr)] items-center gap-2 border-b border-border/40 px-3 py-2.5 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4 sm:py-3",
                   active && "bg-primary/15"
                 )}
               >
@@ -702,13 +690,13 @@ export function MarketPanel({
                     </span>
                   </span>
                 </span>
-                <span className="font-medium text-emerald-200">
+                <span className="min-w-0 truncate font-medium tabular-nums text-emerald-200" title={quote?.bestBid != null ? formatCoins(quote.bestBid) : undefined}>
                   {quote?.bestBid != null ? formatCoins(quote.bestBid) : "—"}
                 </span>
-                <span className="font-medium text-rose-200">
+                <span className="min-w-0 truncate font-medium tabular-nums text-rose-200" title={quote?.bestAsk != null ? formatCoins(quote.bestAsk) : undefined}>
                   {quote?.bestAsk != null ? formatCoins(quote.bestAsk) : "—"}
                 </span>
-                <span className="font-medium text-sky-200">
+                <span className="min-w-0 truncate font-medium tabular-nums text-sky-200" title={formatCoins(quote?.vwap ?? item.basePrice)}>
                   {formatCoins(quote?.vwap ?? item.basePrice)}
                 </span>
                 <span className="font-medium tabular-nums text-amber-200">
@@ -837,7 +825,7 @@ function Stat({
       </p>
       <p
         className={cn(
-          "font-heading text-lg tabular-nums",
+          "font-heading text-base tabular-nums whitespace-nowrap sm:text-lg",
           tone === "valueDown" && "text-zinc-50",
           tone === "valueUp" && "text-zinc-900",
           tone === "valueNone" && "text-zinc-100",

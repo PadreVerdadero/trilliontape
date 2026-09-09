@@ -10,6 +10,11 @@ function quoteOf(prices: MarketPrice[], itemId: string) {
   return prices.find((row) => row.itemId === itemId);
 }
 
+function catalogRank(id: string, catalog: Item[]) {
+  const index = catalog.findIndex((row) => row.id === id);
+  return index < 0 ? catalog.length : index;
+}
+
 function cmpMissingLast(a: number | null | undefined, b: number | null | undefined, dir: 1 | -1) {
   const aMissing = a == null;
   const bMissing = b == null;
@@ -63,8 +68,9 @@ export function rankCatalogItems(
       const db = (qb?.listed ?? 0) > 0 ? qb?.listed : null;
       cmp = cmpMissingLast(da, db, dir);
     } else if (sort === "volume") cmp = ((qa?.tradesToday ?? 0) - (qb?.tradesToday ?? 0)) * dir;
+    else if (sort === "item") cmp = (catalogRank(a.id, catalog) - catalogRank(b.id, catalog)) * dir;
     else cmp = compareByCommonness(a, b, rarityMap) * dir;
     if (cmp !== 0) return cmp;
-    return a.name.localeCompare(b.name);
+    return catalogRank(a.id, catalog) - catalogRank(b.id, catalog);
   });
 }

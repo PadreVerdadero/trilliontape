@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { itemById, itemsByCommonness } from "@/lib/game/catalog";
+import { itemById, items } from "@/lib/game/catalog";
 import { bundleMarketValue } from "@/lib/game/deal-value";
 import { formatCoins, formatNumber } from "@/lib/game/format";
 import { rarityClass, type RarityMap } from "@/lib/game/rarity";
@@ -176,7 +176,7 @@ export function SwapPanel({
           onGold={setWantGold}
           goldHint="Gold they must send you."
           legs={wantLegs}
-          itemChoices={itemsByCommonness.map((item) => ({ itemId: item.id, name: item.name }))}
+          itemChoices={items.map((item) => ({ itemId: item.id, name: item.name }))}
           rarityMap={rarityMap}
           total={draftWant}
           onPick={(itemId) => setWantLegs((rows) => pickLeg(rows, itemId))}

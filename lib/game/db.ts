@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import { ENERGY_MAX, RETIRED_ITEM_IDS, STARTING_ENERGY, STARTING_GOLD, itemById } from "@/lib/game/catalog";
 import { BOT_PROFILES } from "@/lib/game/bots";
 
-const BOOTSTRAP_REV = 3;
+const BOOTSTRAP_REV = 4;
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: Database.Database;

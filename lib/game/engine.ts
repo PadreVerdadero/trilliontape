@@ -5,6 +5,7 @@ import {
   isLegendaryItem,
   itemAuthorized,
   itemById,
+  items,
   locationById,
   materialsAt,
   ENERGY_MAX,
@@ -1668,12 +1669,12 @@ function remainingToIssue(itemId: string) {
 }
 
 function shareStructure(itemId: string, outstanding: number, listedTreasury: number) {
-  const cap = itemAuthorized(itemById[itemId]);
-  const authorized = Math.max(cap, outstanding);
+  const authorized = itemAuthorized(itemById[itemId]);
+  const issued = Math.max(outstanding, Math.min(authorized, outstanding + listedTreasury));
   return {
     authorized,
-    issued: Math.min(authorized, outstanding + listedTreasury),
-    treasury: Math.max(0, authorized - outstanding),
+    issued,
+    treasury: Math.max(0, issued - outstanding),
   };
 }
 
@@ -1736,7 +1737,8 @@ function priceSheet(timeZone?: string): MarketPrice[] {
        AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')
      GROUP BY item_id`
   );
-  return Object.keys(itemById).map((itemId) => {
+  return items.map((item) => {
+    const itemId = item.id;
     const stats = db
       .prepare(
         "SELECT SUM(price * quantity) AS notional, SUM(quantity) AS volume, MAX(id) AS last_id FROM trades WHERE item_id = ?"

@@ -68,7 +68,7 @@ export const consumables: Consumable[] = [
     blurb: "Next search skips Commons — only Uncommon and rarer.",
   },
   {
-    itemId: "brick",
+    itemId: "stone",
     kind: "search_cheap",
     charges: 1,
     power: 1,

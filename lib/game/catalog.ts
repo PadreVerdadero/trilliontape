@@ -47,14 +47,15 @@ export const locations: Location[] = [
 
 export const items: Item[] = [
   {
-    id: "wood",
-    emoji: "🪵",
-    name: "Wood",
+    id: "wheat",
+    emoji: "🌿",
+    name: "Wheat",
     kind: "material",
-    purpose: "Fallen timber. Trade it on the board.",
-    description: "Fallen timber from the woods.",
-    basePrice: 5,
-    mine: { locationId: "woods", seconds: 12, yieldMin: 2, yieldMax: 3 },
+    purpose: "The fields' staple. Trade it on the board.",
+    description: "The fields' staple.",
+    basePrice: 4,
+    authorized: 500,
+    mine: { locationId: "fields", seconds: 11, yieldMin: 2, yieldMax: 3 },
   },
   {
     id: "berries",
@@ -64,47 +65,19 @@ export const items: Item[] = [
     purpose: "Eat: +4 energy (one quiet search).",
     description: "Sweet trail food. The cheapest refill.",
     basePrice: 4,
+    authorized: 450,
     mine: { locationId: "woods", seconds: 10, yieldMin: 2, yieldMax: 4 },
   },
   {
-    id: "mushrooms",
-    emoji: "🍄",
-    name: "Mushrooms",
+    id: "wood",
+    emoji: "🪵",
+    name: "Wood",
     kind: "material",
-    purpose: "Eat: next search finds two things.",
-    description: "Spongy caps. Snack for a double pull.",
-    basePrice: 8,
-    mine: { locationId: "woods", seconds: 22, yieldMin: 1, yieldMax: 2 },
-  },
-  {
-    id: "stone",
-    emoji: "🪨",
-    name: "Stone",
-    kind: "material",
-    purpose: "Rough blocks. Trade them on the board.",
-    description: "Rough blocks from the ridge.",
+    purpose: "Fallen timber. Trade it on the board.",
+    description: "Fallen timber from the woods.",
     basePrice: 5,
-    mine: { locationId: "ridge", seconds: 12, yieldMin: 2, yieldMax: 3 },
-  },
-  {
-    id: "coal",
-    emoji: "🔥",
-    name: "Coal",
-    kind: "material",
-    purpose: "Ridge fuel. Trade it on the board.",
-    description: "The ridge's other currency.",
-    basePrice: 9,
-    mine: { locationId: "ridge", seconds: 24, yieldMin: 1, yieldMax: 2 },
-  },
-  {
-    id: "gem",
-    emoji: "💎",
-    name: "Gem",
-    kind: "material",
-    purpose: "A long chisel job. Trade it on the board.",
-    description: "A long chisel job. Legendary pull.",
-    basePrice: 28,
-    mine: { locationId: "ridge", seconds: 48, yieldMin: 1, yieldMax: 1 },
+    authorized: 400,
+    mine: { locationId: "woods", seconds: 12, yieldMin: 2, yieldMax: 3 },
   },
   {
     id: "fish",
@@ -114,27 +87,8 @@ export const items: Item[] = [
     purpose: "Eat: +6 energy.",
     description: "Silver from the tide.",
     basePrice: 6,
+    authorized: 350,
     mine: { locationId: "shore", seconds: 14, yieldMin: 1, yieldMax: 3 },
-  },
-  {
-    id: "shell",
-    emoji: "🐚",
-    name: "Shell",
-    kind: "material",
-    purpose: "Listen: next search skips Commons.",
-    description: "Polished by the surf.",
-    basePrice: 7,
-    mine: { locationId: "shore", seconds: 16, yieldMin: 1, yieldMax: 2 },
-  },
-  {
-    id: "wheat",
-    emoji: "🌿",
-    name: "Wheat",
-    kind: "material",
-    purpose: "The fields' staple. Trade it on the board.",
-    description: "The fields' staple.",
-    basePrice: 4,
-    mine: { locationId: "fields", seconds: 11, yieldMin: 2, yieldMax: 3 },
   },
   {
     id: "flower",
@@ -144,16 +98,63 @@ export const items: Item[] = [
     purpose: "Tuck: next search leans Rare+.",
     description: "Festival color from the east road.",
     basePrice: 6,
+    authorized: 300,
     mine: { locationId: "fields", seconds: 15, yieldMin: 1, yieldMax: 2 },
   },
   {
-    id: "brick",
-    emoji: "🧱",
-    name: "Brick",
-    kind: "good",
-    purpose: "Brace: next search costs only 1 energy.",
-    description: "Kiln-fired stone. Cheap pulls on a crowded ridge.",
-    basePrice: 16,
+    id: "stone",
+    emoji: "🪨",
+    name: "Stone",
+    kind: "material",
+    purpose: "Rough blocks. Trade them on the board.",
+    description: "Rough blocks from the ridge.",
+    basePrice: 5,
+    authorized: 250,
+    mine: { locationId: "ridge", seconds: 12, yieldMin: 2, yieldMax: 3 },
+  },
+  {
+    id: "mushrooms",
+    emoji: "🍄",
+    name: "Mushrooms",
+    kind: "material",
+    purpose: "Eat: next search finds two things.",
+    description: "Spongy caps. Snack for a double pull.",
+    basePrice: 8,
+    authorized: 200,
+    mine: { locationId: "woods", seconds: 22, yieldMin: 1, yieldMax: 2 },
+  },
+  {
+    id: "coal",
+    emoji: "🔥",
+    name: "Coal",
+    kind: "material",
+    purpose: "Ridge fuel. Trade it on the board.",
+    description: "The ridge's other currency.",
+    basePrice: 9,
+    authorized: 150,
+    mine: { locationId: "ridge", seconds: 24, yieldMin: 1, yieldMax: 2 },
+  },
+  {
+    id: "shell",
+    emoji: "🐚",
+    name: "Shell",
+    kind: "material",
+    purpose: "Listen: next search skips Commons.",
+    description: "Polished by the surf.",
+    basePrice: 7,
+    authorized: 100,
+    mine: { locationId: "shore", seconds: 16, yieldMin: 1, yieldMax: 2 },
+  },
+  {
+    id: "gem",
+    emoji: "💎",
+    name: "Gem",
+    kind: "material",
+    purpose: "A long chisel job. Trade it on the board.",
+    description: "A long chisel job. Legendary pull.",
+    basePrice: 28,
+    authorized: 50,
+    mine: { locationId: "ridge", seconds: 48, yieldMin: 1, yieldMax: 1 },
   },
 ];
 
@@ -264,12 +265,8 @@ const TRAVEL: Record<string, Record<string, number>> = {
   fields: { town: 12, woods: 22, ridge: 20, shore: 24 },
 };
 
-/** Max units the treasury may mint for a good unless the catalog sets `authorized`. */
-export const ITEM_AUTHORIZED = 1_000_000;
-
 export function itemAuthorized(item: Item | undefined) {
-  if (!item) return ITEM_AUTHORIZED;
-  return item.authorized ?? ITEM_AUTHORIZED;
+  return item?.authorized ?? 0;
 }
 
 export const itemById = Object.fromEntries(items.map((item) => [item.id, item]));
@@ -323,6 +320,7 @@ export const RETIRED_ITEM_IDS = [
   "candle",
   "jewel",
   "herbs",
+  "brick",
 ] as const;
 
 export function isFoodItem(itemId: string) {

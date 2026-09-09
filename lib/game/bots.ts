@@ -9,7 +9,7 @@ export const BOT_PROFILES: BotProfile[] = [
   {
     username: "Piper",
     gold: 2400,
-    specialty: ["wood", "berries", "wheat", "stone", "brick"],
+    specialty: ["wood", "berries", "wheat", "stone", "mushrooms"],
     style: "tight",
   },
   {
@@ -27,7 +27,7 @@ export const BOT_PROFILES: BotProfile[] = [
   {
     username: "Anvil",
     gold: 3200,
-    specialty: ["stone", "coal", "brick", "gem"],
+    specialty: ["stone", "coal", "wheat", "gem"],
     style: "tight",
   },
   {
@@ -39,7 +39,7 @@ export const BOT_PROFILES: BotProfile[] = [
   {
     username: "Cinder",
     gold: 3000,
-    specialty: ["brick", "coal", "stone", "wood"],
+    specialty: ["mushrooms", "coal", "stone", "wood"],
     style: "tight",
   },
   {
@@ -51,7 +51,7 @@ export const BOT_PROFILES: BotProfile[] = [
   {
     username: "Cobble",
     gold: 2600,
-    specialty: ["stone", "wood", "brick", "wheat"],
+    specialty: ["stone", "wood", "mushrooms", "wheat"],
     style: "tight",
   },
   {
@@ -75,7 +75,7 @@ export const BOT_PROFILES: BotProfile[] = [
   {
     username: "Wisp",
     gold: 9800,
-    specialty: ["gem", "coal", "brick", "flower"],
+    specialty: ["gem", "coal", "wheat", "flower"],
     style: "thin",
   },
   {
@@ -87,7 +87,7 @@ export const BOT_PROFILES: BotProfile[] = [
   {
     username: "Soot",
     gold: 3100,
-    specialty: ["coal", "stone", "brick", "wood"],
+    specialty: ["coal", "stone", "mushrooms", "wood"],
     style: "wild",
   },
   {
@@ -117,7 +117,7 @@ export const BOT_PROFILES: BotProfile[] = [
   {
     username: "Knurl",
     gold: 8200,
-    specialty: ["stone", "coal", "gem", "brick"],
+    specialty: ["stone", "coal", "gem", "wheat"],
     style: "thin",
   },
   {
