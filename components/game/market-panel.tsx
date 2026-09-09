@@ -378,7 +378,12 @@ export function MarketPanel({
                 {selected.emoji} {selected.name}
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+            <div
+              className={cn(
+                "grid grid-cols-2 gap-2 sm:grid-cols-4",
+                state.player.isAdmin ? "xl:grid-cols-8" : "xl:grid-cols-7"
+              )}
+            >
               <Stat
                 label="Price"
                 value={price?.last != null ? formatCoins(price.last) : "none"}
@@ -414,13 +419,15 @@ export function MarketPanel({
                 tone="supply"
                 title="Board prints today (local midnight)"
               />
-              <Stat
-                label="Authorized/Issued"
-                value={`${formatNumber(price?.authorized ?? 0)}/${formatNumber(price?.issued ?? 0)}`}
-                tone="shareAuth"
-                compactLabel
-                title="Max that can be issued / already issued (packs plus treasury asks)"
-              />
+              {state.player.isAdmin ? (
+                <Stat
+                  label="Authorized/Issued"
+                  value={`${formatNumber(price?.authorized ?? 0)}/${formatNumber(price?.issued ?? 0)}`}
+                  tone="shareAuth"
+                  compactLabel
+                  title="Max that can be issued / already issued"
+                />
+              ) : null}
               <Stat
                 label="Outstanding/Treasury"
                 value={`${formatNumber(price?.held ?? 0)}/${formatNumber(price?.treasury ?? 0)}`}

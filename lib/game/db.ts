@@ -5,7 +5,9 @@ import bcrypt from "bcryptjs";
 import { ENERGY_MAX, RETIRED_ITEM_IDS, STARTING_ENERGY, STARTING_GOLD, itemById } from "@/lib/game/catalog";
 import { BOT_PROFILES } from "@/lib/game/bots";
 
-const BOOTSTRAP_REV = 4;
+export const DESK_USERNAME = "Government";
+
+const BOOTSTRAP_REV = 5;
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: Database.Database;
@@ -346,6 +348,25 @@ function shareBankerHoldings(db: Database.Database) {
   clearBankerBook(db);
 }
 
+function seedDesk(db: Database.Database) {
+  const existing = db
+    .prepare("SELECT id FROM users WHERE username = ?").get(DESK_USERNAME) as { id: number } | undefined;
+  if (existing) {
+    db.prepare("UPDATE users SET is_gov = 1 WHERE id = ?").run(existing.id);
+    return;
+  }
+  const now = Date.now();
+  const info = db
+    .prepare(
+      "INSERT INTO users (username, password_hash, created_at, is_gov) VALUES (?, ?, ?, 1)"
+    )
+    .run(DESK_USERNAME, bcrypt.hashSync(`desk-${now}`, 10), now);
+  const userId = Number(info.lastInsertRowid);
+  db.prepare(
+    "INSERT INTO players (user_id, gold, location_id, energy, energy_max, last_event) VALUES (?, 0, 'town', ?, ?, ?)"
+  ).run(userId, STARTING_ENERGY, ENERGY_MAX, "The treasury desk is open.");
+}
+
 function seedGuest(db: Database.Database) {
   const existing = db
     .prepare("SELECT id FROM users WHERE username = ?")
@@ -436,6 +457,7 @@ function bootstrap(db: Database.Database) {
   migrate(db);
   clearBankerBook(db);
   seedGuest(db);
+  seedDesk(db);
   seedBots(db);
   purgeRetiredItems(db);
   shareBankerHoldings(db);

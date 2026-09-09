@@ -93,6 +93,8 @@ export function PlayScreen({
             player={player}
             selectedItemId={itemId}
             pending={pending}
+            authorized={state.prices.find((row) => row.itemId === itemId)?.authorized ?? 0}
+            issued={state.prices.find((row) => row.itemId === itemId)?.issued ?? 0}
             onSetGold={(gold) => run({ action: "adminGold", gold })}
             onSetItem={(itemId, quantity) => run({ action: "adminItem", itemId, quantity })}
           />

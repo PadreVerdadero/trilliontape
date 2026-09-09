@@ -24,7 +24,7 @@ import {
   type BuffKind,
 } from "@/lib/game/consumables";
 import { rarityFromHeld, rarityOf } from "@/lib/game/rarity";
-import { getDb } from "@/lib/game/db";
+import { DESK_USERNAME, getDb } from "@/lib/game/db";
 import {
   BOT_PROFILES,
   botLossChance,
@@ -1631,7 +1631,12 @@ function bookDepth() {
 
 function packTotals() {
   const rows = getDb()
-    .prepare("SELECT item_id, COALESCE(SUM(quantity), 0) AS qty FROM inventory GROUP BY item_id")
+    .prepare(
+      `SELECT i.item_id, COALESCE(SUM(i.quantity), 0) AS qty
+       FROM inventory i JOIN users u ON u.id = i.user_id
+       WHERE u.username NOT IN ('Banker', 'Government')
+       GROUP BY i.item_id`
+    )
     .all() as { item_id: string; qty: number }[];
   return Object.fromEntries(rows.map((row) => [row.item_id, row.qty])) as Record<string, number>;
 }
@@ -1647,7 +1652,11 @@ function qtyByItem(sql: string, params: unknown[] = []) {
 
 function outstandingOf(itemId: string) {
   const row = getDb()
-    .prepare("SELECT COALESCE(SUM(quantity), 0) AS qty FROM inventory WHERE item_id = ?")
+    .prepare(
+      `SELECT COALESCE(SUM(i.quantity), 0) AS qty
+       FROM inventory i JOIN users u ON u.id = i.user_id
+       WHERE i.item_id = ? AND u.username NOT IN ('Banker', 'Government')`
+    )
     .get(itemId) as { qty: number };
   return row.qty;
 }
@@ -1663,19 +1672,83 @@ function listedTreasuryAsks(itemId: string) {
   return row.qty;
 }
 
+function listedTreasuryBids(itemId: string) {
+  const row = getDb()
+    .prepare(
+      `SELECT COALESCE(SUM(remaining), 0) AS qty FROM orders
+       WHERE item_id = ? AND side = 'buy' AND remaining > 0 AND COALESCE(treasury, 0) = 1
+         AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')`
+    )
+    .get(itemId) as { qty: number };
+  return row.qty;
+}
+
 function remainingToIssue(itemId: string) {
   const item = itemById[itemId];
   return Math.max(0, itemAuthorized(item) - outstandingOf(itemId));
 }
 
-function shareStructure(itemId: string, outstanding: number, listedTreasury: number) {
+function shareStructure(itemId: string, outstanding: number) {
   const authorized = itemAuthorized(itemById[itemId]);
-  const issued = Math.max(outstanding, Math.min(authorized, outstanding + listedTreasury));
+  const issued = authorized;
   return {
     authorized,
     issued,
     treasury: Math.max(0, issued - outstanding),
   };
+}
+
+function ensureDeskUser() {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT id FROM users WHERE username = ?")
+    .get(DESK_USERNAME) as { id: number } | undefined;
+  if (!row) throw new Error("Treasury desk is missing.");
+  db.prepare("UPDATE users SET is_gov = 1 WHERE id = ?").run(row.id);
+  return row.id;
+}
+
+function clearDeskBook(userId: number, itemId: string, side: "buy" | "sell") {
+  getDb()
+    .prepare(
+      "DELETE FROM orders WHERE user_id = ? AND item_id = ? AND side = ? AND COALESCE(treasury, 0) = 1"
+    )
+    .run(userId, itemId, side);
+}
+
+function postDeskQuotes(userId: number, itemId: string, side: "buy" | "sell", quantity: number, price: number) {
+  const qty = Math.max(0, Math.floor(quantity));
+  if (qty < 1 || price < 1) return;
+  for (let n = 0; n < qty; n += 1) {
+    insertLiveOrder(userId, itemId, side, price, 1, true);
+  }
+  matchItem(itemId);
+}
+
+const deskClock = globalThis as unknown as { bazaarDeskAlign?: number };
+
+function alignIssuedToAuthorized() {
+  const now = nowMs();
+  if (deskClock.bazaarDeskAlign && now - deskClock.bazaarDeskAlign < 8000) return;
+  deskClock.bazaarDeskAlign = now;
+  const deskId = ensureDeskUser();
+  for (const item of items) {
+    const outstanding = outstandingOf(item.id);
+    const authorized = itemAuthorized(item);
+    const mv = marketPrice(item.id);
+    if (outstanding < authorized) {
+      clearDeskBook(deskId, item.id, "buy");
+      const need = authorized - outstanding - listedTreasuryAsks(item.id);
+      if (need > 0) postDeskQuotes(deskId, item.id, "sell", need, mv);
+    } else if (outstanding > authorized) {
+      clearDeskBook(deskId, item.id, "sell");
+      const need = outstanding - authorized - listedTreasuryBids(item.id);
+      if (need > 0) postDeskQuotes(deskId, item.id, "buy", need, mv);
+    } else {
+      clearDeskBook(deskId, item.id, "buy");
+      clearDeskBook(deskId, item.id, "sell");
+    }
+  }
 }
 
 function netWorthLeaders(prices: MarketPrice[]): LeaderRow[] {
@@ -1685,7 +1758,7 @@ function netWorthLeaders(prices: MarketPrice[]): LeaderRow[] {
     .prepare(
       `SELECT u.id, u.username, p.gold
        FROM players p JOIN users u ON u.id = p.user_id
-       WHERE u.username != 'Banker'`
+       WHERE u.username NOT IN ('Banker', 'Government')`
     )
     .all() as { id: number; username: string; gold: number }[];
   const stacks = db
@@ -1731,12 +1804,6 @@ function priceSheet(timeZone?: string): MarketPrice[] {
     "SELECT item_id, COUNT(*) AS qty FROM trades WHERE created_at >= ? GROUP BY item_id",
     [dayStart]
   );
-  const treasuryListed = qtyByItem(
-    `SELECT item_id, COALESCE(SUM(remaining), 0) AS qty FROM orders
-     WHERE side = 'sell' AND remaining > 0 AND COALESCE(treasury, 0) = 1
-       AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')
-     GROUP BY item_id`
-  );
   return items.map((item) => {
     const itemId = item.id;
     const stats = db
@@ -1767,7 +1834,7 @@ function priceSheet(timeZone?: string): MarketPrice[] {
     const vwap = computeFairValue(itemById[itemId].basePrice, [...prints].reverse());
     const book = depth[itemId] ?? { listed: 0, wanted: 0 };
     const outstanding = packs[itemId] ?? 0;
-    const shares = shareStructure(itemId, outstanding, treasuryListed[itemId] ?? 0);
+    const shares = shareStructure(itemId, outstanding);
     return {
       itemId,
       vwap,
@@ -2227,7 +2294,10 @@ export function getGameState(
   timeZone?: string,
   options?: { tick?: boolean }
 ): GameState {
-  if (options?.tick !== false) tickBots();
+  if (options?.tick !== false) {
+    tickBots();
+    alignIssuedToAuthorized();
+  }
   resolveBusy(userId);
   const player = loadPlayerRow(userId);
   const stacks = getDb()
@@ -2322,7 +2392,7 @@ export function getGameState(
       .prepare(
         `SELECT COALESCE(SUM(p.gold), 0) AS gold
          FROM players p JOIN users u ON u.id = p.user_id
-         WHERE u.username != 'Banker'`
+         WHERE u.username NOT IN ('Banker', 'Government')`
       )
       .get() as { gold: number }
   ).gold;
