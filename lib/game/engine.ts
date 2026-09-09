@@ -1699,29 +1699,12 @@ function shufflePick<T>(list: T[], count: number) {
 
 const botClock = globalThis as unknown as { bazaarBotTick?: number };
 
-function fundBotGold(userId: number, need: number) {
-  const free = availableGold(userId);
-  if (free >= need) return;
-  getDb()
-    .prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?")
-    .run(need - free + 20, userId);
-}
-
-function restockBot(userId: number, gold: number, specialty: string[]) {
-  let purseFloor = Math.max(350, Math.round(gold * 0.12));
-  for (const itemId of specialty) {
-    if (!itemById[itemId]) continue;
-    const fair = marketPrice(itemId);
-    purseFloor = Math.max(purseFloor, Math.round(fair * 1.25));
-  }
-  fundBotGold(userId, purseFloor);
-}
-
 type BotQuoteRow = {
   id: number;
   item_id: string;
   side: "buy" | "sell";
   price: number;
+  remaining: number;
   created_at: number;
 };
 
@@ -1757,8 +1740,8 @@ function chaseOneBotQuote(
       impatient &&
       botWillTake(spread, fair, "liftAsk", ask.price, true, slack)
     ) {
+      if (availableGold(userId) < ask.price) return false;
       cancelOrders(userId, [quote.id]);
-      fundBotGold(userId, ask.price);
       if (availableGold(userId) >= ask.price) {
         takeOrder(userId, ask.id, 1);
         return true;
@@ -1766,7 +1749,8 @@ function chaseOneBotQuote(
     }
     const next = chaseBidPrice(quote.price, fair, slack, steps);
     if (next > quote.price) {
-      fundBotGold(userId, next - quote.price);
+      const extra = (next - quote.price) * quote.remaining;
+      if (availableGold(userId) < extra) return false;
       db.prepare("UPDATE orders SET price = ? WHERE id = ?").run(next, quote.id);
       matchItem(itemId);
       return true;
@@ -1804,7 +1788,7 @@ function chaseOneBotQuote(
 function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: number) {
   const rows = getDb()
     .prepare(
-      `SELECT id, item_id, side, price, created_at
+      `SELECT id, item_id, side, price, remaining, created_at
        FROM orders
        WHERE user_id = ? AND remaining > 0
        ORDER BY created_at ASC`
@@ -1830,7 +1814,6 @@ export function tickBots() {
       .get(profile.username) as { id: number } | undefined;
     if (!user) continue;
     try {
-      restockBot(user.id, profile.gold, profile.specialty);
       if (chaseStaleBotQuote(user.id, profile.style, now)) continue;
       const itemId = profile.specialty[Math.floor(Math.random() * profile.specialty.length)];
       const item = itemById[itemId];
@@ -1881,7 +1864,6 @@ export function tickBots() {
       const buySide = Math.random() < 0.5;
       if (quoteBoth || buySide) {
         const bidPx = Math.max(1, Math.round(fair * quote.bid));
-        fundBotGold(user.id, bidPx * qty);
         if (availableGold(user.id) >= bidPx * qty) placeOrder(user.id, itemId, "buy", bidPx, qty);
       }
       if (quoteBoth || !buySide) {
