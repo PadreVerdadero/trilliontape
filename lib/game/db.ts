@@ -7,7 +7,7 @@ import { BOT_PROFILES } from "@/lib/game/bots";
 
 export const DESK_USERNAME = "Government";
 
-const BOOTSTRAP_REV = 5;
+const BOOTSTRAP_REV = 6;
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: Database.Database;
@@ -172,6 +172,11 @@ function migrate(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_swap_offers_open ON swap_offers(status, from_user_id, to_user_id);
     CREATE INDEX IF NOT EXISTS idx_swap_legs_offer ON swap_legs(offer_id);
+
+    CREATE TABLE IF NOT EXISTS item_float (
+      item_id TEXT PRIMARY KEY,
+      floated INTEGER NOT NULL DEFAULT 0
+    );
   `);
   ensureColumn(db, "users", "is_bot", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "users", "is_gov", "INTEGER NOT NULL DEFAULT 0");

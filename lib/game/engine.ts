@@ -490,6 +490,7 @@ function executeFill(
         .run(sell.user_id);
     }
   }
+  noteIssuedCap(itemId);
 }
 
 function matchItem(itemId: string) {
@@ -1726,25 +1727,54 @@ function postDeskQuotes(userId: number, itemId: string, side: "buy" | "sell", qu
 }
 
 const DESK_REQUOTE_MS = 5 * 60_000;
-const deskClock = globalThis as unknown as { bazaarDeskAlign?: number };
+const deskClock = globalThis as unknown as { bazaarDeskFloat?: number };
+
+function floatedOf(itemId: string) {
+  const row = getDb()
+    .prepare("SELECT floated FROM item_float WHERE item_id = ?")
+    .get(itemId) as { floated: number } | undefined;
+  return row?.floated ?? 0;
+}
+
+function setFloated(itemId: string, floated: number) {
+  getDb()
+    .prepare(
+      `INSERT INTO item_float (item_id, floated) VALUES (?, ?)
+       ON CONFLICT(item_id) DO UPDATE SET floated = MAX(item_float.floated, excluded.floated)`
+    )
+    .run(itemId, floated);
+}
+
+function noteIssuedCap(itemId: string) {
+  const authorized = itemAuthorized(itemById[itemId]);
+  if (authorized <= 0) return;
+  if (outstandingOf(itemId) < authorized) return;
+  setFloated(itemId, authorized);
+  const desk = getDb()
+    .prepare("SELECT id FROM users WHERE username = ?")
+    .get(DESK_USERNAME) as { id: number } | undefined;
+  if (desk) clearDeskBook(desk.id, itemId, "sell");
+}
 
 function alignIssuedToAuthorized() {
   const now = nowMs();
-  if (deskClock.bazaarDeskAlign && now - deskClock.bazaarDeskAlign < DESK_REQUOTE_MS) return;
-  deskClock.bazaarDeskAlign = now;
+  if (deskClock.bazaarDeskFloat && now - deskClock.bazaarDeskFloat < DESK_REQUOTE_MS) return;
+  deskClock.bazaarDeskFloat = now;
   const deskId = ensureDeskUser();
   for (const item of items) {
+    noteIssuedCap(item.id);
     clearDeskBook(deskId, item.id, "buy");
     clearDeskBook(deskId, item.id, "sell");
     const outstanding = outstandingOf(item.id);
     const authorized = itemAuthorized(item);
+    const floated = floatedOf(item.id);
     const mv = marketPrice(item.id);
-    if (outstanding < authorized) {
-      const need = authorized - outstanding - listedTreasuryAsks(item.id);
-      if (need > 0) postDeskQuotes(deskId, item.id, "sell", need, mv);
-    } else if (outstanding > authorized) {
+    if (outstanding > authorized) {
       const need = outstanding - authorized - listedTreasuryBids(item.id);
       if (need > 0) postDeskQuotes(deskId, item.id, "buy", need, mv);
+    } else if (outstanding < authorized && floated < authorized) {
+      const need = authorized - outstanding - listedTreasuryAsks(item.id);
+      if (need > 0) postDeskQuotes(deskId, item.id, "sell", need, mv);
     }
   }
 }
