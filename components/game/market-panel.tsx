@@ -424,7 +424,7 @@ export function MarketPanel({
               <Stat
                 label="Outstanding/Treasury"
                 value={`${formatNumber(price?.held ?? 0)}/${formatNumber(price?.treasury ?? 0)}`}
-                tone="shareOut"
+                tone="shareAuth"
                 compactLabel
                 title="Purchased and in packs / issued but not yet purchased"
               />
