@@ -4,8 +4,11 @@ import { rarityClass, rarityMapFromPrices } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
 import type { InventoryRow, MarketPrice, PlayerState } from "@/lib/game/types";
 
+const PACK_PAD = "px-1.5 sm:px-2";
 const PACK_GRID =
-  "grid w-full grid-cols-[1.25rem_minmax(0,1fr)_2.7rem_2.35rem_2.35rem_2.7rem] items-center gap-x-1.5 px-1.5 sm:grid-cols-[1.25rem_minmax(0,1fr)_3.1rem_2.7rem_2.7rem_3.2rem] sm:px-2 lg:grid-cols-[1.25rem_minmax(0,1fr)_3.4rem_2.9rem_2.9rem_3.5rem]";
+  `grid w-full grid-cols-[1.25rem_minmax(0,1fr)_2.7rem_2.35rem_2.35rem_2.7rem] items-center gap-x-1.5 ${PACK_PAD} sm:grid-cols-[1.25rem_minmax(0,1fr)_3.1rem_2.7rem_2.7rem_3.2rem] lg:grid-cols-[1.25rem_minmax(0,1fr)_3.4rem_2.9rem_2.9rem_3.5rem]`;
+const PACK_SOLO =
+  `grid w-full grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-1.5 ${PACK_PAD}`;
 
 function packRows(inventory: InventoryRow[], rankedIds: string[]) {
   const held = new Map(inventory.map((row) => [row.itemId, row]));
@@ -73,33 +76,30 @@ export function InventoryPanel({
         </span>
         <span className="text-right">Total</span>
       </div>
-      <div className={cn(PACK_GRID, "rounded-lg py-1.5")}>
+      <div className={cn(PACK_SOLO, "rounded-lg py-1.5")}>
         <span className="text-base leading-none">🪙</span>
-        <span className="min-w-0">
-          <span className="block truncate text-xs font-medium sm:text-sm">Coins</span>
-          <span
-            className="block truncate text-[10px] font-normal text-muted-foreground"
-            title="Coins sitting in every purse on the desk"
-          >
-            Vol {formatNumber(coinVolume)}
-          </span>
-        </span>
+        <span className="min-w-0 truncate text-xs font-medium sm:text-sm">Coins</span>
         <span
-          className="min-w-0 truncate text-right tabular-nums text-xs font-medium text-primary sm:text-sm"
+          className="text-right text-xs font-medium text-primary sm:text-sm"
           title={
             player.availableGold !== player.gold
               ? `${formatNumber(player.availableGold)} free · ${formatNumber(player.gold - player.availableGold)} on bids`
               : `${formatNumber(player.availableGold)} free`
           }
         >
-          {formatNumber(player.availableGold)}
-          {player.availableGold !== player.gold ? (
-            <span className="text-muted-foreground">/{formatNumber(player.gold)}</span>
-          ) : null}
+          <span className="block tabular-nums">
+            {formatNumber(player.availableGold)}
+            {player.availableGold !== player.gold ? (
+              <span className="text-muted-foreground">/{formatNumber(player.gold)}</span>
+            ) : null}
+          </span>
+          <span
+            className="block text-[10px] font-normal text-muted-foreground"
+            title="Coins sitting in every purse on the desk"
+          >
+            Vol {formatNumber(coinVolume)}
+          </span>
         </span>
-        <span />
-        <span />
-        <span />
       </div>
       {rows.map((row) => {
         const item = itemById[row.itemId];
@@ -154,19 +154,16 @@ export function InventoryPanel({
           </button>
         );
       })}
-      <div className={cn(PACK_GRID, "rounded-lg py-1.5")}>
+      <div className={cn(PACK_SOLO, "rounded-lg py-1.5")}>
         <span className="text-base leading-none">💰</span>
-        <span className="truncate text-xs font-medium sm:text-sm">Net worth</span>
-        <span />
-        <span />
-        <span />
+        <span className="min-w-0 truncate text-xs font-medium sm:text-sm">Net worth</span>
         <span
-          className="min-w-0 text-right text-xs font-medium text-primary sm:text-sm"
+          className="text-right text-xs font-medium text-primary sm:text-sm"
           title={`${formatNetWorth(net)} · ${formatCoins(player.gold)} coin · ${formatCoins(goods)} goods`}
         >
-          <span className="block truncate tabular-nums">{formatNumber(net)}</span>
-          <span className="block truncate text-[10px] font-normal text-muted-foreground">
-            {formatCompact(goods)} goods
+          <span className="block tabular-nums">{formatNumber(net)}</span>
+          <span className="block text-[10px] font-normal text-muted-foreground">
+            {formatNumber(player.gold)}🪙 · {formatNumber(goods)} goods
           </span>
         </span>
       </div>
