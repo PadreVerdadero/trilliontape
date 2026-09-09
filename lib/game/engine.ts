@@ -1725,28 +1725,26 @@ function postDeskQuotes(userId: number, itemId: string, side: "buy" | "sell", qu
   matchItem(itemId);
 }
 
+const DESK_REQUOTE_MS = 5 * 60_000;
 const deskClock = globalThis as unknown as { bazaarDeskAlign?: number };
 
 function alignIssuedToAuthorized() {
   const now = nowMs();
-  if (deskClock.bazaarDeskAlign && now - deskClock.bazaarDeskAlign < 8000) return;
+  if (deskClock.bazaarDeskAlign && now - deskClock.bazaarDeskAlign < DESK_REQUOTE_MS) return;
   deskClock.bazaarDeskAlign = now;
   const deskId = ensureDeskUser();
   for (const item of items) {
+    clearDeskBook(deskId, item.id, "buy");
+    clearDeskBook(deskId, item.id, "sell");
     const outstanding = outstandingOf(item.id);
     const authorized = itemAuthorized(item);
     const mv = marketPrice(item.id);
     if (outstanding < authorized) {
-      clearDeskBook(deskId, item.id, "buy");
       const need = authorized - outstanding - listedTreasuryAsks(item.id);
       if (need > 0) postDeskQuotes(deskId, item.id, "sell", need, mv);
     } else if (outstanding > authorized) {
-      clearDeskBook(deskId, item.id, "sell");
       const need = outstanding - authorized - listedTreasuryBids(item.id);
       if (need > 0) postDeskQuotes(deskId, item.id, "buy", need, mv);
-    } else {
-      clearDeskBook(deskId, item.id, "buy");
-      clearDeskBook(deskId, item.id, "sell");
     }
   }
 }
