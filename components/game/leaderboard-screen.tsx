@@ -4,12 +4,7 @@ import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useGame } from "@/hooks/use-game";
 import { items } from "@/lib/game/catalog";
-import {
-  formatCoins,
-  formatCompact,
-  formatNetWorth,
-  formatNumber,
-} from "@/lib/game/format";
+import { formatCoins, formatNetWorth, formatNumber } from "@/lib/game/format";
 import { cn } from "@/lib/utils";
 import type { GameState } from "@/lib/game/types";
 
@@ -18,13 +13,13 @@ function qtyCell(amount: number, title: string, className?: string) {
   return (
     <td
       className={cn(
-        "px-1.5 py-2 text-center tabular-nums text-xs sm:px-2 sm:text-sm",
+        "whitespace-nowrap px-1.5 py-2 text-center tabular-nums text-xs sm:px-2 sm:text-sm",
         empty ? "text-muted-foreground/50" : "text-foreground",
         className
       )}
       title={title}
     >
-      {empty ? "—" : formatCompact(amount)}
+      {formatNumber(amount)}
     </td>
   );
 }
@@ -57,6 +52,18 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
   const { player, leaders } = state;
   const you = leaders.find((row) => row.username === player.username);
   const goods = items;
+  const totals = {
+    gold: 0,
+    netWorth: 0,
+    items: Object.fromEntries(goods.map((item) => [item.id, 0])) as Record<string, number>,
+  };
+  for (const row of leaders) {
+    totals.gold += row.gold ?? 0;
+    totals.netWorth += row.netWorth;
+    for (const item of goods) {
+      totals.items[item.id] += row.holdings?.[item.id] ?? 0;
+    }
+  }
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -81,8 +88,8 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
         <div className="space-y-1">
           <h1 className="font-heading text-3xl">Leaderboard</h1>
           <p className="text-sm text-muted-foreground">
-            Place by net worth. Counts under each mark — coin, every good, then the bag. Hover a
-            number for the exact amount.
+            Place by net worth. Full counts under each mark — coin, every good, then the bag. Totals
+            sit on the last row.
           </p>
         </div>
 
@@ -139,7 +146,7 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
                     <tr
                       key={`${row.place}-${row.username}`}
                       className={cn(
-                        "border-b border-border/40 last:border-b-0",
+                        "border-b border-border/40",
                         mine && "bg-primary/10"
                       )}
                     >
@@ -167,25 +174,59 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
                           <td
                             key={item.id}
                             className={cn(
-                              "px-1.5 py-2 text-center tabular-nums text-xs sm:px-2 sm:text-sm",
+                              "whitespace-nowrap px-1.5 py-2 text-center tabular-nums text-xs sm:px-2 sm:text-sm",
                               qty <= 0 ? "text-muted-foreground/50" : "text-foreground"
                             )}
                             title={`${item.name} · ${formatNumber(qty)}`}
                           >
-                            {qty <= 0 ? "—" : formatCompact(qty)}
+                            {formatNumber(qty)}
                           </td>
                         );
                       })}
                       <td
-                        className="px-1.5 py-2 text-center tabular-nums text-xs font-medium text-primary sm:px-2 sm:text-sm"
+                        className="whitespace-nowrap px-1.5 py-2 text-center tabular-nums text-xs font-medium text-primary sm:px-2 sm:text-sm"
                         title={formatNetWorth(row.netWorth)}
                       >
-                        {formatCompact(row.netWorth)}
+                        {formatNumber(row.netWorth)}
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-border/80">
+                  <td className="sticky bottom-0 left-0 z-20 bg-card px-2 py-2.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase sm:px-3">
+                    Σ
+                  </td>
+                  <td className="sticky bottom-0 left-8 z-20 bg-card px-2 py-2.5 text-xs font-medium sm:left-10 sm:px-3">
+                    Total
+                  </td>
+                  <td
+                    className="sticky bottom-0 whitespace-nowrap bg-card px-1.5 py-2.5 text-center tabular-nums text-xs font-medium sm:px-2 sm:text-sm"
+                    title={formatCoins(totals.gold)}
+                  >
+                    {formatNumber(totals.gold)}
+                  </td>
+                  {goods.map((item) => (
+                    <td
+                      key={item.id}
+                      className={cn(
+                        "sticky bottom-0 whitespace-nowrap bg-card px-1.5 py-2.5 text-center tabular-nums text-xs font-medium sm:px-2 sm:text-sm",
+                        totals.items[item.id] <= 0 ? "text-muted-foreground/50" : "text-foreground"
+                      )}
+                      title={`${item.name} · ${formatNumber(totals.items[item.id])} in every pack`}
+                    >
+                      {formatNumber(totals.items[item.id])}
+                    </td>
+                  ))}
+                  <td
+                    className="sticky bottom-0 whitespace-nowrap bg-card px-1.5 py-2.5 text-center tabular-nums text-xs font-medium text-primary sm:px-2 sm:text-sm"
+                    title={formatNetWorth(totals.netWorth)}
+                  >
+                    {formatNumber(totals.netWorth)}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}
