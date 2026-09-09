@@ -418,12 +418,14 @@ export function MarketPanel({
                 label="Authorized/Issued"
                 value={`${formatNumber(price?.authorized ?? 0)}/${formatNumber(price?.issued ?? 0)}`}
                 tone="shareAuth"
+                compactLabel
                 title="Max that can be issued / already issued (packs plus treasury asks)"
               />
               <Stat
                 label="Outstanding/Treasury"
                 value={`${formatNumber(price?.held ?? 0)}/${formatNumber(price?.treasury ?? 0)}`}
                 tone="shareOut"
+                compactLabel
                 title="Purchased and in packs / issued but not yet purchased"
               />
             </div>
@@ -769,11 +771,20 @@ export function MarketPanel({
   );
 }
 
+function valueSizeClass(value: string) {
+  const len = value.length;
+  if (len <= 9) return "text-base sm:text-lg";
+  if (len <= 13) return "text-sm sm:text-base";
+  if (len <= 18) return "text-xs sm:text-sm";
+  return "text-[10px] sm:text-xs";
+}
+
 function Stat({
   label,
   value,
   tone,
   title,
+  compactLabel,
 }: {
   label: string;
   value: string;
@@ -791,12 +802,13 @@ function Stat({
     | "shareOut"
     | "shareTreas";
   title?: string;
+  compactLabel?: boolean;
 }) {
   return (
     <div
       title={title}
       className={cn(
-        "rounded-xl px-3 py-2 ring-1 ring-foreground/10",
+        "min-w-0 overflow-hidden rounded-xl px-2 py-2 ring-1 ring-foreground/10 sm:px-3",
         tone === "valueDown" && "bg-zinc-800 text-zinc-100 ring-zinc-600",
         tone === "valueUp" && "bg-zinc-200 text-zinc-900 ring-zinc-400",
         tone === "valueNone" && "bg-zinc-700 text-zinc-100 ring-zinc-500",
@@ -813,7 +825,8 @@ function Stat({
     >
       <p
         className={cn(
-          "text-[11px] tracking-wide uppercase",
+          "uppercase leading-tight",
+          compactLabel ? "text-[9px] tracking-tight sm:text-[10px]" : "text-[11px] tracking-wide",
           tone === "valueDown" || tone === "valueNone"
             ? "text-zinc-300"
             : tone === "valueUp"
@@ -825,7 +838,8 @@ function Stat({
       </p>
       <p
         className={cn(
-          "font-heading text-base tabular-nums whitespace-nowrap sm:text-lg",
+          "font-heading tabular-nums whitespace-nowrap",
+          valueSizeClass(value),
           tone === "valueDown" && "text-zinc-50",
           tone === "valueUp" && "text-zinc-900",
           tone === "valueNone" && "text-zinc-100",
