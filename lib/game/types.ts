@@ -259,6 +259,7 @@ export type GameState = {
   computers: boolean;
   netWorthGoal: number;
   leaders: LeaderRow[];
+  deposit: { amount: number; day: number; gold: number } | null;
 };
 
 export type PricePoint = {

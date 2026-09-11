@@ -584,10 +584,14 @@ function touchDaily(userId: number, dayKey: string) {
     .run(userId, dayKey);
 }
 
-function grantDailyLogin(userId: number, timeZone?: string) {
-  if (isBot(userId)) return;
+function grantDailyLogin(userId: number, timeZone?: string): {
+  amount: number;
+  day: number;
+  justPaid: boolean;
+} | null {
+  if (isBot(userId)) return null;
   const name = loadPlayerRow(userId).username;
-  if (name === "Banker" || name === DESK_USERNAME) return;
+  if (name === "Banker" || name === DESK_USERNAME) return null;
   const day = festivalClock(timeZone).dateKey;
   touchDaily(userId, day);
   const row = getDb()
@@ -595,7 +599,14 @@ function grantDailyLogin(userId: number, timeZone?: string) {
       "SELECT COALESCE(login_paid, 0) AS login_paid FROM player_daily WHERE user_id = ? AND day_key = ?"
     )
     .get(userId, day) as { login_paid: number } | undefined;
-  if (row?.login_paid) return;
+  const paidDays = getDb()
+    .prepare("SELECT COALESCE(login_days, 0) AS login_days FROM players WHERE user_id = ?")
+    .get(userId) as { login_days: number } | undefined;
+  if (row?.login_paid) {
+    const n = paidDays?.login_days ?? 0;
+    if (n <= 0) return null;
+    return { amount: dailyDeposit(n), day: n, justPaid: false };
+  }
   const created = getDb()
     .prepare("SELECT created_at FROM users WHERE id = ?")
     .get(userId) as { created_at: number } | undefined;
@@ -603,12 +614,9 @@ function grantDailyLogin(userId: number, timeZone?: string) {
     getDb()
       .prepare("UPDATE player_daily SET login_paid = 1 WHERE user_id = ? AND day_key = ?")
       .run(userId, day);
-    return;
+    return null;
   }
-  const paid = getDb()
-    .prepare("SELECT COALESCE(login_days, 0) AS login_days FROM players WHERE user_id = ?")
-    .get(userId) as { login_days: number } | undefined;
-  const next = (paid?.login_days ?? 0) + 1;
+  const next = (paidDays?.login_days ?? 0) + 1;
   const amount = dailyDeposit(next);
   getDb()
     .prepare("UPDATE players SET gold = gold + ?, login_days = ? WHERE user_id = ?")
@@ -617,6 +625,7 @@ function grantDailyLogin(userId: number, timeZone?: string) {
     .prepare("UPDATE player_daily SET login_paid = 1 WHERE user_id = ? AND day_key = ?")
     .run(userId, day);
   setEvent(userId, `Daily purse: +${formatCoins(amount)} (day ${formatNumber(next)}).`);
+  return { amount, day: next, justPaid: true };
 }
 
 function awardVp(userId: number, amount: number) {
@@ -2533,7 +2542,7 @@ export function getGameState(
     alignIssuedToAuthorized();
   }
   resolveBusy(userId);
-  grantDailyLogin(userId, timeZone);
+  const depositNotice = grantDailyLogin(userId, timeZone);
   const player = loadPlayerRow(userId);
   const stacks = getDb()
     .prepare(
@@ -2670,5 +2679,8 @@ export function getGameState(
     computers,
     netWorthGoal: NET_WORTH_GOAL,
     leaders,
+    deposit: depositNotice
+      ? { amount: depositNotice.amount, day: depositNotice.day, gold: player.gold }
+      : null,
   };
 }
