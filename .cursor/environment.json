@@ -1,0 +1,17 @@
+{
+  "name": "TrillionTrade",
+  "install": "npm install",
+  "terminals": [
+    {
+      "name": "TrillionTrade",
+      "command": "npm run dev",
+      "description": "Next.js desk on port 43147. Do not restart unless asked; the SQLite world lives in data/bazaar.db."
+    }
+  ],
+  "ports": [
+    {
+      "name": "TrillionTrade",
+      "port": 43147
+    }
+  ]
+}

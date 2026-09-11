@@ -28,6 +28,8 @@ npm install
 npm run dev
 ```
 
-Open [http://127.0.0.1:43147](http://127.0.0.1:43147). Data lives in `data/bazaar.db` (created on first boot).
+Open [http://127.0.0.1:43147](http://127.0.0.1:43147) on the same machine that is running `npm run dev`. Data lives in `data/bazaar.db` (created on first boot).
+
+If you are in a Cursor Cloud Agent, **Preview** is a tunnel from your laptop to that remote machine — `127.0.0.1` in your browser is your laptop, not the game. This repo lists port `43147` in `.cursor/environment.json` so new agents can forward it. When that tunnel fails, the agent can open a temporary `trycloudflare.com` URL to the same server.
 
 No extra services or API keys. Accounts are stored on this machine; do not reuse a real password.
