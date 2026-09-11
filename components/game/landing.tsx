@@ -1,4 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { GAME_NAME, GAME_PITCH, GAME_TAGLINE } from "@/lib/game/brand";
 import { items } from "@/lib/game/catalog";
 
 const highlights = [
@@ -18,9 +19,9 @@ const highlights = [
     body: "The left rail shows how many you hold and each item’s current market value. Coin sits at the top. Net worth sits under the pack.",
   },
   {
-    emoji: "🤖",
-    title: "Computer traders",
-    body: "They sit far from MV most of the time, and sometimes take a loss if they think the tape will turn. They trade stock that already exists — they do not mint more of it.",
+    emoji: "💰",
+    title: "The trillion",
+    body: "The game is to be worth 1,000,000,000,000. Coin plus goods at market value. First one there wins.",
   },
 ];
 
@@ -40,23 +41,23 @@ export function Landing({ error, next }: { error?: string; next?: string }) {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(232,176,80,0.18),_transparent_42%),radial-gradient(circle_at_80%_20%,_rgba(255,120,70,0.12),_transparent_30%)]" />
       <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 py-10 md:py-16">
         <header className="flex items-center justify-between gap-4">
-          <p className="font-heading text-lg tracking-wide">🏮 Lantern Bazaar</p>
+          <p className="font-heading text-lg tracking-wide">{GAME_NAME}</p>
           <p className="hidden text-sm text-muted-foreground sm:block">
-            A player market you can walk away from
+            {GAME_TAGLINE} · {GAME_PITCH}
           </p>
         </header>
 
         <div className="grid items-start gap-10 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="space-y-6">
             <p className="text-sm font-medium tracking-[0.2em] text-primary uppercase">
-              Night market
+              {GAME_TAGLINE}
             </p>
             <h1 className="font-heading max-w-xl text-4xl leading-tight text-balance sm:text-6xl">
-              Trade the tape. Watch the pack.
+              {GAME_PITCH}
             </h1>
             <p className="max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
-              A player order book of emoji goods. Buy and sell at any price, swap bundles with
-              other travelers, and track coin, market value, and net worth as you go.
+              A live player order book of emoji goods. Buy and sell at any price, swap bundles with
+              other travelers, and race to a trillion of net worth.
             </p>
             <div className="flex flex-wrap gap-2">
               {items
@@ -134,7 +135,7 @@ export function Landing({ error, next }: { error?: string; next?: string }) {
                   />
                 </div>
                 <button className={secondaryBtn} type="submit">
-                  Enter the bazaar
+                  Sit at the desk
                 </button>
               </form>
 

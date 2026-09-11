@@ -2,10 +2,23 @@ import type { Cosmetic, Item, Location } from "@/lib/game/types";
 
 export const STARTING_GOLD = 1_000;
 export const TABLE_GOLD = 2_000;
-export const LOGIN_GOLD = 100;
+export const NET_WORTH_GOAL = 1_000_000_000_000;
 
 export function seatGold(computers: boolean) {
   return computers ? STARTING_GOLD : TABLE_GOLD;
+}
+
+const DAILY_DEPOSITS = [
+  1_000, 2_000, 3_000, 5_000, 8_000, 15_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000,
+  2_500_000, 5_000_000, 10_000_000, 25_000_000, 50_000_000, 100_000_000, 250_000_000, 500_000_000,
+  1_000_000_000, 2_500_000_000, 5_000_000_000, 10_000_000_000, 25_000_000_000, 50_000_000_000,
+  100_000_000_000, 250_000_000_000, 500_000_000_000,
+];
+
+export function dailyDeposit(paymentNumber: number) {
+  if (paymentNumber <= 0) return 0;
+  if (paymentNumber >= DAILY_DEPOSITS.length) return DAILY_DEPOSITS[DAILY_DEPOSITS.length - 1];
+  return DAILY_DEPOSITS[paymentNumber - 1];
 }
 
 export const locations: Location[] = [

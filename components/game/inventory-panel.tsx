@@ -1,4 +1,4 @@
-import { itemById, items } from "@/lib/game/catalog";
+import { itemById, items, NET_WORTH_GOAL } from "@/lib/game/catalog";
 import { formatCoins, formatCompact, formatNetWorth, formatNumber } from "@/lib/game/format";
 import { rarityClass, rarityMapFromPrices } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
@@ -163,7 +163,8 @@ export function InventoryPanel({
         >
           <span className="block tabular-nums">{formatNumber(net)}</span>
           <span className="block text-[10px] font-normal text-muted-foreground">
-            {formatNumber(player.gold)}🪙 · {formatNumber(goods)} goods
+            Goal {formatCompact(NET_WORTH_GOAL)} · {formatNumber(player.gold)}🪙 ·{" "}
+            {formatNumber(goods)} goods
           </span>
         </span>
       </div>

@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { useGame } from "@/hooks/use-game";
-import { items } from "@/lib/game/catalog";
+import { items, NET_WORTH_GOAL } from "@/lib/game/catalog";
 import { formatCoins, formatNetWorth, formatNumber } from "@/lib/game/format";
 import { cn } from "@/lib/utils";
+import { GAME_NAME } from "@/lib/game/brand";
 import type { GameState } from "@/lib/game/types";
 
 const PLACE =
@@ -78,7 +79,7 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
       <header className="sticky top-0 z-20 border-b border-border/80 bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur">
         <div className="mx-auto flex w-full max-w-[90rem] items-center justify-between gap-3 px-3 py-2 sm:px-4">
           <div className="flex min-w-0 items-center gap-3">
-            <p className="font-heading text-lg">🏮 Lantern Bazaar</p>
+            <p className="font-heading text-lg">{GAME_NAME}</p>
             <span className="hidden truncate text-sm text-muted-foreground sm:inline">
               {player.username}
             </span>
@@ -96,7 +97,8 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
         <div className="space-y-1">
           <h1 className="font-heading text-3xl">Leaderboard</h1>
           <p className="text-sm text-muted-foreground">
-            Place by net worth. Place and name stay on the left, the emoji header stays on top, and
+            Place by net worth. First to {formatNumber(NET_WORTH_GOAL)} wins.
+            Place and name stay on the left, the emoji header stays on top, and
             totals stay at the bottom while you scroll.
           </p>
         </div>

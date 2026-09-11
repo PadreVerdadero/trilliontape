@@ -253,8 +253,10 @@ export function MarketPanel({
   const focusAfter = useRef<"px" | "qty" | null>(null);
 
   const suggested = useMemo(() => {
+    const mv = Math.max(1, Math.round(Number(price?.vwap ?? selected?.basePrice ?? 5)));
+    if (state.player.isGov) return String(mv);
     return String(Math.max(1, Math.round(Number(price?.bestAsk ?? price?.vwap ?? selected?.basePrice ?? 5))));
-  }, [price, selected]);
+  }, [price, selected, state.player.isGov]);
   const deskAsk = treasuryAtBest(book?.asks ?? []);
   const deskBid = treasuryAtBest(book?.bids ?? []);
   const mvCoins = Math.max(1, Math.round(Number(price?.vwap ?? selected?.basePrice ?? 1)));
@@ -512,7 +514,8 @@ export function MarketPanel({
               </p>
               {state.player.isGov ? (
                 <p className="mb-1 text-[10px] leading-4 text-amber-100/90">
-                  Asks mint on fill until Outstanding reaches Authorized. Bids burn on fill.
+                  Treasury always quotes at MV. Asks mint on fill until Outstanding reaches
+                  Authorized. Bids burn on fill.
                 </p>
               ) : null}
               <div className="grid grid-cols-2 gap-1.5">
@@ -526,8 +529,9 @@ export function MarketPanel({
                     ref={priceRef}
                     className="h-8 md:h-7"
                     inputMode="numeric"
-                    value={priceInput}
+                    value={state.player.isGov ? String(mvCoins) : priceInput}
                     placeholder={suggested}
+                    readOnly={state.player.isGov}
                     onChange={(event) => setPriceInput(event.target.value)}
                   />
                 </div>
@@ -840,7 +844,7 @@ export function MarketPanel({
         )}
         {state.winners.length > 0 ? (
           <p className="pt-3 text-xs text-muted-foreground">
-            Champions: {state.winners.map((row) => row.username).join(", ")}
+            Worth a trillion: {state.winners.map((row) => row.username).join(", ")}
           </p>
         ) : null}
       </div>

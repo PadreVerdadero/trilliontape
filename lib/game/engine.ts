@@ -9,10 +9,11 @@ import {
   locationById,
   materialsAt,
   ENERGY_MAX,
-  LOGIN_GOLD,
   SEARCH_COOLDOWN_MS,
   STARTING_GOLD,
   TABLE_GOLD,
+  NET_WORTH_GOAL,
+  dailyDeposit,
   searchEnergyCost,
   searchWeight,
   travelSeconds,
@@ -604,21 +605,23 @@ function grantDailyLogin(userId: number, timeZone?: string) {
       .run(userId, day);
     return;
   }
-  getDb().prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?").run(LOGIN_GOLD, userId);
+  const paid = getDb()
+    .prepare("SELECT COALESCE(login_days, 0) AS login_days FROM players WHERE user_id = ?")
+    .get(userId) as { login_days: number } | undefined;
+  const next = (paid?.login_days ?? 0) + 1;
+  const amount = dailyDeposit(next);
+  getDb()
+    .prepare("UPDATE players SET gold = gold + ?, login_days = ? WHERE user_id = ?")
+    .run(amount, next, userId);
   getDb()
     .prepare("UPDATE player_daily SET login_paid = 1 WHERE user_id = ? AND day_key = ?")
     .run(userId, day);
-  setEvent(userId, `Daily purse: +${formatCoins(LOGIN_GOLD)} for sitting down today.`);
+  setEvent(userId, `Daily purse: +${formatCoins(amount)} (day ${formatNumber(next)}).`);
 }
 
 function awardVp(userId: number, amount: number) {
   if (amount <= 0 || isBot(userId)) return;
-  const db = getDb();
-  db.prepare("UPDATE players SET vp = COALESCE(vp, 0) + ? WHERE user_id = ?").run(amount, userId);
-  const row = loadPlayerRow(userId);
-  if ((row.vp ?? 0) >= VP_TO_WIN && !row.has_won) {
-    db.prepare("UPDATE players SET has_won = 1, won_at = ? WHERE user_id = ?").run(nowMs(), userId);
-  }
+  getDb().prepare("UPDATE players SET vp = COALESCE(vp, 0) + ? WHERE user_id = ?").run(amount, userId);
 }
 
 function awardFirstTradeVp(userId: number) {
@@ -865,10 +868,11 @@ export function placeOrder(
   resolveBusy(userId);
   const item = itemById[itemId];
   if (!item) throw new Error("Unknown item.");
-  if (!Number.isInteger(price) || price < 1) {
+  const treasury = isGov(userId);
+  const px = treasury ? Math.max(1, Math.round(marketPrice(itemId))) : price;
+  if (!treasury && (!Number.isInteger(price) || price < 1)) {
     throw new Error("Price must be a whole number of at least 1.");
   }
-  const treasury = isGov(userId);
   const maxQty = treasury ? 999 : 99;
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > maxQty) {
     throw new Error(
@@ -877,7 +881,7 @@ export function placeOrder(
         : "Quantity must be a whole number from 1 to 99."
     );
   }
-  if (side === "buy" && !treasury && availableGold(userId) < price * quantity) {
+  if (side === "buy" && !treasury && availableGold(userId) < px * quantity) {
     throw new Error("Not enough free coin. Cancel a bid or sell something.");
   }
   if (side === "sell" && !treasury && availableItem(userId, itemId) < quantity) {
@@ -894,18 +898,18 @@ export function placeOrder(
     }
   }
   for (let n = 0; n < quantity; n += 1) {
-    insertLiveOrder(userId, itemId, side, price, 1, treasury);
+    insertLiveOrder(userId, itemId, side, px, 1, treasury);
   }
   matchItem(itemId);
   setEvent(
     userId,
     treasury
       ? side === "buy"
-        ? `Treasury bid: will burn ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(price)} when it fills.`
-        : `Treasury ask: will mint ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(price)} when it fills.`
+        ? `Treasury bid: will burn ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(px)} (MV).`
+        : `Treasury ask: will mint ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(px)} (MV).`
       : side === "buy"
-        ? `Bid posted: ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(price)}.`
-        : `Ask posted: ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(price)}.`
+        ? `Bid posted: ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(px)}.`
+        : `Ask posted: ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(px)}.`
   );
 }
 
@@ -1030,7 +1034,7 @@ export function setGovernment(userId: number, on: boolean) {
   if (on) {
     setEvent(
       userId,
-      "You hold the treasury. It does not touch your purse. Asks mint until Outstanding reaches Authorized. Bids pay sellers with new coin and burn the goods."
+      "You hold the treasury. Quotes always sit at MV. Asks mint until Outstanding reaches Authorized. Bids pay sellers with new coin and burn the goods."
     );
   } else {
     setEvent(
@@ -1110,7 +1114,7 @@ export function adminStartGame(userId: number, timeZone?: string) {
     setComputersEnabled(false, db);
     db.prepare(
       `UPDATE players SET gold = ?, energy = ?, energy_max = ?, busy_type = 'idle', busy_until = NULL,
-         busy_payload = NULL, last_event = ?
+         busy_payload = NULL, last_event = ?, login_days = 0, has_won = 0, won_at = NULL
        WHERE user_id IN (
          SELECT id FROM users
          WHERE username NOT IN ('Banker', 'Government') AND COALESCE(is_bot, 0) = 0
@@ -1119,7 +1123,7 @@ export function adminStartGame(userId: number, timeZone?: string) {
       TABLE_GOLD,
       ENERGY_MAX,
       ENERGY_MAX,
-      "A new game. Computers sit out. 2,000 coins. Buy from the treasury asks."
+      "A new game. Computers sit out. 2,000 coins. Trade for a trillion."
     );
     db.prepare(
       `UPDATE players SET gold = 0, last_event = 'Sitting this table out.'
@@ -1862,8 +1866,74 @@ function postDeskQuotes(userId: number, itemId: string, side: "buy" | "sell", qu
   matchItem(itemId);
 }
 
-const DESK_REQUOTE_MS = 5 * 60_000;
 const deskClock = globalThis as unknown as { bazaarDeskFloat?: number };
+
+function listedDeskQty(deskId: number, itemId: string, side: "buy" | "sell") {
+  const row = getDb()
+    .prepare(
+      `SELECT COALESCE(SUM(remaining), 0) AS qty FROM orders
+       WHERE user_id = ? AND item_id = ? AND side = ? AND remaining > 0 AND COALESCE(treasury, 0) = 1`
+    )
+    .get(deskId, itemId, side) as { qty: number };
+  return row.qty;
+}
+
+function listedDeskPrice(deskId: number, itemId: string, side: "buy" | "sell") {
+  const row = getDb()
+    .prepare(
+      `SELECT price FROM orders
+       WHERE user_id = ? AND item_id = ? AND side = ? AND remaining > 0 AND COALESCE(treasury, 0) = 1
+       LIMIT 1`
+    )
+    .get(deskId, itemId, side) as { price: number } | undefined;
+  return row?.price ?? null;
+}
+
+function snapTreasuryPricesToMv() {
+  const db = getDb();
+  for (const item of items) {
+    const mv = Math.max(1, Math.round(marketPrice(item.id)));
+    const info = db
+      .prepare(
+        `UPDATE orders SET price = ?
+         WHERE remaining > 0 AND COALESCE(treasury, 0) = 1 AND item_id = ? AND price != ?`
+      )
+      .run(mv, item.id, mv);
+    if (info.changes > 0) matchItem(item.id);
+  }
+}
+
+function alignIssuedToAuthorized(force = false) {
+  const deskId = ensureDeskUser();
+  for (const item of items) {
+    noteIssuedCap(item.id);
+    const mv = Math.max(1, Math.round(marketPrice(item.id)));
+    const outstanding = outstandingOf(item.id);
+    const authorized = itemAuthorized(item);
+    const floated = floatedOf(item.id);
+    let wantBuy = 0;
+    let wantSell = 0;
+    if (outstanding > authorized) wantBuy = outstanding - authorized;
+    else if (outstanding < authorized && floated < authorized) wantSell = authorized - outstanding;
+    const deskBids = listedDeskQty(deskId, item.id, "buy");
+    const deskAsks = listedDeskQty(deskId, item.id, "sell");
+    const otherBids = Math.max(0, listedTreasuryBids(item.id) - deskBids);
+    const otherAsks = Math.max(0, listedTreasuryAsks(item.id) - deskAsks);
+    const needBuy = Math.max(0, wantBuy - otherBids);
+    const needSell = Math.max(0, wantSell - otherAsks);
+    const bidPx = listedDeskPrice(deskId, item.id, "buy");
+    const askPx = listedDeskPrice(deskId, item.id, "sell");
+    const buyOk = deskBids === needBuy && (needBuy === 0 || bidPx === mv);
+    const sellOk = deskAsks === needSell && (needSell === 0 || askPx === mv);
+    if (force || !buyOk || !sellOk) {
+      clearDeskBook(deskId, item.id, "buy");
+      clearDeskBook(deskId, item.id, "sell");
+      if (needBuy > 0) postDeskQuotes(deskId, item.id, "buy", needBuy, mv);
+      if (needSell > 0) postDeskQuotes(deskId, item.id, "sell", needSell, mv);
+    }
+  }
+  snapTreasuryPricesToMv();
+}
 
 function floatedOf(itemId: string) {
   const row = getDb()
@@ -1890,29 +1960,6 @@ function noteIssuedCap(itemId: string) {
     .prepare("SELECT id FROM users WHERE username = ?")
     .get(DESK_USERNAME) as { id: number } | undefined;
   if (desk) clearDeskBook(desk.id, itemId, "sell");
-}
-
-function alignIssuedToAuthorized(force = false) {
-  const now = nowMs();
-  if (!force && deskClock.bazaarDeskFloat && now - deskClock.bazaarDeskFloat < DESK_REQUOTE_MS) return;
-  deskClock.bazaarDeskFloat = now;
-  const deskId = ensureDeskUser();
-  for (const item of items) {
-    noteIssuedCap(item.id);
-    clearDeskBook(deskId, item.id, "buy");
-    clearDeskBook(deskId, item.id, "sell");
-    const outstanding = outstandingOf(item.id);
-    const authorized = itemAuthorized(item);
-    const floated = floatedOf(item.id);
-    const mv = marketPrice(item.id);
-    if (outstanding > authorized) {
-      const need = outstanding - authorized - listedTreasuryBids(item.id);
-      if (need > 0) postDeskQuotes(deskId, item.id, "buy", need, mv);
-    } else if (outstanding < authorized && floated < authorized) {
-      const need = authorized - outstanding - listedTreasuryAsks(item.id);
-      if (need > 0) postDeskQuotes(deskId, item.id, "sell", need, mv);
-    }
-  }
 }
 
 function netWorthLeaders(prices: MarketPrice[]): LeaderRow[] {
@@ -1959,6 +2006,26 @@ function netWorthLeaders(prices: MarketPrice[]): LeaderRow[] {
       holdings: row.holdings,
       netWorth: row.netWorth,
     }));
+}
+
+function noteTrillionWins(leaders: LeaderRow[], viewerId: number) {
+  const db = getDb();
+  const now = nowMs();
+  for (const row of leaders) {
+    if (row.netWorth < NET_WORTH_GOAL) continue;
+    const user = db
+      .prepare(
+        `SELECT u.id, COALESCE(u.is_bot, 0) AS is_bot, COALESCE(p.has_won, 0) AS has_won
+         FROM users u JOIN players p ON p.user_id = u.id
+         WHERE u.username = ?`
+      )
+      .get(row.username) as { id: number; is_bot: number; has_won: number } | undefined;
+    if (!user || user.is_bot || user.has_won) continue;
+    db.prepare("UPDATE players SET has_won = 1, won_at = ? WHERE user_id = ?").run(now, user.id);
+    if (user.id === viewerId) {
+      setEvent(viewerId, "You are worth a trillion. That is the game.");
+    }
+  }
 }
 
 function priceSheet(timeZone?: string): MarketPrice[] {
@@ -2543,6 +2610,9 @@ export function getGameState(
 
   const recentTrades = loadRecentTrades(18);
 
+  const prices = priceSheet(timeZone);
+  const leaders = netWorthLeaders(prices);
+  noteTrillionWins(leaders, userId);
   const winners = getDb()
     .prepare(
       `SELECT u.username, p.won_at AS wonAt
@@ -2552,9 +2622,6 @@ export function getGameState(
        LIMIT 12`
     )
     .all() as { username: string; wonAt: number }[];
-
-  const prices = priceSheet(timeZone);
-  const leaders = netWorthLeaders(prices);
   const computers = computersEnabled();
   const coinVolume = (
     getDb()
@@ -2601,6 +2668,7 @@ export function getGameState(
     travelers: listTravelers(userId),
     coinVolume,
     computers,
+    netWorthGoal: NET_WORTH_GOAL,
     leaders,
   };
 }

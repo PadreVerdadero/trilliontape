@@ -14,9 +14,8 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "Lantern Bazaar",
-  description:
-    "A player market of emoji goods. Trade the board, watch market value, and track net worth.",
+  title: "TrillionTrade — Player Market Game",
+  description: "Trade for a Trillion! A player market of emoji goods.",
 };
 
 export const viewport: Viewport = {

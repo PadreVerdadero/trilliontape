@@ -9,6 +9,7 @@ import { OpenOrdersPanel } from "@/components/game/open-orders-panel";
 import { useGame } from "@/hooks/use-game";
 import { useSelectedItem } from "@/hooks/use-selected-item";
 import { useMarketSort } from "@/hooks/use-market-sort";
+import { GAME_NAME, GAME_PITCH } from "@/lib/game/brand";
 import type { GameState } from "@/lib/game/types";
 
 export function PlayScreen({
@@ -52,8 +53,10 @@ export function PlayScreen({
         <LeaderTicker leaders={state.leaders ?? []} you={player.username} />
         <div className="flex w-full items-center justify-between gap-3 px-3 py-2 sm:px-4">
           <div className="flex min-w-0 items-center gap-3">
-            <p className="font-heading text-lg">🏮 Lantern Bazaar</p>
+            <p className="font-heading text-lg">{GAME_NAME}</p>
             <span className="hidden truncate text-sm text-muted-foreground sm:inline">
+              {GAME_PITCH}
+              <span className="text-border"> · </span>
               {player.username}
               {player.isGov ? " · treasury" : ""}
               {player.isAdmin ? " · admin" : ""}
@@ -101,6 +104,11 @@ export function PlayScreen({
             onSetComputers={(on) => run({ action: "adminComputers", on })}
             computers={state.computers}
           />
+        ) : null}
+        {player.hasWon ? (
+          <p className="w-full truncate px-3 pb-2 text-sm text-primary sm:px-4">
+            You are worth a trillion.
+          </p>
         ) : null}
         {player.lastEvent ? (
           <p className="w-full truncate px-3 pb-2 text-sm text-muted-foreground sm:px-4">

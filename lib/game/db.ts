@@ -14,7 +14,7 @@ import { BOT_PROFILES } from "@/lib/game/bots";
 
 export const DESK_USERNAME = "Government";
 
-const BOOTSTRAP_REV = 8;
+const BOOTSTRAP_REV = 9;
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: Database.Database;
@@ -206,6 +206,7 @@ function migrate(db: Database.Database) {
   ensureColumn(db, "players", "wardrobe_vp", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "inventory", "cost_basis", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "player_daily", "login_paid", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "players", "login_days", "INTEGER NOT NULL DEFAULT 0");
   seedInventoryCostBasis(db);
 }
 
