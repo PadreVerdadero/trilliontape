@@ -1912,13 +1912,22 @@ function snapTreasuryPricesToMv() {
   }
 }
 
+function clampFloatedToAuthorized(itemId: string, authorized: number) {
+  const stored = floatedOf(itemId);
+  if (stored <= authorized) return;
+  getDb()
+    .prepare("UPDATE item_float SET floated = ? WHERE item_id = ?")
+    .run(Math.min(outstandingOf(itemId), authorized), itemId);
+}
+
 function alignIssuedToAuthorized(force = false) {
   const deskId = ensureDeskUser();
   for (const item of items) {
+    const authorized = itemAuthorized(item);
+    clampFloatedToAuthorized(item.id, authorized);
     noteIssuedCap(item.id);
     const mv = Math.max(1, Math.round(marketPrice(item.id)));
     const outstanding = outstandingOf(item.id);
-    const authorized = itemAuthorized(item);
     const floated = floatedOf(item.id);
     let wantBuy = 0;
     let wantSell = 0;

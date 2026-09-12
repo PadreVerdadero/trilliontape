@@ -73,7 +73,7 @@ export const items: Item[] = [
     purpose: "The fields' staple. Trade it on the board.",
     description: "The fields' staple.",
     basePrice: 10,
-    authorized: 250,
+    authorized: 150,
     mine: { locationId: "fields", seconds: 11, yieldMin: 2, yieldMax: 3 },
   },
   {
@@ -84,7 +84,7 @@ export const items: Item[] = [
     purpose: "Eat: +4 energy (one quiet search).",
     description: "Sweet trail food. The cheapest refill.",
     basePrice: 20,
-    authorized: 225,
+    authorized: 135,
     mine: { locationId: "woods", seconds: 10, yieldMin: 2, yieldMax: 4 },
   },
   {
@@ -95,7 +95,7 @@ export const items: Item[] = [
     purpose: "Fallen timber. Trade it on the board.",
     description: "Fallen timber from the woods.",
     basePrice: 30,
-    authorized: 200,
+    authorized: 120,
     mine: { locationId: "woods", seconds: 12, yieldMin: 2, yieldMax: 3 },
   },
   {
@@ -106,7 +106,7 @@ export const items: Item[] = [
     purpose: "Eat: +6 energy.",
     description: "Silver from the tide.",
     basePrice: 40,
-    authorized: 175,
+    authorized: 105,
     mine: { locationId: "shore", seconds: 14, yieldMin: 1, yieldMax: 3 },
   },
   {
@@ -117,7 +117,7 @@ export const items: Item[] = [
     purpose: "Tuck: next search leans Rare+.",
     description: "Festival color from the east road.",
     basePrice: 50,
-    authorized: 150,
+    authorized: 90,
     mine: { locationId: "fields", seconds: 15, yieldMin: 1, yieldMax: 2 },
   },
   {
@@ -128,7 +128,7 @@ export const items: Item[] = [
     purpose: "Rough blocks. Trade them on the board.",
     description: "Rough blocks from the ridge.",
     basePrice: 60,
-    authorized: 125,
+    authorized: 75,
     mine: { locationId: "ridge", seconds: 12, yieldMin: 2, yieldMax: 3 },
   },
   {
@@ -139,7 +139,7 @@ export const items: Item[] = [
     purpose: "Eat: next search finds two things.",
     description: "Spongy caps. Snack for a double pull.",
     basePrice: 70,
-    authorized: 100,
+    authorized: 60,
     mine: { locationId: "woods", seconds: 22, yieldMin: 1, yieldMax: 2 },
   },
   {
@@ -150,7 +150,7 @@ export const items: Item[] = [
     purpose: "Ridge fuel. Trade it on the board.",
     description: "The ridge's other currency.",
     basePrice: 80,
-    authorized: 75,
+    authorized: 45,
     mine: { locationId: "ridge", seconds: 24, yieldMin: 1, yieldMax: 2 },
   },
   {
@@ -161,7 +161,7 @@ export const items: Item[] = [
     purpose: "Listen: next search skips Commons.",
     description: "Polished by the surf.",
     basePrice: 90,
-    authorized: 50,
+    authorized: 30,
     mine: { locationId: "shore", seconds: 16, yieldMin: 1, yieldMax: 2 },
   },
   {
@@ -172,7 +172,7 @@ export const items: Item[] = [
     purpose: "A long chisel job. Trade it on the board.",
     description: "A long chisel job. Legendary pull.",
     basePrice: 100,
-    authorized: 25,
+    authorized: 15,
     mine: { locationId: "ridge", seconds: 48, yieldMin: 1, yieldMax: 1 },
   },
 ];
