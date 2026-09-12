@@ -263,9 +263,10 @@ export function botWillTake(
   const fairPx = Math.max(1, Math.round(fair));
   const band = Math.max(1, Math.round(slack));
   if (side === "liftAsk") {
-    const bargain = price <= Math.round(fairPx * (1 - spread.take));
-    const overpay = feelingLucky && price <= fairPx + band;
-    return bargain || overpay;
+    // At or under MV is a take — including treasury asks, which always sit at MV.
+    // A 16–30% discount used to be required, so computers never lifted the desk.
+    if (price <= fairPx) return true;
+    return feelingLucky && price <= fairPx + band;
   }
   const rich = price >= Math.round(fairPx * (1 + spread.take));
   const dump = feelingLucky && price >= Math.max(1, fairPx - band);

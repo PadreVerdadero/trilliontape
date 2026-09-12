@@ -12,6 +12,26 @@ import {
 } from "@/components/ui/dialog";
 import { formatCoins, formatNumber } from "@/lib/game/format";
 
+function depositKey(deposit: { amount: number; day: number }) {
+  return `trillion_deposit_${deposit.day}_${deposit.amount}`;
+}
+
+function alreadyShown(key: string) {
+  try {
+    return sessionStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function rememberShown(key: string) {
+  try {
+    sessionStorage.setItem(key, "1");
+  } catch {
+    // Private mode can block storage; the server only sends this once per pay.
+  }
+}
+
 export function DepositDialog({
   deposit,
 }: {
@@ -22,8 +42,11 @@ export function DepositDialog({
   const opened = useRef(false);
 
   useEffect(() => {
-    if (!deposit || opened.current) return;
+    if (!deposit) return;
+    const key = depositKey(deposit);
+    if (opened.current || alreadyShown(key)) return;
     opened.current = true;
+    rememberShown(key);
     setShown(deposit);
     setOpen(true);
   }, [deposit]);

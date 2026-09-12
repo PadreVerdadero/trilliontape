@@ -602,11 +602,7 @@ function grantDailyLogin(userId: number, timeZone?: string): {
   const paidDays = getDb()
     .prepare("SELECT COALESCE(login_days, 0) AS login_days FROM players WHERE user_id = ?")
     .get(userId) as { login_days: number } | undefined;
-  if (row?.login_paid) {
-    const n = paidDays?.login_days ?? 0;
-    if (n <= 0) return null;
-    return { amount: dailyDeposit(n), day: n, justPaid: false };
-  }
+  if (row?.login_paid) return null;
   const created = getDb()
     .prepare("SELECT created_at FROM users WHERE id = ?")
     .get(userId) as { created_at: number } | undefined;
@@ -1162,22 +1158,23 @@ export function adminStartGame(userId: number, timeZone?: string) {
   );
 }
 
-function plazaRegularIds() {
-  return getDb()
-    .prepare("SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1")
-    .all() as { id: number }[];
-}
-
 export function adminSetComputers(userId: number, on: boolean) {
   requireAdmin(userId);
   const db = getDb();
   db.transaction(() => {
     setComputersEnabled(on, db);
-    const bots = plazaRegularIds();
     if (on) {
       const pay = db.prepare("UPDATE players SET gold = ?, last_event = ? WHERE user_id = ?");
-      for (const row of bots) {
-        pay.run(STARTING_GOLD, "A computer trader keeping the book honest.", row.id);
+      const purseByName = new Map(BOT_PROFILES.map((bot) => [bot.username, bot.gold]));
+      const named = db
+        .prepare("SELECT id, username FROM users WHERE COALESCE(is_bot, 0) = 1")
+        .all() as { id: number; username: string }[];
+      for (const row of named) {
+        pay.run(
+          purseByName.get(row.username) ?? STARTING_GOLD,
+          "A computer trader keeping the book honest.",
+          row.id
+        );
       }
     } else {
       db.prepare(
@@ -1199,7 +1196,7 @@ export function adminSetComputers(userId: number, on: boolean) {
   setEvent(
     userId,
     on
-      ? "Computers sat down with 1,000 coins and will quote the book."
+      ? "Computers sat down with their practice purses and will lift asks at MV."
       : "Computers sat out. Their packs went back to the treasury."
   );
 }
@@ -2688,8 +2685,9 @@ export function getGameState(
     computers,
     netWorthGoal: NET_WORTH_GOAL,
     leaders,
-    deposit: depositNotice
-      ? { amount: depositNotice.amount, day: depositNotice.day, gold: player.gold }
-      : null,
+    deposit:
+      depositNotice?.justPaid
+        ? { amount: depositNotice.amount, day: depositNotice.day, gold: player.gold }
+        : null,
   };
 }
