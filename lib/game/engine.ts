@@ -1098,6 +1098,25 @@ export function adminSetItem(userId: number, itemId: string, quantity: number) {
   setEvent(userId, `Admin set ${item.emoji} ${item.name} to ${formatNumber(quantity)}.`);
 }
 
+function dealOpeningShares(db: ReturnType<typeof getDb>, travelerIds: number[]) {
+  const seats = travelerIds.length;
+  if (seats === 0) return;
+  const grant = db.prepare(
+    `INSERT INTO inventory (user_id, item_id, quantity, cost_basis) VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id, item_id) DO UPDATE SET
+       quantity = excluded.quantity,
+       cost_basis = excluded.cost_basis`
+  );
+  for (const item of items) {
+    const issued = itemAuthorized(item);
+    const each = Math.floor(issued / seats);
+    if (each < 1) continue;
+    const unit = Math.max(1, Math.round(item.basePrice));
+    const basis = unit * each;
+    for (const id of travelerIds) grant.run(id, item.id, each, basis);
+  }
+}
+
 export function adminStartGame(userId: number, _timeZone?: string) {
   requireAdmin(userId);
   const db = getDb();
@@ -1130,7 +1149,7 @@ export function adminStartGame(userId: number, _timeZone?: string) {
       TABLE_GOLD,
       ENERGY_MAX,
       ENERGY_MAX,
-      "A new game. Computers sit out. 2,000 coins. Trade for a trillion."
+      "A new game. Computers sit out. 2,000 coins and an even opening pack."
     );
     db.prepare(
       `UPDATE players SET gold = 0, last_event = 'Sitting this table out.'
@@ -1142,9 +1161,15 @@ export function adminStartGame(userId: number, _timeZone?: string) {
     ).run();
     const travelers = db
       .prepare(
-        `SELECT id FROM users WHERE username NOT IN ('Banker', 'Government') AND COALESCE(is_bot, 0) = 0`
+        `SELECT id FROM users
+         WHERE username NOT IN ('Banker', 'Government') AND COALESCE(is_bot, 0) = 0
+         ORDER BY username COLLATE NOCASE`
       )
       .all() as { id: number }[];
+    dealOpeningShares(
+      db,
+      travelers.map((row) => row.id)
+    );
     const mark = db.prepare(
       `INSERT INTO player_daily (user_id, day_key, first_trade, special_sold, login_paid)
        VALUES (?, ?, 0, '', 1)
@@ -1156,7 +1181,7 @@ export function adminStartGame(userId: number, _timeZone?: string) {
   alignIssuedToAuthorized(true);
   setEvent(
     userId,
-    "New game started. Computers sit out. Packs are empty, purses are 2,000, treasury is listing Issued at opening MV."
+    "New game started. Computers sit out. Each traveler got the same opening pack (Issued split evenly; leftover stays on the treasury) and 2,000 coins."
   );
 }
 

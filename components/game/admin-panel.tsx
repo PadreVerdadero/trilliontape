@@ -121,7 +121,7 @@ export function AdminPanel({
           disabled={pending}
           onClick={() => {
             const ok = window.confirm(
-              "Start a new game? This clears packs, the book, and the tape. Computers sit out. Travelers start with 2,000 coins and no goods. The treasury lists Issued at opening MV (wheat 10 through gem 100)."
+              "Start a new game? This clears packs, the book, and the tape. Computers sit out. Travelers start with 2,000 coins and the same opening pack: Issued split evenly, leftover listed on the treasury at opening MV."
             );
             if (ok) void onNewGame();
           }}
