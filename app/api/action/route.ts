@@ -16,6 +16,7 @@ import {
   adminStartGame,
   adminSetComputers,
   adminSetStipend,
+  adminSetIssued,
 } from "@/lib/game/engine";
 
 type ActionBody = {
@@ -49,8 +50,9 @@ type ActionBody = {
   | { action: "swapDecline"; offerId: number }
   | { action: "government"; on: boolean }
   | { action: "admin"; on: boolean }
-  | { action: "adminGold"; gold: number }
-  | { action: "adminItem"; itemId: string; quantity: number }
+  | { action: "adminGold"; gold: number; targetUserId?: number }
+  | { action: "adminItem"; itemId: string; quantity: number; targetUserId?: number }
+  | { action: "adminIssued"; itemId: string; authorized: number }
   | { action: "adminNewGame" }
   | { action: "adminComputers"; on: boolean }
   | { action: "adminStipend"; ms: number }
@@ -116,10 +118,13 @@ export async function POST(request: Request) {
         setAdmin(userId, Boolean(body.on));
         break;
       case "adminGold":
-        adminSetGold(userId, Number(body.gold));
+        adminSetGold(userId, Number(body.gold), Number(body.targetUserId ?? userId));
         break;
       case "adminItem":
-        adminSetItem(userId, String(body.itemId), Number(body.quantity));
+        adminSetItem(userId, String(body.itemId), Number(body.quantity), Number(body.targetUserId ?? userId));
+        break;
+      case "adminIssued":
+        adminSetIssued(userId, String(body.itemId), Number(body.authorized));
         break;
       case "adminNewGame":
         adminStartGame(userId, tz);

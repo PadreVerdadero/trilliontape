@@ -3,7 +3,6 @@ import {
   FORAGE_STRAIN_ID,
   isFoodItem,
   isLegendaryItem,
-  itemAuthorized,
   itemById,
   items,
   locationById,
@@ -38,6 +37,8 @@ import {
   setComputersEnabled,
   setStipendMs,
   stipendMs,
+  getItemAuthorized,
+  setItemAuthorized,
 } from "@/lib/game/db";
 import {
   BOT_PROFILES,
@@ -93,6 +94,7 @@ import type {
   SwapOffer,
   TradeRow,
   TravelerRow,
+  AdminSeat,
 } from "@/lib/game/types";
 
 type PlayerRow = {
@@ -909,8 +911,8 @@ export function placeOrder(
     if (quantity > room) {
       throw new Error(
         room <= 0
-          ? `Nothing left to issue. Outstanding already meets Authorized (${formatNumber(itemAuthorized(item))}).`
-          : `Only ${formatNumber(room)} left to issue under Authorized (${formatNumber(itemAuthorized(item))}).`
+          ? `Nothing left to issue. Outstanding already meets Authorized (${formatNumber(authorizedOf(itemId))}).`
+          : `Only ${formatNumber(room)} left to issue under Authorized (${formatNumber(authorizedOf(itemId))}).`
       );
     }
   }
@@ -1119,17 +1121,35 @@ export function adminSetStipend(userId: number, ms: number) {
   setEvent(userId, `Coin drops now every ${stipendLabel(ms)}.`);
 }
 
-export function adminSetGold(userId: number, gold: number) {
-  requireAdmin(userId);
+function adminSeat(actorId: number, targetUserId?: number) {
+  requireAdmin(actorId);
+  const id = targetUserId && Number.isInteger(targetUserId) && targetUserId > 0 ? targetUserId : actorId;
+  const row = getDb()
+    .prepare("SELECT id, username FROM users WHERE id = ?")
+    .get(id) as { id: number; username: string } | undefined;
+  if (!row) throw new Error("No such traveler.");
+  if (row.username === "Banker" || row.username === DESK_USERNAME) {
+    throw new Error("Leave the desk accounts alone.");
+  }
+  return row;
+}
+
+export function adminSetGold(userId: number, gold: number, targetUserId?: number) {
+  const target = adminSeat(userId, targetUserId);
   if (!Number.isInteger(gold) || gold < 0 || gold > 9_999_999) {
     throw new Error("Coins must be a whole number from 0 to 9,999,999.");
   }
-  getDb().prepare("UPDATE players SET gold = ? WHERE user_id = ?").run(gold, userId);
-  setEvent(userId, `Admin set coins to ${formatCoins(gold)}.`);
+  getDb().prepare("UPDATE players SET gold = ? WHERE user_id = ?").run(gold, target.id);
+  setEvent(
+    userId,
+    target.id === userId
+      ? `Admin set coins to ${formatCoins(gold)}.`
+      : `Admin set ${target.username}'s coins to ${formatCoins(gold)}.`
+  );
 }
 
-export function adminSetItem(userId: number, itemId: string, quantity: number) {
-  requireAdmin(userId);
+export function adminSetItem(userId: number, itemId: string, quantity: number, targetUserId?: number) {
+  const target = adminSeat(userId, targetUserId);
   const item = itemById[itemId];
   if (!item) throw new Error("Unknown item.");
   if (!Number.isInteger(quantity) || quantity < 0 || quantity > 9_999) {
@@ -1137,15 +1157,34 @@ export function adminSetItem(userId: number, itemId: string, quantity: number) {
   }
   const db = getDb();
   if (quantity === 0) {
-    db.prepare("DELETE FROM inventory WHERE user_id = ? AND item_id = ?").run(userId, itemId);
+    db.prepare("DELETE FROM inventory WHERE user_id = ? AND item_id = ?").run(target.id, itemId);
   } else {
     const unit = marketPrice(itemId);
     db.prepare(
       `INSERT INTO inventory (user_id, item_id, quantity, cost_basis) VALUES (?, ?, ?, ?)
        ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = excluded.quantity, cost_basis = excluded.cost_basis`
-    ).run(userId, itemId, quantity, unit * quantity);
+    ).run(target.id, itemId, quantity, unit * quantity);
   }
-  setEvent(userId, `Admin set ${item.emoji} ${item.name} to ${formatNumber(quantity)}.`);
+  alignIssuedToAuthorized();
+  setEvent(
+    userId,
+    target.id === userId
+      ? `Admin set ${item.emoji} ${item.name} to ${formatNumber(quantity)}.`
+      : `Admin set ${target.username}'s ${item.emoji} ${item.name} to ${formatNumber(quantity)}.`
+  );
+}
+
+export function adminSetIssued(userId: number, itemId: string, authorized: number) {
+  requireAdmin(userId);
+  const item = itemById[itemId];
+  if (!item) throw new Error("Unknown item.");
+  if (!Number.isInteger(authorized) || authorized < 1 || authorized > 99_999) {
+    throw new Error("Issued must be a whole number from 1 to 99,999.");
+  }
+  setItemAuthorized(itemId, authorized);
+  clampFloatedToAuthorized(itemId, authorized);
+  alignIssuedToAuthorized(true);
+  setEvent(userId, `Issued ${item.emoji} ${item.name} is now ${formatNumber(authorized)}.`);
 }
 
 function dealOpeningShares(db: ReturnType<typeof getDb>, travelerIds: number[]) {
@@ -1158,7 +1197,7 @@ function dealOpeningShares(db: ReturnType<typeof getDb>, travelerIds: number[]) 
        cost_basis = excluded.cost_basis`
   );
   for (const item of items) {
-    const issued = itemAuthorized(item);
+    const issued = authorizedOf(item.id);
     const each = Math.floor(issued / seats);
     if (each < 1) continue;
     const unit = Math.max(1, Math.round(item.basePrice));
@@ -1253,6 +1292,7 @@ export function adminSetComputers(userId: number, on: boolean) {
           row.id
         );
       }
+      stockComputers(db, named.map((row) => row.id));
     } else {
       db.prepare(
         `DELETE FROM orders WHERE user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)`
@@ -1266,16 +1306,32 @@ export function adminSetComputers(userId: number, on: boolean) {
       ).run();
     }
   })();
-  if (!on) {
-    deskClock.bazaarDeskFloat = 0;
-    alignIssuedToAuthorized(true);
-  }
+  deskClock.bazaarDeskFloat = 0;
+  alignIssuedToAuthorized(true);
   setEvent(
     userId,
     on
-      ? "Computers sat down with their practice purses and will lift asks at MV."
+      ? "Computers sat down with coin and a slice of leftover treasury so they can post asks."
       : "Computers sat out. Their packs went back to the treasury."
   );
+}
+
+function stockComputers(db: ReturnType<typeof getDb>, botIds: number[]) {
+  if (botIds.length === 0) return;
+  const grant = db.prepare(
+    `INSERT INTO inventory (user_id, item_id, quantity, cost_basis) VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id, item_id) DO UPDATE SET
+       quantity = quantity + excluded.quantity,
+       cost_basis = COALESCE(cost_basis, 0) + excluded.cost_basis`
+  );
+  for (const item of items) {
+    const leftover = Math.max(0, getItemAuthorized(item.id, db) - outstandingOf(item.id));
+    const pool = Math.floor(leftover / 2);
+    const each = Math.floor(pool / botIds.length);
+    if (each < 1) continue;
+    const unit = Math.max(1, Math.round(item.basePrice));
+    for (const id of botIds) grant.run(id, item.id, each, unit * each);
+  }
 }
 
 function mapOrder(row: {
@@ -1874,6 +1930,10 @@ function qtyByItem(sql: string, params: unknown[] = []) {
   return map;
 }
 
+function authorizedOf(itemId: string) {
+  return getItemAuthorized(itemId);
+}
+
 function outstandingOf(itemId: string) {
   const row = getDb()
     .prepare(
@@ -1908,12 +1968,11 @@ function listedTreasuryBids(itemId: string) {
 }
 
 function remainingToIssue(itemId: string) {
-  const item = itemById[itemId];
-  return Math.max(0, itemAuthorized(item) - outstandingOf(itemId));
+  return Math.max(0, authorizedOf(itemId) - outstandingOf(itemId));
 }
 
 function shareStructure(itemId: string, outstanding: number) {
-  const authorized = itemAuthorized(itemById[itemId]);
+  const authorized = authorizedOf(itemId);
   const issued = authorized;
   return {
     authorized,
@@ -1997,7 +2056,7 @@ function clampFloatedToAuthorized(itemId: string, authorized: number) {
 function alignIssuedToAuthorized(force = false) {
   const deskId = ensureDeskUser();
   for (const item of items) {
-    const authorized = itemAuthorized(item);
+    const authorized = authorizedOf(item.id);
     clampFloatedToAuthorized(item.id, authorized);
     noteIssuedCap(item.id);
     const mv = Math.max(1, Math.round(marketPrice(item.id)));
@@ -2044,7 +2103,7 @@ function setFloated(itemId: string, floated: number) {
 }
 
 function noteIssuedCap(itemId: string) {
-  const authorized = itemAuthorized(itemById[itemId]);
+  const authorized = authorizedOf(itemId);
   if (authorized <= 0) return;
   if (outstandingOf(itemId) < authorized) return;
   setFloated(itemId, authorized);
@@ -2296,17 +2355,17 @@ function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: num
 export function tickBots() {
   if (!computersEnabled()) return;
   const now = nowMs();
-  if (botClock.bazaarBotTick && now - botClock.bazaarBotTick < 3500) return;
+  if (botClock.bazaarBotTick && now - botClock.bazaarBotTick < 2000) return;
   botClock.bazaarBotTick = now;
   const db = getDb();
-  const picked = shufflePick(BOT_PROFILES, 14);
+  const picked = shufflePick(BOT_PROFILES, BOT_PROFILES.length);
   for (const profile of picked) {
     const user = db
       .prepare("SELECT id FROM users WHERE username = ? AND COALESCE(is_bot, 0) = 1")
       .get(profile.username) as { id: number } | undefined;
     if (!user) continue;
     try {
-      if (chaseStaleBotQuote(user.id, profile.style, now)) continue;
+      chaseStaleBotQuote(user.id, profile.style, now);
       const itemId = profile.specialty[Math.floor(Math.random() * profile.specialty.length)];
       const item = itemById[itemId];
       if (!item) continue;
@@ -2334,7 +2393,6 @@ export function tickBots() {
         )
       ) {
         takeOrder(user.id, ask.id, 1);
-        continue;
       }
       const bid = db
         .prepare(
@@ -2349,30 +2407,26 @@ export function tickBots() {
         botWillTake(spread, fair, "hitBid", bid.price, feelingLucky)
       ) {
         takeOrder(user.id, bid.id, 1);
-        continue;
       }
       const live = db
         .prepare("SELECT COALESCE(SUM(remaining), 0) AS n FROM orders WHERE user_id = ? AND remaining > 0")
         .get(user.id) as { n: number };
-      if (live.n >= 30) continue;
+      if (live.n >= 48) continue;
       const quote = botQuoteMultipliers(spread, fair);
-      const bidQty =
-        quote.kind !== "rest" || profile.style === "thin" || profile.style === "wild"
-          ? 1
-          : 1 + Math.floor(Math.random() * 3);
-      const askQty = botAskSize(profile.style, quote.kind);
-      const quoteBoth = live.n <= 12 && Math.random() < 0.22;
-      const buySide = Math.random() < 0.5;
-      if (quoteBoth || buySide) {
+      const have = availableItem(user.id, itemId);
+      const askQty = Math.min(have, botAskSize(profile.style, quote.kind));
+      if (askQty >= 1) {
+        const askPx = Math.max(1, Math.round(fair * quote.ask));
+        placeOrder(user.id, itemId, "sell", askPx, askQty);
+      }
+      if (live.n <= 20 && Math.random() < 0.35) {
+        const bidQty =
+          quote.kind !== "rest" || profile.style === "thin" || profile.style === "wild"
+            ? 1
+            : 1 + Math.floor(Math.random() * 3);
         const bidPx = Math.max(1, Math.round(fair * quote.bid));
         if (availableGold(user.id) >= bidPx * bidQty) {
           placeOrder(user.id, itemId, "buy", bidPx, bidQty);
-        }
-      }
-      if (quoteBoth || !buySide) {
-        const askPx = Math.max(1, Math.round(fair * quote.ask));
-        if (availableItem(user.id, itemId) >= askQty) {
-          placeOrder(user.id, itemId, "sell", askPx, askQty);
         }
       }
     } catch {
@@ -2567,6 +2621,35 @@ export function acceptSwap(userId: number, offerId: number) {
     userId,
     `You took ${offer.from_name}'s deal. You gave ${describeBundle(offer.want_gold, offer.want)} for ${describeBundle(offer.give_gold, offer.give)}.`
   );
+}
+
+function listAdminRoster(): AdminSeat[] {
+  const people = getDb()
+    .prepare(
+      `SELECT u.id, u.username, p.gold, COALESCE(u.is_bot, 0) AS is_bot
+       FROM users u JOIN players p ON p.user_id = u.id
+       WHERE u.username NOT IN ('Banker', 'Government')
+       ORDER BY COALESCE(u.is_bot, 0) ASC, u.username COLLATE NOCASE`
+    )
+    .all() as { id: number; username: string; gold: number; is_bot: number }[];
+  const packs = getDb()
+    .prepare(
+      `SELECT user_id, item_id, quantity FROM inventory WHERE quantity > 0`
+    )
+    .all() as { user_id: number; item_id: string; quantity: number }[];
+  const byUser = new Map<number, Record<string, number>>();
+  for (const row of packs) {
+    const bag = byUser.get(row.user_id) ?? {};
+    bag[row.item_id] = row.quantity;
+    byUser.set(row.user_id, bag);
+  }
+  return people.map((row) => ({
+    id: row.id,
+    username: row.username,
+    gold: row.gold,
+    bot: Boolean(row.is_bot),
+    holdings: byUser.get(row.id) ?? {},
+  }));
 }
 
 function listTravelers(userId: number): TravelerRow[] {
@@ -2772,6 +2855,7 @@ export function getGameState(
     coinVolume,
     computers,
     stipendMs: stipendMs(),
+    adminRoster: isAdmin(userId) ? listAdminRoster() : [],
     netWorthGoal: NET_WORTH_GOAL,
     leaders,
     deposit:

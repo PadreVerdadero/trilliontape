@@ -14,7 +14,7 @@ import { BOT_PROFILES } from "@/lib/game/bots";
 
 export const DESK_USERNAME = "Government";
 
-const BOOTSTRAP_REV = 9;
+const BOOTSTRAP_REV = 10;
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: Database.Database;
@@ -188,6 +188,11 @@ function migrate(db: Database.Database) {
     CREATE TABLE IF NOT EXISTS game_meta (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS item_caps (
+      item_id TEXT PRIMARY KEY,
+      authorized INTEGER NOT NULL
     );
   `);
   ensureColumn(db, "users", "is_bot", "INTEGER NOT NULL DEFAULT 0");
@@ -494,6 +499,21 @@ export function setStipendMs(ms: number, db: Database.Database = getDb()) {
     `INSERT INTO game_meta (key, value) VALUES ('stipend_ms', ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`
   ).run(String(ms));
+}
+
+export function getItemAuthorized(itemId: string, db: Database.Database = getDb()) {
+  const row = db
+    .prepare("SELECT authorized FROM item_caps WHERE item_id = ?")
+    .get(itemId) as { authorized: number } | undefined;
+  if (row && Number.isInteger(row.authorized) && row.authorized > 0) return row.authorized;
+  return itemById[itemId]?.authorized ?? 0;
+}
+
+export function setItemAuthorized(itemId: string, authorized: number, db: Database.Database = getDb()) {
+  db.prepare(
+    `INSERT INTO item_caps (item_id, authorized) VALUES (?, ?)
+     ON CONFLICT(item_id) DO UPDATE SET authorized = excluded.authorized`
+  ).run(itemId, authorized);
 }
 
 export function getDb() {

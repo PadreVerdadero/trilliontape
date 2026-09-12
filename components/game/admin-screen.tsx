@@ -22,20 +22,40 @@ export function AdminScreen({
 }) {
   const { state, error, loading, pending, run, setError } = useGame(initialState);
   const [itemId, setItemId] = useSelectedItem(initialItemId);
+  const [seatId, setSeatId] = useState<number | null>(null);
   const [goldInput, setGoldInput] = useState("");
   const [qtyInput, setQtyInput] = useState("0");
+  const [issuedDraft, setIssuedDraft] = useState<Record<string, string>>({});
 
   const player = state?.player;
-  const held = player?.inventory.find((row) => row.itemId === itemId)?.quantity ?? 0;
+  const roster = state?.adminRoster ?? [];
+  const selectedSeat =
+    roster.find((row) => row.id === seatId) ?? roster.find((row) => row.id === player?.id) ?? roster[0];
+  const held = selectedSeat?.holdings[itemId] ?? 0;
   const selected = itemById[itemId];
 
   useEffect(() => {
-    if (player) setGoldInput(String(player.gold));
-  }, [player?.gold]);
+    if (player && seatId == null) setSeatId(player.id);
+  }, [player?.id, seatId]);
+
+  useEffect(() => {
+    if (selectedSeat) setGoldInput(String(selectedSeat.gold));
+  }, [selectedSeat?.id, selectedSeat?.gold]);
 
   useEffect(() => {
     setQtyInput(String(held));
-  }, [held, itemId]);
+  }, [held, itemId, selectedSeat?.id]);
+
+  const capKey = (state?.prices ?? []).map((row) => `${row.itemId}:${row.authorized}`).join("|");
+  useEffect(() => {
+    if (!state) return;
+    const next: Record<string, string> = {};
+    for (const item of items) {
+      const row = state.prices.find((price) => price.itemId === item.id);
+      next[item.id] = String(row?.authorized ?? item.authorized ?? 0);
+    }
+    setIssuedDraft(next);
+  }, [capKey]);
 
   if (loading) {
     return (
@@ -66,7 +86,12 @@ export function AdminScreen({
               {GAME_NAME}
             </p>
             <h1 className="font-heading text-2xl text-amber-100 sm:text-3xl">Admin office</h1>
-            <p className="truncate text-sm text-amber-100/70">{player.username} · you are the admin</p>
+            <p className="truncate text-sm text-amber-100/70">
+              {player.username} · you are the admin
+              {selectedSeat && selectedSeat.id !== player.id
+                ? ` · editing ${selectedSeat.username}`
+                : ""}
+            </p>
           </div>
           <Link
             href="/play"
@@ -92,9 +117,38 @@ export function AdminScreen({
           </div>
         ) : null}
 
+        <section className="space-y-3 rounded-xl border border-amber-400/25 bg-amber-900/30 p-4">
+          <h2 className="font-heading text-lg">Traveler</h2>
+          <Label htmlFor="admin-seat" className="text-amber-100/80">
+            Edit this pack
+          </Label>
+          <select
+            id="admin-seat"
+            className="h-11 w-full rounded-lg border border-amber-400/30 bg-amber-950/60 px-3 text-sm text-amber-50"
+            value={selectedSeat?.id ?? player.id}
+            onChange={(event) => setSeatId(Number(event.target.value))}
+          >
+            {roster.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.username}
+                {row.id === player.id ? " (you)" : ""}
+                {row.bot ? " · computer" : ""}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-amber-100/60">
+            Coins and pack qty below apply to {selectedSeat?.username ?? player.username}. Issued is a table rule
+            and changes every traveler.
+          </p>
+        </section>
+
         <section className="grid gap-4 md:grid-cols-2">
           <div className="space-y-3 rounded-xl border border-amber-400/25 bg-amber-900/30 p-4">
-            <h2 className="font-heading text-lg">Your purse</h2>
+            <h2 className="font-heading text-lg">
+              {selectedSeat && selectedSeat.id !== player.id
+                ? `${selectedSeat.username}'s purse`
+                : "Your purse"}
+            </h2>
             <div className="flex items-end gap-2">
               <div className="min-w-0 flex-1 space-y-1">
                 <Label htmlFor="admin-gold" className="text-amber-100/80">
@@ -109,14 +163,22 @@ export function AdminScreen({
                 />
               </div>
               <Button
-                disabled={pending}
+                disabled={pending || !selectedSeat}
                 className="bg-amber-300 text-amber-950 hover:bg-amber-200"
-                onClick={() => void run({ action: "adminGold", gold: Number(goldInput) })}
+                onClick={() =>
+                  void run({
+                    action: "adminGold",
+                    gold: Number(goldInput),
+                    targetUserId: selectedSeat?.id,
+                  })
+                }
               >
                 Set
               </Button>
             </div>
-            <p className="text-sm text-amber-100/70">Now {formatCoins(player.gold)}.</p>
+            <p className="text-sm text-amber-100/70">
+              Now {formatCoins(selectedSeat?.gold ?? player.gold)}.
+            </p>
           </div>
 
           <div className="space-y-3 rounded-xl border border-amber-400/25 bg-amber-900/30 p-4">
@@ -154,7 +216,14 @@ export function AdminScreen({
               <Button
                 disabled={pending || !selected}
                 className="bg-amber-300 text-amber-950 hover:bg-amber-200"
-                onClick={() => void run({ action: "adminItem", itemId, quantity: Number(qtyInput) })}
+                onClick={() =>
+                  void run({
+                    action: "adminItem",
+                    itemId,
+                    quantity: Number(qtyInput),
+                    targetUserId: selectedSeat?.id,
+                  })
+                }
               >
                 Set
               </Button>
@@ -229,7 +298,6 @@ export function AdminScreen({
                 <tr className="border-b border-amber-400/20">
                   <th className="py-2 pr-3 font-medium">Good</th>
                   <th className="py-2 pr-3 font-medium">MV</th>
-                  <th className="py-2 pr-3 font-medium">Authorized</th>
                   <th className="py-2 pr-3 font-medium">Issued</th>
                   <th className="py-2 pr-3 font-medium">Outstanding</th>
                   <th className="py-2 font-medium">Treasury</th>
@@ -244,8 +312,32 @@ export function AdminScreen({
                         {item.emoji} {item.name}
                       </td>
                       <td className="py-2 pr-3 tabular-nums">{formatNumber(row?.vwap ?? item.basePrice)}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatNumber(row?.authorized ?? 0)}</td>
-                      <td className="py-2 pr-3 tabular-nums">{formatNumber(row?.issued ?? 0)}</td>
+                      <td className="py-2 pr-3">
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            inputMode="numeric"
+                            value={issuedDraft[item.id] ?? String(row?.authorized ?? 0)}
+                            onChange={(event) =>
+                              setIssuedDraft((prev) => ({ ...prev, [item.id]: event.target.value }))
+                            }
+                            className="h-8 w-20 border-amber-400/30 bg-amber-950/60 px-2"
+                          />
+                          <Button
+                            size="sm"
+                            disabled={pending}
+                            className="h-8 bg-amber-300 px-2 text-amber-950 hover:bg-amber-200"
+                            onClick={() =>
+                              void run({
+                                action: "adminIssued",
+                                itemId: item.id,
+                                authorized: Number(issuedDraft[item.id] ?? row?.authorized ?? 0),
+                              })
+                            }
+                          >
+                            Set
+                          </Button>
+                        </div>
+                      </td>
                       <td className="py-2 pr-3 tabular-nums">{formatNumber(row?.held ?? 0)}</td>
                       <td className="py-2 tabular-nums">{formatNumber(row?.treasury ?? 0)}</td>
                     </tr>
@@ -255,6 +347,7 @@ export function AdminScreen({
             </table>
           </div>
           <p className="text-xs text-amber-100/60">
+            Issued is the cap. Changing it lists leftover on the treasury or buys surplus at MV.
             Outstanding is every unit sitting in traveler packs. Treasury is Issued minus Outstanding.
           </p>
         </section>

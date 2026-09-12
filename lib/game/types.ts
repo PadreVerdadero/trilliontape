@@ -157,6 +157,14 @@ export type TravelerRow = {
   bot: boolean;
 };
 
+export type AdminSeat = {
+  id: number;
+  username: string;
+  gold: number;
+  bot: boolean;
+  holdings: Record<string, number>;
+};
+
 export type AreaCrowd = {
   locationId: string;
   searchers: number;
@@ -258,6 +266,7 @@ export type GameState = {
   coinVolume: number;
   computers: boolean;
   stipendMs: number;
+  adminRoster: AdminSeat[];
   netWorthGoal: number;
   leaders: LeaderRow[];
   deposit: { amount: number; day: number; gold: number } | null;
