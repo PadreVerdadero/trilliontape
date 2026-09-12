@@ -9,7 +9,6 @@ import {
   materialsAt,
   ENERGY_MAX,
   SEARCH_COOLDOWN_MS,
-  STARTING_GOLD,
   TABLE_GOLD,
   NET_WORTH_GOAL,
   dailyDeposit,
@@ -32,9 +31,9 @@ import {
 import { rarityFromHeld, rarityOf } from "@/lib/game/rarity";
 import {
   DESK_USERNAME,
-  computersEnabled,
+  computerCount,
   getDb,
-  setComputersEnabled,
+  setComputerCount,
   setStipendMs,
   stipendMs,
   getItemAuthorized,
@@ -42,6 +41,7 @@ import {
 } from "@/lib/game/db";
 import {
   BOT_PROFILES,
+  MAX_COMPUTERS,
   botLossChance,
   botQuoteMultipliers,
   botSpread,
@@ -639,14 +639,30 @@ function grantDailyLogin(userId: number, _timeZone?: string): {
   return { amount, day: next, justPaid: !isBot(userId) };
 }
 
+function seatedBotUsernames(db: ReturnType<typeof getDb> = getDb()) {
+  return BOT_PROFILES.slice(0, computerCount(db)).map((bot) => bot.username);
+}
+
+function tableSeatWhere(db: ReturnType<typeof getDb> = getDb()) {
+  const names = seatedBotUsernames(db);
+  if (names.length === 0) {
+    return {
+      sql: `username NOT IN ('Banker', 'Government') AND COALESCE(is_bot, 0) = 0`,
+      params: [] as string[],
+    };
+  }
+  const slots = names.map(() => "?").join(", ");
+  return {
+    sql: `username NOT IN ('Banker', 'Government') AND (COALESCE(is_bot, 0) = 0 OR username IN (${slots}))`,
+    params: names,
+  };
+}
+
 function tableSeatIds() {
+  const { sql, params } = tableSeatWhere();
   return getDb()
-    .prepare(
-      `SELECT id FROM users
-       WHERE username NOT IN ('Banker', 'Government')
-       ORDER BY username COLLATE NOCASE`
-    )
-    .all() as { id: number }[];
+    .prepare(`SELECT id FROM users WHERE ${sql} ORDER BY username COLLATE NOCASE`)
+    .all(...params) as { id: number }[];
 }
 
 function payTableStipends(viewerId: number, timeZone?: string) {
@@ -1220,16 +1236,10 @@ function dealOpeningShares(db: ReturnType<typeof getDb>, travelerIds: number[]) 
     const issued = authorizedOf(item.id);
     if (issued < 1) continue;
     const each = Math.floor(issued / seats);
-    let extra = issued % seats;
+    if (each < 1) continue;
     const unit = Math.max(1, Math.round(item.basePrice));
-    let hash = 0;
-    for (let i = 0; i < item.id.length; i += 1) hash = (hash * 31 + item.id.charCodeAt(i)) >>> 0;
-    const start = hash % seats;
-    for (let i = 0; i < seats; i += 1) {
-      const qty = each + (extra > 0 ? 1 : 0);
-      if (extra > 0) extra -= 1;
-      if (qty < 1) continue;
-      grant.run(travelerIds[(start + i) % seats], item.id, qty, unit * qty);
+    for (const travelerId of travelerIds) {
+      grant.run(travelerId, item.id, each, unit * each);
     }
   }
 }
@@ -1254,34 +1264,45 @@ export function adminStartGame(userId: number, _timeZone?: string) {
       DELETE FROM festival_contracts;
       DELETE FROM area_strain;
     `);
-    setComputersEnabled(true, db);
+    const { sql, params } = tableSeatWhere(db);
+    const seats = db
+      .prepare(`SELECT id FROM users WHERE ${sql} ORDER BY username COLLATE NOCASE`)
+      .all(...params) as { id: number }[];
+    const seatIds = seats.map((row) => row.id);
     db.prepare(
       `UPDATE players SET gold = ?, energy = ?, energy_max = ?, busy_type = 'idle', busy_until = NULL,
          busy_payload = NULL, last_event = ?, login_days = 0, has_won = 0, won_at = NULL
        WHERE user_id IN (
-         SELECT id FROM users WHERE username NOT IN ('Banker', 'Government')
+         SELECT id FROM users WHERE ${sql}
        )`
     ).run(
       TABLE_GOLD,
       ENERGY_MAX,
       ENERGY_MAX,
-      "A new game. 1,000 coins and an even opening pack for every traveler and computer."
+      "A new game. 1,000 coins and an even opening pack for every traveler and seated computer.",
+      ...params
     );
+    const seatedNames = seatedBotUsernames(db);
+    if (seatedNames.length === 0) {
+      db.prepare(
+        `UPDATE players SET gold = 0, last_event = 'Sitting this table out.'
+         WHERE user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)`
+      ).run();
+    } else {
+      const slots = seatedNames.map(() => "?").join(", ");
+      db.prepare(
+        `UPDATE players SET gold = 0, last_event = 'Sitting this table out.'
+         WHERE user_id IN (
+           SELECT id FROM users
+           WHERE COALESCE(is_bot, 0) = 1 AND username NOT IN (${slots})
+         )`
+      ).run(...seatedNames);
+    }
     db.prepare(
       `UPDATE players SET gold = 0, last_event = 'The treasury desk is open.'
        WHERE user_id IN (SELECT id FROM users WHERE username IN ('Banker', 'Government'))`
     ).run();
-    const seats = db
-      .prepare(
-        `SELECT id FROM users
-         WHERE username NOT IN ('Banker', 'Government')
-         ORDER BY username COLLATE NOCASE`
-      )
-      .all() as { id: number }[];
-    dealOpeningShares(
-      db,
-      seats.map((row) => row.id)
-    );
+    dealOpeningShares(db, seatIds);
     const mark = db.prepare(
       `INSERT INTO player_daily (user_id, day_key, first_trade, special_sold, login_paid)
        VALUES (?, ?, 0, '', 1)
@@ -1291,70 +1312,74 @@ export function adminStartGame(userId: number, _timeZone?: string) {
   })();
   deskClock.bazaarDeskFloat = 0;
   alignIssuedToAuthorized(true);
+  const bots = computerCount();
+  const leftoverNote =
+    " Leftover units stay in the treasury for the government to sell at MV.";
   setEvent(
     userId,
-    "New game started. Every traveler and computer got 1,000 coins and an even opening pack. Leftover units of scarce goods went to a rotating slice of the table."
+    bots > 0
+      ? `New game started. Every traveler and ${formatNumber(bots)} computer${
+          bots === 1 ? "" : "s"
+        } got 1,000 coins and floor(Issued ÷ seats) of each good.${leftoverNote}`
+      : `New game started. Every traveler got 1,000 coins and floor(Issued ÷ seats) of each good.${leftoverNote}`
   );
 }
 
-export function adminSetComputers(userId: number, on: boolean) {
-  requireAdmin(userId);
-  const db = getDb();
-  db.transaction(() => {
-    setComputersEnabled(on, db);
-    if (on) {
-      const pay = db.prepare("UPDATE players SET gold = ?, last_event = ? WHERE user_id = ?");
-      const purseByName = new Map(BOT_PROFILES.map((bot) => [bot.username, bot.gold]));
-      const named = db
-        .prepare("SELECT id, username FROM users WHERE COALESCE(is_bot, 0) = 1")
-        .all() as { id: number; username: string }[];
-      for (const row of named) {
-        pay.run(
-          purseByName.get(row.username) ?? STARTING_GOLD,
-          "A computer trader keeping the book honest.",
-          row.id
-        );
-      }
-      stockComputers(db, named.map((row) => row.id));
-    } else {
-      db.prepare(
-        `DELETE FROM orders WHERE user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)`
-      ).run();
-      db.prepare(
-        `DELETE FROM inventory WHERE user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)`
-      ).run();
-      db.prepare(
-        `UPDATE players SET gold = 0, last_event = 'Sitting this table out.'
-         WHERE user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)`
-      ).run();
+function applyComputerSeats(db: ReturnType<typeof getDb>, count: number) {
+  const next = setComputerCount(count, db);
+  const seated = new Set(seatedBotUsernames(db));
+  const bots = db
+    .prepare("SELECT id, username FROM users WHERE COALESCE(is_bot, 0) = 1")
+    .all() as { id: number; username: string }[];
+  const sitOutIds: number[] = [];
+  const seatIds: number[] = [];
+  for (const row of bots) {
+    if (seated.has(row.username)) seatIds.push(row.id);
+    else sitOutIds.push(row.id);
+  }
+  if (sitOutIds.length > 0) {
+    const slots = sitOutIds.map(() => "?").join(", ");
+    db.prepare(`DELETE FROM orders WHERE user_id IN (${slots})`).run(...sitOutIds);
+    db.prepare(`DELETE FROM inventory WHERE user_id IN (${slots})`).run(...sitOutIds);
+    db.prepare(
+      `UPDATE players SET gold = 0, last_event = 'Sitting this table out.' WHERE user_id IN (${slots})`
+    ).run(...sitOutIds);
+  }
+  if (seatIds.length > 0) {
+    const pay = db.prepare(
+      `UPDATE players SET gold = ?, last_event = ?
+       WHERE user_id = ? AND gold = 0`
+    );
+    for (const id of seatIds) {
+      pay.run(TABLE_GOLD, "A computer trader keeping the book honest.", id);
     }
+  }
+  return next;
+}
+
+export function adminSetComputerCount(userId: number, count: number) {
+  requireAdmin(userId);
+  if (!Number.isInteger(count) || count < 0 || count > MAX_COMPUTERS) {
+    throw new Error(`Computers must be a whole number from 0 to ${MAX_COMPUTERS}.`);
+  }
+  const db = getDb();
+  let next = count;
+  db.transaction(() => {
+    next = applyComputerSeats(db, count);
   })();
   deskClock.bazaarDeskFloat = 0;
   alignIssuedToAuthorized(true);
   setEvent(
     userId,
-    on
-      ? "Computers sat down with coin and a slice of leftover treasury so they can post asks."
-      : "Computers sat out. Their packs went back to the treasury."
+    next === 0
+      ? "All computers sat out. Their packs went back to the treasury."
+      : `${formatNumber(next)} computer${next === 1 ? "" : "s"} at the table. Sitting-out packs went back to the treasury.`
   );
 }
 
-function stockComputers(db: ReturnType<typeof getDb>, botIds: number[]) {
-  if (botIds.length === 0) return;
-  const grant = db.prepare(
-    `INSERT INTO inventory (user_id, item_id, quantity, cost_basis) VALUES (?, ?, ?, ?)
-     ON CONFLICT(user_id, item_id) DO UPDATE SET
-       quantity = quantity + excluded.quantity,
-       cost_basis = COALESCE(cost_basis, 0) + excluded.cost_basis`
-  );
-  for (const item of items) {
-    const leftover = Math.max(0, getItemAuthorized(item.id, db) - outstandingOf(item.id));
-    const pool = Math.floor(leftover / 2);
-    const each = Math.floor(pool / botIds.length);
-    if (each < 1) continue;
-    const unit = Math.max(1, Math.round(item.basePrice));
-    for (const id of botIds) grant.run(id, item.id, each, unit * each);
-  }
+export function adminSetComputers(userId: number, on: boolean) {
+  const seated = computerCount();
+  adminSetComputerCount(userId, on ? (seated > 0 ? seated : MAX_COMPUTERS) : 0);
 }
 
 function mapOrder(row: {
@@ -2139,15 +2164,14 @@ function noteIssuedCap(itemId: string) {
 function netWorthLeaders(prices: MarketPrice[]): LeaderRow[] {
   const db = getDb();
   const mv = new Map(prices.map((row) => [row.itemId, row.vwap]));
-  const computers = computersEnabled(db);
+  const { sql, params } = tableSeatWhere(db);
   const purses = db
     .prepare(
       `SELECT u.id, u.username, p.gold
        FROM players p JOIN users u ON u.id = p.user_id
-       WHERE u.username NOT IN ('Banker', 'Government')
-         ${computers ? "" : "AND COALESCE(u.is_bot, 0) = 0"}`
+       WHERE ${sql}`
     )
-    .all() as { id: number; username: string; gold: number }[];
+    .all(...params) as { id: number; username: string; gold: number }[];
   const stacks = db
     .prepare("SELECT user_id, item_id, quantity FROM inventory WHERE quantity > 0")
     .all() as { user_id: number; item_id: string; quantity: number }[];
@@ -2305,6 +2329,7 @@ function chaseOneBotQuote(
       .prepare(
         `SELECT id, price, created_at FROM orders
          WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND user_id != ?
+           AND COALESCE(treasury, 0) = 0
          ORDER BY price ASC, id ASC LIMIT 1`
       )
       .get(itemId, userId) as { id: number; price: number; created_at: number } | undefined;
@@ -2335,6 +2360,7 @@ function chaseOneBotQuote(
     .prepare(
       `SELECT id, price FROM orders
        WHERE item_id = ? AND side = 'buy' AND remaining > 0 AND user_id != ?
+         AND COALESCE(treasury, 0) = 0
        ORDER BY price DESC, id ASC LIMIT 1`
     )
     .get(itemId, userId) as { id: number; price: number } | undefined;
@@ -2376,12 +2402,13 @@ function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: num
 }
 
 export function tickBots() {
-  if (!computersEnabled()) return;
+  const seated = computerCount();
+  if (seated < 1) return;
   const now = nowMs();
   if (botClock.bazaarBotTick && now - botClock.bazaarBotTick < 1200) return;
   botClock.bazaarBotTick = now;
   const db = getDb();
-  const picked = shufflePick(BOT_PROFILES, BOT_PROFILES.length);
+  const picked = shufflePick(BOT_PROFILES.slice(0, seated), seated);
   for (const profile of picked) {
     const user = db
       .prepare("SELECT id FROM users WHERE username = ? AND COALESCE(is_bot, 0) = 1")
@@ -2404,6 +2431,7 @@ export function tickBots() {
           .prepare(
             `SELECT id, price, created_at FROM orders
              WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND user_id != ?
+               AND COALESCE(treasury, 0) = 0
              ORDER BY price ASC, id ASC LIMIT 1`
           )
           .get(itemId, user.id) as { id: number; price: number; created_at: number } | undefined;
@@ -2426,6 +2454,7 @@ export function tickBots() {
           .prepare(
             `SELECT id, price FROM orders
              WHERE item_id = ? AND side = 'buy' AND remaining > 0 AND user_id != ?
+               AND COALESCE(treasury, 0) = 0
              ORDER BY price DESC, id ASC LIMIT 1`
           )
           .get(itemId, user.id) as { id: number; price: number } | undefined;
@@ -2447,7 +2476,7 @@ export function tickBots() {
           const askPx = Math.max(1, Math.round(fair * quote.ask));
           placeOrder(user.id, itemId, "sell", askPx, askQty);
         }
-        if (live.n <= 30 && Math.random() < 0.28) {
+        if (live.n <= 30 && Math.random() < 0.62) {
           const bidQty = 1 + Math.floor(Math.random() * 3);
           const bidPx = Math.max(1, Math.round(fair * quote.bid));
           if (availableGold(user.id) >= bidPx * bidQty) {
@@ -2650,6 +2679,7 @@ export function acceptSwap(userId: number, offerId: number) {
 }
 
 function listAdminRoster(): AdminSeat[] {
+  const seatedBots = new Set(seatedBotUsernames());
   const people = getDb()
     .prepare(
       `SELECT u.id, u.username, p.gold, COALESCE(u.is_bot, 0) AS is_bot
@@ -2674,6 +2704,7 @@ function listAdminRoster(): AdminSeat[] {
     username: row.username,
     gold: row.gold,
     bot: Boolean(row.is_bot),
+    seated: !row.is_bot || seatedBots.has(row.username),
     holdings: byUser.get(row.id) ?? {},
   }));
 }
@@ -2834,16 +2865,17 @@ export function getGameState(
        LIMIT 12`
     )
     .all() as { username: string; wonAt: number }[];
-  const computers = computersEnabled();
+  const botsSeated = computerCount();
+  const computers = botsSeated > 0;
+  const { sql: seatSql, params: seatParams } = tableSeatWhere();
   const coinVolume = (
     getDb()
       .prepare(
         `SELECT COALESCE(SUM(p.gold), 0) AS gold
          FROM players p JOIN users u ON u.id = p.user_id
-         WHERE u.username NOT IN ('Banker', 'Government')
-           ${computers ? "" : "AND COALESCE(u.is_bot, 0) = 0"}`
+         WHERE ${seatSql}`
       )
-      .get() as { gold: number }
+      .get(...seatParams) as { gold: number }
   ).gold;
   const festival: FestivalState = {
     timeZone: timeZone || "UTC",
@@ -2880,6 +2912,7 @@ export function getGameState(
     travelers: listTravelers(userId),
     coinVolume,
     computers,
+    computerCount: botsSeated,
     stipendMs: stipendMs(),
     adminRoster: isAdmin(userId) ? listAdminRoster() : [],
     netWorthGoal: NET_WORTH_GOAL,

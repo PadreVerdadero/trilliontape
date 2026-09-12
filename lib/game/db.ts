@@ -10,7 +10,7 @@ import {
   seatGold,
   itemById,
 } from "@/lib/game/catalog";
-import { BOT_PROFILES } from "@/lib/game/bots";
+import { BOT_PROFILES, MAX_COMPUTERS } from "@/lib/game/bots";
 
 export const DESK_USERNAME = "Government";
 
@@ -472,18 +472,48 @@ function bootstrap(db: Database.Database) {
   shareBankerHoldings(db);
 }
 
-export function computersEnabled(db: Database.Database = getDb()) {
-  const row = db.prepare("SELECT value FROM game_meta WHERE key = 'computers'").get() as
-    | { value: string }
-    | undefined;
-  return row?.value !== "0";
-}
-
-export function setComputersEnabled(on: boolean, db: Database.Database = getDb()) {
+function writeComputerMeta(count: number, db: Database.Database) {
+  const n = Math.max(0, Math.min(MAX_COMPUTERS, Math.floor(count)));
+  db.prepare(
+    `INSERT INTO game_meta (key, value) VALUES ('computer_count', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run(String(n));
   db.prepare(
     `INSERT INTO game_meta (key, value) VALUES ('computers', ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`
-  ).run(on ? "1" : "0");
+  ).run(n > 0 ? "1" : "0");
+  return n;
+}
+
+export function computerCount(db: Database.Database = getDb()) {
+  const row = db.prepare("SELECT value FROM game_meta WHERE key = 'computer_count'").get() as
+    | { value: string }
+    | undefined;
+  if (row != null) {
+    const n = Number(row.value);
+    if (Number.isFinite(n)) return Math.max(0, Math.min(MAX_COMPUTERS, Math.floor(n)));
+  }
+  const flag = db.prepare("SELECT value FROM game_meta WHERE key = 'computers'").get() as
+    | { value: string }
+    | undefined;
+  return flag?.value === "0" ? 0 : MAX_COMPUTERS;
+}
+
+export function computersEnabled(db: Database.Database = getDb()) {
+  return computerCount(db) > 0;
+}
+
+export function setComputerCount(count: number, db: Database.Database = getDb()) {
+  return writeComputerMeta(count, db);
+}
+
+export function setComputersEnabled(on: boolean, db: Database.Database = getDb()) {
+  if (!on) {
+    writeComputerMeta(0, db);
+    return;
+  }
+  const current = computerCount(db);
+  writeComputerMeta(current > 0 ? current : MAX_COMPUTERS, db);
 }
 
 export function stipendMs(db: Database.Database = getDb()) {

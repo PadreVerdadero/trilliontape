@@ -162,6 +162,7 @@ export type AdminSeat = {
   username: string;
   gold: number;
   bot: boolean;
+  seated: boolean;
   holdings: Record<string, number>;
 };
 
@@ -265,6 +266,7 @@ export type GameState = {
   travelers: TravelerRow[];
   coinVolume: number;
   computers: boolean;
+  computerCount: number;
   stipendMs: number;
   adminRoster: AdminSeat[];
   netWorthGoal: number;

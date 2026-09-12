@@ -15,6 +15,7 @@ import {
   adminSetItem,
   adminStartGame,
   adminSetComputers,
+  adminSetComputerCount,
   adminSetStipend,
   adminSetIssued,
 } from "@/lib/game/engine";
@@ -54,7 +55,7 @@ type ActionBody = {
   | { action: "adminItem"; itemId: string; quantity: number; targetUserId?: number }
   | { action: "adminIssued"; itemId: string; authorized: number }
   | { action: "adminNewGame" }
-  | { action: "adminComputers"; on: boolean }
+  | { action: "adminComputers"; count?: number; on?: boolean }
   | { action: "adminStipend"; ms: number }
 );
 
@@ -130,7 +131,8 @@ export async function POST(request: Request) {
         adminStartGame(userId, tz);
         break;
       case "adminComputers":
-        adminSetComputers(userId, Boolean(body.on));
+        if (body.count != null) adminSetComputerCount(userId, Number(body.count));
+        else adminSetComputers(userId, Boolean(body.on));
         break;
       case "adminStipend":
         adminSetStipend(userId, Number(body.ms));

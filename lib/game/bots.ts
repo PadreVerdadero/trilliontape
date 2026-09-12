@@ -140,6 +140,8 @@ export const BOT_PROFILES: BotProfile[] = [
   },
 ];
 
+export const MAX_COMPUTERS = BOT_PROFILES.length;
+
 export const BOT_USERNAMES = new Set(BOT_PROFILES.map((bot) => bot.username));
 
 export function isBotUsername(name: string) {
@@ -161,53 +163,53 @@ export type BotSpread = {
 export function botSpread(style: BotProfile["style"]): BotSpread {
   if (style === "tight") {
     return {
-      bid: 0.7,
-      ask: 1.38,
-      take: 0.16,
-      farBid: 0.32,
-      farAsk: 2.1,
-      farChance: 0.07,
-      hopeQuoteChance: 0.05,
-      lossChance: 0.05,
-      hope: 0.28,
+      bid: 0.96,
+      ask: 1.05,
+      take: 0.04,
+      farBid: 0.86,
+      farAsk: 1.18,
+      farChance: 0.04,
+      hopeQuoteChance: 0.14,
+      lossChance: 0.12,
+      hope: 0.08,
     };
   }
   if (style === "wide") {
     return {
-      bid: 0.48,
-      ask: 1.75,
-      take: 0.2,
-      farBid: 0.18,
-      farAsk: 2.7,
-      farChance: 0.09,
-      hopeQuoteChance: 0.06,
-      lossChance: 0.07,
-      hope: 0.38,
+      bid: 0.9,
+      ask: 1.12,
+      take: 0.06,
+      farBid: 0.78,
+      farAsk: 1.28,
+      farChance: 0.06,
+      hopeQuoteChance: 0.12,
+      lossChance: 0.14,
+      hope: 0.12,
     };
   }
   if (style === "thin") {
     return {
-      bid: 0.34,
-      ask: 2.05,
-      take: 0.24,
-      farBid: 0.1,
-      farAsk: 3.2,
-      farChance: 0.1,
-      hopeQuoteChance: 0.06,
-      lossChance: 0.06,
-      hope: 0.45,
+      bid: 0.93,
+      ask: 1.1,
+      take: 0.05,
+      farBid: 0.8,
+      farAsk: 1.32,
+      farChance: 0.05,
+      hopeQuoteChance: 0.12,
+      lossChance: 0.12,
+      hope: 0.1,
     };
   }
   return {
-    bid: 0.16,
-    ask: 2.85,
-    take: 0.3,
-    farBid: 0.05,
-    farAsk: 4.4,
-    farChance: 0.12,
-    hopeQuoteChance: 0.08,
-    lossChance: 0.1,
-    hope: 0.62,
+    bid: 0.86,
+    ask: 1.16,
+    take: 0.08,
+    farBid: 0.7,
+    farAsk: 1.4,
+    farChance: 0.08,
+    hopeQuoteChance: 0.16,
+    lossChance: 0.18,
+    hope: 0.16,
   };
 }
 
@@ -244,11 +246,12 @@ export function botQuoteMultipliers(spread: BotSpread, fair: number) {
       ask: Math.max(0.08, (mid - coins) / mid),
     };
   }
-  const drift = 0.84 + Math.random() * 0.3;
+  const bidDrift = 0.97 + Math.random() * 0.08;
+  const askDrift = 0.96 + Math.random() * 0.1;
   return {
     kind: "rest" as const,
-    bid: spread.bid * drift,
-    ask: spread.ask * drift,
+    bid: spread.bid * bidDrift,
+    ask: spread.ask * askDrift,
   };
 }
 
@@ -282,11 +285,13 @@ export function botWillTake(
   const fairPx = Math.max(1, Math.round(fair));
   const band = Math.max(1, Math.round(slack));
   if (side === "liftAsk") {
-    return price <= liftAskLimit(spread, fair, waitMs, feelingLucky);
+    const near = price <= Math.max(1, Math.round(fairPx * 1.06));
+    return near || price <= liftAskLimit(spread, fair, waitMs, feelingLucky);
   }
+  const nearHit = price >= Math.max(1, Math.round(fairPx * 0.94));
   const rich = price >= Math.round(fairPx * (1 + spread.take));
   const dump = feelingLucky && price >= Math.max(1, fairPx - band);
-  return rich || dump;
+  return nearHit || rich || dump;
 }
 
 export function waitSteps(waitMs: number) {
@@ -314,9 +319,6 @@ export function chaseAskPrice(oldPrice: number, fair: number, slack: number, ste
   return Math.max(1, Math.min(oldPrice - cut, target));
 }
 
-export function botAskSize(style: BotProfile["style"], kind: "far" | "hope" | "rest") {
-  if (kind === "rest" && style !== "thin" && style !== "wild") {
-    return 4 + Math.floor(Math.random() * 7);
-  }
-  return 2 + Math.floor(Math.random() * 4);
+export function botAskSize(_style: BotProfile["style"], _kind: "far" | "hope" | "rest") {
+  return 1 + Math.floor(Math.random() * 3);
 }

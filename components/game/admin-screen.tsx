@@ -6,6 +6,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { items, itemById, STIPEND_PRESETS, stipendLabel } from "@/lib/game/catalog";
+import { MAX_COMPUTERS } from "@/lib/game/bots";
 import { formatCoins, formatNumber } from "@/lib/game/format";
 import { useGame } from "@/hooks/use-game";
 import { useSelectedItem } from "@/hooks/use-selected-item";
@@ -26,6 +27,7 @@ export function AdminScreen({
   const [goldInput, setGoldInput] = useState("");
   const [qtyInput, setQtyInput] = useState("0");
   const [issuedDraft, setIssuedDraft] = useState<Record<string, string>>({});
+  const [computerDraft, setComputerDraft] = useState(String(initialState.computerCount ?? 0));
 
   const player = state?.player;
   const roster = state?.adminRoster ?? [];
@@ -45,6 +47,10 @@ export function AdminScreen({
   useEffect(() => {
     setQtyInput(String(held));
   }, [held, itemId, selectedSeat?.id]);
+
+  useEffect(() => {
+    setComputerDraft(String(state?.computerCount ?? 0));
+  }, [state?.computerCount]);
 
   const capKey = (state?.prices ?? []).map((row) => `${row.itemId}:${row.authorized}`).join("|");
   useEffect(() => {
@@ -132,7 +138,7 @@ export function AdminScreen({
               <option key={row.id} value={row.id}>
                 {row.username}
                 {row.id === player.id ? " (you)" : ""}
-                {row.bot ? " · computer" : ""}
+                {row.bot ? (row.seated ? " · computer" : " · sitting out") : ""}
               </option>
             ))}
           </select>
@@ -255,31 +261,52 @@ export function AdminScreen({
                 Travelers who sit at the desk get the next ladder purse every {stipendLabel(state.stipendMs)}.
               </p>
             </div>
-            <div className="flex flex-col justify-end gap-2">
-              <Button
-                variant={state.computers ? "secondary" : "outline"}
-                disabled={pending}
-                className="border-amber-400/50 bg-transparent text-amber-50 hover:bg-amber-900"
-                onClick={() => {
-                  if (state.computers) {
-                    const ok = window.confirm(
-                      "Sit the computers out? They leave the book, and their packs go back to the treasury."
-                    );
-                    if (ok) void run({ action: "adminComputers", on: false });
-                  } else {
-                    void run({ action: "adminComputers", on: true });
-                  }
-                }}
-              >
-                {state.computers ? "Computers on" : "Computers off"}
-              </Button>
+            <div className="space-y-2">
+              <Label htmlFor="admin-computers" className="text-amber-100/80">
+                Computers at the table
+              </Label>
+              <div className="flex items-end gap-2">
+                <Input
+                  id="admin-computers"
+                  inputMode="numeric"
+                  min={0}
+                  max={MAX_COMPUTERS}
+                  value={computerDraft}
+                  onChange={(event) => setComputerDraft(event.target.value)}
+                  className="border-amber-400/30 bg-amber-950/60"
+                />
+                <Button
+                  disabled={pending}
+                  className="bg-amber-300 text-amber-950 hover:bg-amber-200"
+                  onClick={() => {
+                    const next = Number(computerDraft);
+                    const current = state.computerCount ?? 0;
+                    if (next < current) {
+                      const ok = window.confirm(
+                        "Sit some computers out? They leave the book, and their packs go back to the treasury."
+                      );
+                      if (!ok) return;
+                    }
+                    void run({ action: "adminComputers", count: next });
+                  }}
+                >
+                  Set
+                </Button>
+              </div>
+              <p className="text-xs text-amber-100/60">
+                {state.computerCount ?? 0} of {MAX_COMPUTERS} seated. New game splits Issued across
+                travelers plus this many computers; leftover units stay in the treasury.
+              </p>
               <Button
                 variant="outline"
                 disabled={pending}
-                className="border-amber-400/50 bg-transparent text-amber-50 hover:bg-amber-900"
+                className="w-full border-amber-400/50 bg-transparent text-amber-50 hover:bg-amber-900"
                 onClick={() => {
+                  const bots = state.computerCount ?? 0;
                   const ok = window.confirm(
-                    "Start a new game? This clears packs, the book, and the tape. Every traveler and computer starts with 1,000 coins and an even opening pack. Leftover units of scarce goods go to a rotating slice of the table. Computers stay in and quote the book."
+                    `Start a new game? This clears packs, the book, and the tape. Every traveler and ${bots} seated computer${
+                      bots === 1 ? "" : "s"
+                    } start with 1,000 coins and floor(Issued ÷ seats) of each good. Remainder stays in the treasury for the government to sell at MV.`
                   );
                   if (ok) void run({ action: "adminNewGame" });
                 }}
