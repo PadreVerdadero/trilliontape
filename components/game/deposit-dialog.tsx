@@ -57,9 +57,9 @@ export function DepositDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Daily deposit</DialogTitle>
+          <DialogTitle>Coin drop</DialogTitle>
           <DialogDescription>
-            Day {formatNumber(shown.day)} purse just landed in your coins.
+            Drop {formatNumber(shown.day)} just landed in your coins. The next one is in 5 minutes.
           </DialogDescription>
         </DialogHeader>
         <p className="font-heading text-center text-4xl tabular-nums text-primary">

@@ -252,21 +252,37 @@ export function botQuoteMultipliers(spread: BotSpread, fair: number) {
   };
 }
 
+export function liftAskLimit(
+  spread: BotSpread,
+  fair: number,
+  waitMs: number,
+  feelingLucky: boolean
+) {
+  const fairPx = Math.max(1, Math.round(fair));
+  const steps = waitSteps(waitMs);
+  let limit = Math.max(1, Math.round(fairPx * (1 - spread.take)));
+  // After the ask sits, pay MV; later steps walk the price up with no cap.
+  if (steps >= 1 || feelingLucky) limit = Math.max(limit, fairPx);
+  if (steps >= 2) {
+    const extra = Math.max(0, chaseSlack(spread, fair, waitMs) - hopeCoins(spread, fair));
+    limit = Math.max(limit, fairPx + extra);
+  }
+  return limit;
+}
+
 export function botWillTake(
   spread: BotSpread,
   fair: number,
   side: "liftAsk" | "hitBid",
   price: number,
   feelingLucky: boolean,
-  slack = hopeCoins(spread, fair)
+  slack = hopeCoins(spread, fair),
+  waitMs = 0
 ) {
   const fairPx = Math.max(1, Math.round(fair));
   const band = Math.max(1, Math.round(slack));
   if (side === "liftAsk") {
-    // At or under MV is a take — including treasury asks, which always sit at MV.
-    // A 16–30% discount used to be required, so computers never lifted the desk.
-    if (price <= fairPx) return true;
-    return feelingLucky && price <= fairPx + band;
+    return price <= liftAskLimit(spread, fair, waitMs, feelingLucky);
   }
   const rich = price >= Math.round(fairPx * (1 + spread.take));
   const dump = feelingLucky && price >= Math.max(1, fairPx - band);

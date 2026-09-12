@@ -21,6 +21,13 @@ export function dailyDeposit(paymentNumber: number) {
   return DAILY_DEPOSITS[paymentNumber - 1];
 }
 
+export const STIPEND_SLOT_MS = 5 * 60 * 1000;
+
+export function stipendSlotKey(now = Date.now()) {
+  const slot = Math.floor(now / STIPEND_SLOT_MS) * STIPEND_SLOT_MS;
+  return `slot:${slot}`;
+}
+
 export const locations: Location[] = [
   {
     id: "town",

@@ -14,6 +14,7 @@ import {
   TABLE_GOLD,
   NET_WORTH_GOAL,
   dailyDeposit,
+  stipendSlotKey,
   searchEnergyCost,
   searchWeight,
   travelSeconds,
@@ -35,6 +36,7 @@ import {
   botQuoteMultipliers,
   botSpread,
   botWillTake,
+  hopeCoins,
   chaseAskPrice,
   chaseBidPrice,
   chaseSlack,
@@ -584,7 +586,7 @@ function touchDaily(userId: number, dayKey: string) {
     .run(userId, dayKey);
 }
 
-function grantDailyLogin(userId: number, timeZone?: string): {
+function grantDailyLogin(userId: number, _timeZone?: string): {
   amount: number;
   day: number;
   justPaid: boolean;
@@ -592,13 +594,13 @@ function grantDailyLogin(userId: number, timeZone?: string): {
   if (isBot(userId)) return null;
   const name = loadPlayerRow(userId).username;
   if (name === "Banker" || name === DESK_USERNAME) return null;
-  const day = festivalClock(timeZone).dateKey;
-  touchDaily(userId, day);
+  const slot = stipendSlotKey();
+  touchDaily(userId, slot);
   const row = getDb()
     .prepare(
       "SELECT COALESCE(login_paid, 0) AS login_paid FROM player_daily WHERE user_id = ? AND day_key = ?"
     )
-    .get(userId, day) as { login_paid: number } | undefined;
+    .get(userId, slot) as { login_paid: number } | undefined;
   const paidDays = getDb()
     .prepare("SELECT COALESCE(login_days, 0) AS login_days FROM players WHERE user_id = ?")
     .get(userId) as { login_days: number } | undefined;
@@ -606,10 +608,10 @@ function grantDailyLogin(userId: number, timeZone?: string): {
   const created = getDb()
     .prepare("SELECT created_at FROM users WHERE id = ?")
     .get(userId) as { created_at: number } | undefined;
-  if (created && festivalClock(timeZone, created.created_at).dateKey === day) {
+  if (created && stipendSlotKey(created.created_at) === slot) {
     getDb()
       .prepare("UPDATE player_daily SET login_paid = 1 WHERE user_id = ? AND day_key = ?")
-      .run(userId, day);
+      .run(userId, slot);
     return null;
   }
   const next = (paidDays?.login_days ?? 0) + 1;
@@ -619,8 +621,8 @@ function grantDailyLogin(userId: number, timeZone?: string): {
     .run(amount, next, userId);
   getDb()
     .prepare("UPDATE player_daily SET login_paid = 1 WHERE user_id = ? AND day_key = ?")
-    .run(userId, day);
-  setEvent(userId, `Daily purse: +${formatCoins(amount)} (day ${formatNumber(next)}).`);
+    .run(userId, slot);
+  setEvent(userId, `Coin drop: +${formatCoins(amount)} (drop ${formatNumber(next)}).`);
   return { amount, day: next, justPaid: true };
 }
 
@@ -1096,10 +1098,10 @@ export function adminSetItem(userId: number, itemId: string, quantity: number) {
   setEvent(userId, `Admin set ${item.emoji} ${item.name} to ${formatNumber(quantity)}.`);
 }
 
-export function adminStartGame(userId: number, timeZone?: string) {
+export function adminStartGame(userId: number, _timeZone?: string) {
   requireAdmin(userId);
   const db = getDb();
-  const dayKey = festivalClock(timeZone).dateKey;
+  const dayKey = stipendSlotKey();
   db.transaction(() => {
     db.exec(`
       DELETE FROM swap_legs;
@@ -2144,15 +2146,15 @@ function chaseOneBotQuote(
   if (quote.side === "buy") {
     const ask = db
       .prepare(
-        `SELECT id, price FROM orders
+        `SELECT id, price, created_at FROM orders
          WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND user_id != ?
          ORDER BY price ASC, id ASC LIMIT 1`
       )
-      .get(itemId, userId) as { id: number; price: number } | undefined;
+      .get(itemId, userId) as { id: number; price: number; created_at: number } | undefined;
     if (
       ask &&
       impatient &&
-      botWillTake(spread, fair, "liftAsk", ask.price, true, slack)
+      botWillTake(spread, fair, "liftAsk", ask.price, true, slack, now - ask.created_at)
     ) {
       if (availableGold(userId) < ask.price) return false;
       cancelOrders(userId, [quote.id]);
@@ -2238,15 +2240,23 @@ export function tickBots() {
       const feelingLucky = Math.random() < botLossChance(spread, fair);
       const ask = db
         .prepare(
-          `SELECT id, price FROM orders
+          `SELECT id, price, created_at FROM orders
            WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND user_id != ?
            ORDER BY price ASC, id ASC LIMIT 1`
         )
-        .get(itemId, user.id) as { id: number; price: number } | undefined;
+        .get(itemId, user.id) as { id: number; price: number; created_at: number } | undefined;
       if (
         ask &&
         availableGold(user.id) >= ask.price &&
-        botWillTake(spread, fair, "liftAsk", ask.price, feelingLucky)
+        botWillTake(
+          spread,
+          fair,
+          "liftAsk",
+          ask.price,
+          feelingLucky,
+          hopeCoins(spread, fair),
+          now - ask.created_at
+        )
       ) {
         takeOrder(user.id, ask.id, 1);
         continue;
