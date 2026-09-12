@@ -23,9 +23,24 @@ export function dailyDeposit(paymentNumber: number) {
 
 export const STIPEND_SLOT_MS = 5 * 60 * 1000;
 
-export function stipendSlotKey(now = Date.now()) {
-  const slot = Math.floor(now / STIPEND_SLOT_MS) * STIPEND_SLOT_MS;
-  return `slot:${slot}`;
+export const STIPEND_PRESETS = [
+  { ms: 30_000, label: "30 seconds" },
+  { ms: 60_000, label: "1 minute" },
+  { ms: 2 * 60_000, label: "2 minutes" },
+  { ms: 5 * 60_000, label: "5 minutes" },
+  { ms: 15 * 60_000, label: "15 minutes" },
+  { ms: 60 * 60_000, label: "1 hour" },
+  { ms: 24 * 60 * 60_000, label: "1 day" },
+] as const;
+
+export function stipendLabel(ms: number) {
+  return STIPEND_PRESETS.find((row) => row.ms === ms)?.label ?? `${Math.round(ms / 1000)} seconds`;
+}
+
+export function stipendSlotKey(now = Date.now(), slotMs = STIPEND_SLOT_MS) {
+  const ms = slotMs > 0 ? slotMs : STIPEND_SLOT_MS;
+  const slot = Math.floor(now / ms) * ms;
+  return `slot:${ms}:${slot}`;
 }
 
 export const locations: Location[] = [

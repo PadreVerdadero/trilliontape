@@ -481,6 +481,21 @@ export function setComputersEnabled(on: boolean, db: Database.Database = getDb()
   ).run(on ? "1" : "0");
 }
 
+export function stipendMs(db: Database.Database = getDb()) {
+  const row = db.prepare("SELECT value FROM game_meta WHERE key = 'stipend_ms'").get() as
+    | { value: string }
+    | undefined;
+  const ms = Number(row?.value);
+  return Number.isFinite(ms) && ms >= 1_000 ? ms : 5 * 60 * 1000;
+}
+
+export function setStipendMs(ms: number, db: Database.Database = getDb()) {
+  db.prepare(
+    `INSERT INTO game_meta (key, value) VALUES ('stipend_ms', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run(String(ms));
+}
+
 export function getDb() {
   if (!globalForDb.bazaarDb) {
     const dir = path.join(process.cwd(), "data");

@@ -257,6 +257,7 @@ export type GameState = {
   travelers: TravelerRow[];
   coinVolume: number;
   computers: boolean;
+  stipendMs: number;
   netWorthGoal: number;
   leaders: LeaderRow[];
   deposit: { amount: number; day: number; gold: number } | null;

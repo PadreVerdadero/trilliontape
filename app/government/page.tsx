@@ -1,19 +1,19 @@
-import { PlayScreen } from "@/components/game/play-screen";
+import { GovernmentScreen } from "@/components/game/government-screen";
 import { getSessionUserId } from "@/lib/game/auth";
-import { enterDesk, getGameState } from "@/lib/game/engine";
+import { enterGovernment, getGameState } from "@/lib/game/engine";
 import { SELECTED_ITEM_COOKIE, selectedItemFromCookie } from "@/lib/game/selected-item";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-export default async function PlayPage() {
+export default async function GovernmentPage() {
   const userId = await getSessionUserId();
   if (!userId) {
     redirect("/");
   }
-  enterDesk(userId);
+  enterGovernment(userId);
   const jar = await cookies();
   return (
-    <PlayScreen
+    <GovernmentScreen
       initialState={getGameState(userId)}
       initialItemId={selectedItemFromCookie(jar.get(SELECTED_ITEM_COOKIE)?.value)}
     />

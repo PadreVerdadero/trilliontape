@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { AdminPanel } from "@/components/game/admin-panel";
+import Link from "next/link";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { InventoryPanel } from "@/components/game/inventory-panel";
 import { LeaderTicker } from "@/components/game/leader-ticker";
 import { MarketPanel } from "@/components/game/market-panel";
@@ -11,6 +11,7 @@ import { useSelectedItem } from "@/hooks/use-selected-item";
 import { useMarketSort } from "@/hooks/use-market-sort";
 import { DepositDialog } from "@/components/game/deposit-dialog";
 import { GAME_NAME, GAME_PITCH } from "@/lib/game/brand";
+import { cn } from "@/lib/utils";
 import type { GameState } from "@/lib/game/types";
 
 export function PlayScreen({
@@ -50,7 +51,7 @@ export function PlayScreen({
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden pb-[env(safe-area-inset-bottom)]">
-      <DepositDialog deposit={state.deposit} />
+      <DepositDialog deposit={state.deposit} stipendMs={state.stipendMs} />
       <header className="z-20 shrink-0 border-b border-border/80 bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur">
         <LeaderTicker leaders={state.leaders ?? []} you={player.username} />
         <div className="flex w-full items-center justify-between gap-3 px-3 py-2 sm:px-4">
@@ -60,29 +61,21 @@ export function PlayScreen({
               {GAME_PITCH}
               <span className="text-border"> · </span>
               {player.username}
-              {player.isGov ? " · treasury" : ""}
-              {player.isAdmin ? " · admin" : ""}
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <Button
-              size="sm"
-              variant={player.isGov ? "secondary" : "outline"}
-              className="h-9"
-              disabled={pending}
-              onClick={() => void run({ action: "government", on: !player.isGov })}
+            <Link
+              href="/government"
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9")}
             >
-              {player.isGov ? "Leave office" : "Play as government"}
-            </Button>
-            <Button
-              size="sm"
-              variant={player.isAdmin ? "secondary" : "outline"}
-              className="h-9"
-              disabled={pending}
-              onClick={() => void run({ action: "admin", on: !player.isAdmin })}
+              Government
+            </Link>
+            <Link
+              href="/admin"
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9")}
             >
-              {player.isAdmin ? "Leave admin" : "Admin"}
-            </Button>
+              Admin
+            </Link>
             <form action="/auth/logout" method="post">
               <button
                 type="submit"
@@ -93,20 +86,6 @@ export function PlayScreen({
             </form>
           </div>
         </div>
-        {player.isAdmin ? (
-          <AdminPanel
-            player={player}
-            selectedItemId={itemId}
-            pending={pending}
-            authorized={state.prices.find((row) => row.itemId === itemId)?.authorized ?? 0}
-            issued={state.prices.find((row) => row.itemId === itemId)?.issued ?? 0}
-            onSetGold={(gold) => run({ action: "adminGold", gold })}
-            onSetItem={(itemId, quantity) => run({ action: "adminItem", itemId, quantity })}
-            onNewGame={() => run({ action: "adminNewGame" })}
-            onSetComputers={(on) => run({ action: "adminComputers", on })}
-            computers={state.computers}
-          />
-        ) : null}
         {player.hasWon ? (
           <p className="w-full truncate px-3 pb-2 text-sm text-primary sm:px-4">
             You are worth a trillion.

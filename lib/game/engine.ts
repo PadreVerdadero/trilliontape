@@ -14,7 +14,9 @@ import {
   TABLE_GOLD,
   NET_WORTH_GOAL,
   dailyDeposit,
+  stipendLabel,
   stipendSlotKey,
+  STIPEND_PRESETS,
   searchEnergyCost,
   searchWeight,
   travelSeconds,
@@ -29,12 +31,20 @@ import {
   type BuffKind,
 } from "@/lib/game/consumables";
 import { rarityFromHeld, rarityOf } from "@/lib/game/rarity";
-import { DESK_USERNAME, computersEnabled, getDb, setComputersEnabled } from "@/lib/game/db";
+import {
+  DESK_USERNAME,
+  computersEnabled,
+  getDb,
+  setComputersEnabled,
+  setStipendMs,
+  stipendMs,
+} from "@/lib/game/db";
 import {
   BOT_PROFILES,
   botLossChance,
   botQuoteMultipliers,
   botSpread,
+  botAskSize,
   botWillTake,
   hopeCoins,
   chaseAskPrice,
@@ -594,7 +604,7 @@ function grantDailyLogin(userId: number, _timeZone?: string): {
   if (isBot(userId)) return null;
   const name = loadPlayerRow(userId).username;
   if (name === "Banker" || name === DESK_USERNAME) return null;
-  const slot = stipendSlotKey();
+  const slot = stipendSlotKey(Date.now(), stipendMs());
   touchDaily(userId, slot);
   const row = getDb()
     .prepare(
@@ -608,7 +618,7 @@ function grantDailyLogin(userId: number, _timeZone?: string): {
   const created = getDb()
     .prepare("SELECT created_at FROM users WHERE id = ?")
     .get(userId) as { created_at: number } | undefined;
-  if (created && stipendSlotKey(created.created_at) === slot) {
+  if (created && stipendSlotKey(created.created_at, stipendMs()) === slot) {
     getDb()
       .prepare("UPDATE player_daily SET login_paid = 1 WHERE user_id = ? AND day_key = ?")
       .run(userId, slot);
@@ -1069,6 +1079,46 @@ export function setAdmin(userId: number, on: boolean) {
   setEvent(userId, on ? "Admin mode on. Set coins, pack qty, or start a new game." : "Admin mode off.");
 }
 
+export function enterDesk(userId: number) {
+  const db = getDb();
+  if (isGov(userId)) db.prepare("UPDATE users SET is_gov = 0 WHERE id = ?").run(userId);
+  if (isAdmin(userId)) db.prepare("UPDATE users SET is_admin = 0 WHERE id = ?").run(userId);
+}
+
+export function enterAdmin(userId: number) {
+  resolveBusy(userId);
+  if (isBot(userId)) throw new Error("Plaza regulars cannot open admin.");
+  const db = getDb();
+  if (isGov(userId)) db.prepare("UPDATE users SET is_gov = 0 WHERE id = ?").run(userId);
+  if (!isAdmin(userId)) {
+    db.prepare("UPDATE users SET is_admin = 1 WHERE id = ?").run(userId);
+    setEvent(userId, "You are in the admin office.");
+  }
+}
+
+export function enterGovernment(userId: number) {
+  resolveBusy(userId);
+  if (isBot(userId)) throw new Error("Plaza regulars cannot hold office.");
+  const db = getDb();
+  if (isAdmin(userId)) db.prepare("UPDATE users SET is_admin = 0 WHERE id = ?").run(userId);
+  if (!isGov(userId)) {
+    db.prepare("UPDATE users SET is_gov = 1 WHERE id = ?").run(userId);
+    setEvent(
+      userId,
+      "You hold the treasury. Quotes always sit at MV. Asks mint until Outstanding reaches Authorized. Bids pay sellers with new coin and burn the goods."
+    );
+  }
+}
+
+export function adminSetStipend(userId: number, ms: number) {
+  requireAdmin(userId);
+  if (!STIPEND_PRESETS.some((row) => row.ms === ms)) {
+    throw new Error("Pick a listed coin-drop interval.");
+  }
+  setStipendMs(ms);
+  setEvent(userId, `Coin drops now every ${stipendLabel(ms)}.`);
+}
+
 export function adminSetGold(userId: number, gold: number) {
   requireAdmin(userId);
   if (!Number.isInteger(gold) || gold < 0 || gold > 9_999_999) {
@@ -1120,7 +1170,7 @@ function dealOpeningShares(db: ReturnType<typeof getDb>, travelerIds: number[]) 
 export function adminStartGame(userId: number, _timeZone?: string) {
   requireAdmin(userId);
   const db = getDb();
-  const dayKey = stipendSlotKey();
+  const dayKey = stipendSlotKey(Date.now(), stipendMs());
   db.transaction(() => {
     db.exec(`
       DELETE FROM swap_legs;
@@ -2304,22 +2354,25 @@ export function tickBots() {
       const live = db
         .prepare("SELECT COALESCE(SUM(remaining), 0) AS n FROM orders WHERE user_id = ? AND remaining > 0")
         .get(user.id) as { n: number };
-      if (live.n >= 8) continue;
+      if (live.n >= 30) continue;
       const quote = botQuoteMultipliers(spread, fair);
-      const qty =
+      const bidQty =
         quote.kind !== "rest" || profile.style === "thin" || profile.style === "wild"
           ? 1
           : 1 + Math.floor(Math.random() * 3);
-      const quoteBoth = live.n <= 4 && Math.random() < 0.22;
+      const askQty = botAskSize(profile.style, quote.kind);
+      const quoteBoth = live.n <= 12 && Math.random() < 0.22;
       const buySide = Math.random() < 0.5;
       if (quoteBoth || buySide) {
         const bidPx = Math.max(1, Math.round(fair * quote.bid));
-        if (availableGold(user.id) >= bidPx * qty) placeOrder(user.id, itemId, "buy", bidPx, qty);
+        if (availableGold(user.id) >= bidPx * bidQty) {
+          placeOrder(user.id, itemId, "buy", bidPx, bidQty);
+        }
       }
       if (quoteBoth || !buySide) {
         const askPx = Math.max(1, Math.round(fair * quote.ask));
-        if (availableItem(user.id, itemId) >= qty) {
-          placeOrder(user.id, itemId, "sell", askPx, qty);
+        if (availableItem(user.id, itemId) >= askQty) {
+          placeOrder(user.id, itemId, "sell", askPx, askQty);
         }
       }
     } catch {
@@ -2718,6 +2771,7 @@ export function getGameState(
     travelers: listTravelers(userId),
     coinVolume,
     computers,
+    stipendMs: stipendMs(),
     netWorthGoal: NET_WORTH_GOAL,
     leaders,
     deposit:

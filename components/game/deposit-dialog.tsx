@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { stipendLabel } from "@/lib/game/catalog";
 import { formatCoins, formatNumber } from "@/lib/game/format";
 
 function depositKey(deposit: { amount: number; day: number }) {
@@ -34,8 +35,10 @@ function rememberShown(key: string) {
 
 export function DepositDialog({
   deposit,
+  stipendMs,
 }: {
   deposit: { amount: number; day: number; gold: number } | null;
+  stipendMs: number;
 }) {
   const [open, setOpen] = useState(false);
   const [shown, setShown] = useState(deposit);
@@ -59,7 +62,8 @@ export function DepositDialog({
         <DialogHeader>
           <DialogTitle>Coin drop</DialogTitle>
           <DialogDescription>
-            Drop {formatNumber(shown.day)} just landed in your coins. The next one is in 5 minutes.
+            Drop {formatNumber(shown.day)} just landed in your coins. The next one is in{" "}
+            {stipendLabel(stipendMs)}.
           </DialogDescription>
         </DialogHeader>
         <p className="font-heading text-center text-4xl tabular-nums text-primary">

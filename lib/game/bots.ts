@@ -313,3 +313,10 @@ export function chaseAskPrice(oldPrice: number, fair: number, slack: number, ste
   const target = Math.max(1, Math.round(fair - slack));
   return Math.max(1, Math.min(oldPrice - cut, target));
 }
+
+export function botAskSize(style: BotProfile["style"], kind: "far" | "hope" | "rest") {
+  if (kind === "rest" && style !== "thin" && style !== "wild") {
+    return 4 + Math.floor(Math.random() * 7);
+  }
+  return 2 + Math.floor(Math.random() * 4);
+}
