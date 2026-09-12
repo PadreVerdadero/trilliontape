@@ -603,7 +603,6 @@ function grantDailyLogin(userId: number, _timeZone?: string): {
   day: number;
   justPaid: boolean;
 } | null {
-  if (isBot(userId)) return null;
   const name = loadPlayerRow(userId).username;
   if (name === "Banker" || name === DESK_USERNAME) return null;
   const slot = stipendSlotKey(Date.now(), stipendMs());
@@ -634,8 +633,29 @@ function grantDailyLogin(userId: number, _timeZone?: string): {
   getDb()
     .prepare("UPDATE player_daily SET login_paid = 1 WHERE user_id = ? AND day_key = ?")
     .run(userId, slot);
-  setEvent(userId, `Coin drop: +${formatCoins(amount)} (drop ${formatNumber(next)}).`);
-  return { amount, day: next, justPaid: true };
+  if (!isBot(userId)) {
+    setEvent(userId, `Coin drop: +${formatCoins(amount)} (drop ${formatNumber(next)}).`);
+  }
+  return { amount, day: next, justPaid: !isBot(userId) };
+}
+
+function tableSeatIds() {
+  return getDb()
+    .prepare(
+      `SELECT id FROM users
+       WHERE username NOT IN ('Banker', 'Government')
+       ORDER BY username COLLATE NOCASE`
+    )
+    .all() as { id: number }[];
+}
+
+function payTableStipends(viewerId: number, timeZone?: string) {
+  let mine: { amount: number; day: number; justPaid: boolean } | null = null;
+  for (const row of tableSeatIds()) {
+    const notice = grantDailyLogin(row.id, timeZone);
+    if (row.id === viewerId) mine = notice;
+  }
+  return mine;
 }
 
 function awardVp(userId: number, amount: number) {
@@ -1198,11 +1218,19 @@ function dealOpeningShares(db: ReturnType<typeof getDb>, travelerIds: number[]) 
   );
   for (const item of items) {
     const issued = authorizedOf(item.id);
+    if (issued < 1) continue;
     const each = Math.floor(issued / seats);
-    if (each < 1) continue;
+    let extra = issued % seats;
     const unit = Math.max(1, Math.round(item.basePrice));
-    const basis = unit * each;
-    for (const id of travelerIds) grant.run(id, item.id, each, basis);
+    let hash = 0;
+    for (let i = 0; i < item.id.length; i += 1) hash = (hash * 31 + item.id.charCodeAt(i)) >>> 0;
+    const start = hash % seats;
+    for (let i = 0; i < seats; i += 1) {
+      const qty = each + (extra > 0 ? 1 : 0);
+      if (extra > 0) extra -= 1;
+      if (qty < 1) continue;
+      grant.run(travelerIds[(start + i) % seats], item.id, qty, unit * qty);
+    }
   }
 }
 
@@ -1226,51 +1254,46 @@ export function adminStartGame(userId: number, _timeZone?: string) {
       DELETE FROM festival_contracts;
       DELETE FROM area_strain;
     `);
-    setComputersEnabled(false, db);
+    setComputersEnabled(true, db);
     db.prepare(
       `UPDATE players SET gold = ?, energy = ?, energy_max = ?, busy_type = 'idle', busy_until = NULL,
          busy_payload = NULL, last_event = ?, login_days = 0, has_won = 0, won_at = NULL
        WHERE user_id IN (
-         SELECT id FROM users
-         WHERE username NOT IN ('Banker', 'Government') AND COALESCE(is_bot, 0) = 0
+         SELECT id FROM users WHERE username NOT IN ('Banker', 'Government')
        )`
     ).run(
       TABLE_GOLD,
       ENERGY_MAX,
       ENERGY_MAX,
-      "A new game. Computers sit out. 2,000 coins and an even opening pack."
+      "A new game. 1,000 coins and an even opening pack for every traveler and computer."
     );
-    db.prepare(
-      `UPDATE players SET gold = 0, last_event = 'Sitting this table out.'
-       WHERE user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)`
-    ).run();
     db.prepare(
       `UPDATE players SET gold = 0, last_event = 'The treasury desk is open.'
        WHERE user_id IN (SELECT id FROM users WHERE username IN ('Banker', 'Government'))`
     ).run();
-    const travelers = db
+    const seats = db
       .prepare(
         `SELECT id FROM users
-         WHERE username NOT IN ('Banker', 'Government') AND COALESCE(is_bot, 0) = 0
+         WHERE username NOT IN ('Banker', 'Government')
          ORDER BY username COLLATE NOCASE`
       )
       .all() as { id: number }[];
     dealOpeningShares(
       db,
-      travelers.map((row) => row.id)
+      seats.map((row) => row.id)
     );
     const mark = db.prepare(
       `INSERT INTO player_daily (user_id, day_key, first_trade, special_sold, login_paid)
        VALUES (?, ?, 0, '', 1)
        ON CONFLICT(user_id, day_key) DO UPDATE SET login_paid = 1`
     );
-    for (const row of travelers) mark.run(row.id, dayKey);
+    for (const row of seats) mark.run(row.id, dayKey);
   })();
   deskClock.bazaarDeskFloat = 0;
   alignIssuedToAuthorized(true);
   setEvent(
     userId,
-    "New game started. Computers sit out. Each traveler got the same opening pack (Issued split evenly; leftover stays on the treasury) and 2,000 coins."
+    "New game started. Every traveler and computer got 1,000 coins and an even opening pack. Leftover units of scarce goods went to a rotating slice of the table."
   );
 }
 
@@ -2355,7 +2378,7 @@ function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: num
 export function tickBots() {
   if (!computersEnabled()) return;
   const now = nowMs();
-  if (botClock.bazaarBotTick && now - botClock.bazaarBotTick < 2000) return;
+  if (botClock.bazaarBotTick && now - botClock.bazaarBotTick < 1200) return;
   botClock.bazaarBotTick = now;
   const db = getDb();
   const picked = shufflePick(BOT_PROFILES, BOT_PROFILES.length);
@@ -2366,67 +2389,70 @@ export function tickBots() {
     if (!user) continue;
     try {
       chaseStaleBotQuote(user.id, profile.style, now);
-      const itemId = profile.specialty[Math.floor(Math.random() * profile.specialty.length)];
-      const item = itemById[itemId];
-      if (!item) continue;
-      const fair = marketPrice(itemId);
-      const spread = botSpread(profile.style);
-      const feelingLucky = Math.random() < botLossChance(spread, fair);
-      const ask = db
-        .prepare(
-          `SELECT id, price, created_at FROM orders
-           WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND user_id != ?
-           ORDER BY price ASC, id ASC LIMIT 1`
-        )
-        .get(itemId, user.id) as { id: number; price: number; created_at: number } | undefined;
-      if (
-        ask &&
-        availableGold(user.id) >= ask.price &&
-        botWillTake(
-          spread,
-          fair,
-          "liftAsk",
-          ask.price,
-          feelingLucky,
-          hopeCoins(spread, fair),
-          now - ask.created_at
-        )
-      ) {
-        takeOrder(user.id, ask.id, 1);
-      }
-      const bid = db
-        .prepare(
-          `SELECT id, price FROM orders
-           WHERE item_id = ? AND side = 'buy' AND remaining > 0 AND user_id != ?
-           ORDER BY price DESC, id ASC LIMIT 1`
-        )
-        .get(itemId, user.id) as { id: number; price: number } | undefined;
-      if (
-        bid &&
-        availableItem(user.id, itemId) >= 1 &&
-        botWillTake(spread, fair, "hitBid", bid.price, feelingLucky)
-      ) {
-        takeOrder(user.id, bid.id, 1);
-      }
-      const live = db
-        .prepare("SELECT COALESCE(SUM(remaining), 0) AS n FROM orders WHERE user_id = ? AND remaining > 0")
-        .get(user.id) as { n: number };
-      if (live.n >= 48) continue;
-      const quote = botQuoteMultipliers(spread, fair);
-      const have = availableItem(user.id, itemId);
-      const askQty = Math.min(have, botAskSize(profile.style, quote.kind));
-      if (askQty >= 1) {
-        const askPx = Math.max(1, Math.round(fair * quote.ask));
-        placeOrder(user.id, itemId, "sell", askPx, askQty);
-      }
-      if (live.n <= 20 && Math.random() < 0.35) {
-        const bidQty =
-          quote.kind !== "rest" || profile.style === "thin" || profile.style === "wild"
-            ? 1
-            : 1 + Math.floor(Math.random() * 3);
-        const bidPx = Math.max(1, Math.round(fair * quote.bid));
-        if (availableGold(user.id) >= bidPx * bidQty) {
-          placeOrder(user.id, itemId, "buy", bidPx, bidQty);
+      const held = items.filter((item) => availableItem(user.id, item.id) >= 1).map((item) => item.id);
+      const focus =
+        held.length > 0
+          ? shufflePick(held, Math.min(5, held.length))
+          : [profile.specialty[Math.floor(Math.random() * profile.specialty.length)]];
+      for (const itemId of focus) {
+        const item = itemById[itemId];
+        if (!item) continue;
+        const fair = marketPrice(itemId);
+        const spread = botSpread(profile.style);
+        const feelingLucky = Math.random() < botLossChance(spread, fair);
+        const ask = db
+          .prepare(
+            `SELECT id, price, created_at FROM orders
+             WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND user_id != ?
+             ORDER BY price ASC, id ASC LIMIT 1`
+          )
+          .get(itemId, user.id) as { id: number; price: number; created_at: number } | undefined;
+        if (
+          ask &&
+          availableGold(user.id) >= ask.price &&
+          botWillTake(
+            spread,
+            fair,
+            "liftAsk",
+            ask.price,
+            feelingLucky,
+            hopeCoins(spread, fair),
+            now - ask.created_at
+          )
+        ) {
+          takeOrder(user.id, ask.id, 1);
+        }
+        const bid = db
+          .prepare(
+            `SELECT id, price FROM orders
+             WHERE item_id = ? AND side = 'buy' AND remaining > 0 AND user_id != ?
+             ORDER BY price DESC, id ASC LIMIT 1`
+          )
+          .get(itemId, user.id) as { id: number; price: number } | undefined;
+        if (
+          bid &&
+          availableItem(user.id, itemId) >= 1 &&
+          botWillTake(spread, fair, "hitBid", bid.price, feelingLucky)
+        ) {
+          takeOrder(user.id, bid.id, 1);
+        }
+        const live = db
+          .prepare("SELECT COALESCE(SUM(remaining), 0) AS n FROM orders WHERE user_id = ? AND remaining > 0")
+          .get(user.id) as { n: number };
+        if (live.n >= 80) continue;
+        const quote = botQuoteMultipliers(spread, fair);
+        const have = availableItem(user.id, itemId);
+        const askQty = Math.min(have, Math.max(1, botAskSize(profile.style, quote.kind)));
+        if (askQty >= 1) {
+          const askPx = Math.max(1, Math.round(fair * quote.ask));
+          placeOrder(user.id, itemId, "sell", askPx, askQty);
+        }
+        if (live.n <= 30 && Math.random() < 0.28) {
+          const bidQty = 1 + Math.floor(Math.random() * 3);
+          const bidPx = Math.max(1, Math.round(fair * quote.bid));
+          if (availableGold(user.id) >= bidPx * bidQty) {
+            placeOrder(user.id, itemId, "buy", bidPx, bidQty);
+          }
         }
       }
     } catch {
@@ -2719,7 +2745,7 @@ export function getGameState(
     alignIssuedToAuthorized();
   }
   resolveBusy(userId);
-  const depositNotice = grantDailyLogin(userId, timeZone);
+  const depositNotice = payTableStipends(userId, timeZone);
   const player = loadPlayerRow(userId);
   const stacks = getDb()
     .prepare(

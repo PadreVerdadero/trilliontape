@@ -279,7 +279,7 @@ export function AdminScreen({
                 className="border-amber-400/50 bg-transparent text-amber-50 hover:bg-amber-900"
                 onClick={() => {
                   const ok = window.confirm(
-                    "Start a new game? This clears packs, the book, and the tape. Computers sit out. Travelers start with 2,000 coins and the same opening pack: Issued split evenly, leftover listed on the treasury at opening MV."
+                    "Start a new game? This clears packs, the book, and the tape. Every traveler and computer starts with 1,000 coins and an even opening pack. Leftover units of scarce goods go to a rotating slice of the table. Computers stay in and quote the book."
                   );
                   if (ok) void run({ action: "adminNewGame" });
                 }}

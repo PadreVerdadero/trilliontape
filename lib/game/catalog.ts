@@ -1,11 +1,11 @@
 import type { Cosmetic, Item, Location } from "@/lib/game/types";
 
 export const STARTING_GOLD = 1_000;
-export const TABLE_GOLD = 2_000;
+export const TABLE_GOLD = 1_000;
 export const NET_WORTH_GOAL = 1_000_000_000_000;
 
-export function seatGold(computers: boolean) {
-  return computers ? STARTING_GOLD : TABLE_GOLD;
+export function seatGold(_computers?: boolean) {
+  return TABLE_GOLD;
 }
 
 const DAILY_DEPOSITS = [
