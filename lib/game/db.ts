@@ -501,7 +501,17 @@ export function setStipendMs(ms: number, db: Database.Database = getDb()) {
   ).run(String(ms));
 }
 
+function ensureItemCaps(db: Database.Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS item_caps (
+      item_id TEXT PRIMARY KEY,
+      authorized INTEGER NOT NULL
+    )
+  `);
+}
+
 export function getItemAuthorized(itemId: string, db: Database.Database = getDb()) {
+  ensureItemCaps(db);
   const row = db
     .prepare("SELECT authorized FROM item_caps WHERE item_id = ?")
     .get(itemId) as { authorized: number } | undefined;
@@ -510,6 +520,7 @@ export function getItemAuthorized(itemId: string, db: Database.Database = getDb(
 }
 
 export function setItemAuthorized(itemId: string, authorized: number, db: Database.Database = getDb()) {
+  ensureItemCaps(db);
   db.prepare(
     `INSERT INTO item_caps (item_id, authorized) VALUES (?, ?)
      ON CONFLICT(item_id) DO UPDATE SET authorized = excluded.authorized`
