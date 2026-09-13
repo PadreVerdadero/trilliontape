@@ -254,6 +254,28 @@ export type LeaderRow = {
   netWorth: number;
 };
 
+export type GoalNeed = {
+  itemId: string;
+  quantity: number;
+};
+
+export type GoalView = {
+  mode: "threshold" | "timed";
+  score: "netWorth" | "gold" | "items";
+  threshold: number;
+  durationMs: number;
+  endsAt: number | null;
+  needs: GoalNeed[];
+  label: string;
+};
+
+export type GameOverView = {
+  over: boolean;
+  winner: string | null;
+  endedAt: number | null;
+  reason: "threshold" | "time" | null;
+};
+
 export type GameState = {
   now: number;
   player: PlayerState;
@@ -272,6 +294,8 @@ export type GameState = {
   stipendMs: number;
   adminRoster: AdminSeat[];
   netWorthGoal: number;
+  goal: GoalView;
+  gameOver: GameOverView;
   leaders: LeaderRow[];
   deposit: { amount: number; day: number; gold: number } | null;
 };

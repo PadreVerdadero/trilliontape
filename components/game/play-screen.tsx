@@ -13,6 +13,7 @@ import { useMobileLayout } from "@/hooks/use-mobile-layout";
 import { useSelectedItem } from "@/hooks/use-selected-item";
 import { useMarketSort } from "@/hooks/use-market-sort";
 import { DepositDialog } from "@/components/game/deposit-dialog";
+import { GameOverBanner, GameOverScreen, GoalClock } from "@/components/game/game-over-screen";
 import { GAME_NAME, GAME_PITCH } from "@/lib/game/brand";
 import { cn } from "@/lib/utils";
 import type { GameState } from "@/lib/game/types";
@@ -89,6 +90,7 @@ export function PlayScreen({
       selectedItemId={itemId}
       rankedItemIds={marketSort.rankedItems.map((item) => item.id)}
       coinVolume={state.coinVolume}
+      goalLabel={state.goal?.label}
     />
   );
 
@@ -105,6 +107,15 @@ export function PlayScreen({
   return (
     <div className="flex h-dvh flex-col overflow-hidden pb-[env(safe-area-inset-bottom)]">
       <DepositDialog deposit={state.deposit} stipendMs={state.stipendMs} />
+      {state.goal && state.gameOver ? (
+        <GameOverScreen
+          goal={state.goal}
+          gameOver={state.gameOver}
+          leaders={state.leaders ?? []}
+          you={player.username}
+          canOffice={Boolean(player.canOffice)}
+        />
+      ) : null}
       <header className="z-20 shrink-0 border-b border-border/80 bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur">
         <LeaderTicker leaders={state.leaders ?? []} you={player.username} />
         <div className="flex w-full items-center justify-between gap-2 px-3 py-2 sm:px-4">
@@ -148,9 +159,17 @@ export function PlayScreen({
             </form>
           </div>
         </div>
-        {player.hasWon ? (
+        {state.gameOver?.over ? (
+          <GameOverBanner gameOver={state.gameOver} goal={state.goal} />
+        ) : state.goal?.mode === "timed" ? (
+          <GoalClock goal={state.goal} now={state.now} />
+        ) : player.hasWon ? (
           <p className="w-full truncate px-3 pb-2 text-sm text-primary sm:px-4">
-            You are worth a trillion.
+            You hit the mark.
+          </p>
+        ) : state.goal ? (
+          <p className="w-full truncate px-3 pb-2 text-sm text-muted-foreground sm:px-4">
+            {state.goal.label}
           </p>
         ) : null}
         {player.lastEvent ? (

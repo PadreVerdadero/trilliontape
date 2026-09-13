@@ -19,6 +19,7 @@ import {
   adminSitOtherTravelers,
   adminSetStipend,
   adminSetIssued,
+  adminSetGoal,
 } from "@/lib/game/engine";
 
 type ActionBody = {
@@ -59,6 +60,14 @@ type ActionBody = {
   | { action: "adminComputers"; count?: number; on?: boolean }
   | { action: "adminSitOthers" }
   | { action: "adminStipend"; ms: number }
+  | {
+      action: "adminGoal";
+      mode: "threshold" | "timed";
+      score: "netWorth" | "gold" | "items";
+      threshold?: number;
+      durationMs?: number;
+      needs?: { itemId: string; quantity: number }[];
+    }
 );
 
 export async function POST(request: Request) {
@@ -141,6 +150,15 @@ export async function POST(request: Request) {
         break;
       case "adminStipend":
         adminSetStipend(userId, Number(body.ms));
+        break;
+      case "adminGoal":
+        adminSetGoal(userId, {
+          mode: body.mode,
+          score: body.score,
+          threshold: body.threshold,
+          durationMs: body.durationMs,
+          needs: body.needs,
+        });
         break;
       default:
         throw new Error("Unknown action.");

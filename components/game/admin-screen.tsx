@@ -9,6 +9,7 @@ import { items, itemById, STIPEND_PRESETS, stipendLabel } from "@/lib/game/catal
 import { MAX_COMPUTERS } from "@/lib/game/bots";
 import { formatCoins, formatNumber } from "@/lib/game/format";
 import { MobileToggle } from "@/components/game/mobile-toggle";
+import { GoalEditor } from "@/components/game/goal-editor";
 import { useGame } from "@/hooks/use-game";
 import { useMobileLayout } from "@/hooks/use-mobile-layout";
 import { useSelectedItem } from "@/hooks/use-selected-item";
@@ -310,6 +311,25 @@ export function AdminScreen({
                 0–{MAX_COMPUTERS}. Zero computers still leaves every traveler account at the table
                 — leftover test names count as players.
               </p>
+              {state.goal ? (
+                <p className="text-xs text-amber-100/70">Goal: {state.goal.label}</p>
+              ) : null}
+              {state.goal ? (
+                <GoalEditor
+                  goal={state.goal}
+                  pending={pending}
+                  onSave={(draft) =>
+                    run({
+                      action: "adminGoal",
+                      mode: draft.mode,
+                      score: draft.score,
+                      threshold: draft.threshold,
+                      durationMs: draft.durationMs,
+                      needs: draft.needs,
+                    })
+                  }
+                />
+              ) : null}
               {(state.travelerCount ?? 0) > 1 ? (
                 <Button
                   variant="outline"

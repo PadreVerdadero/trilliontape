@@ -31,10 +31,15 @@ import {
 import { rarityFromHeld, rarityOf } from "@/lib/game/rarity";
 import {
   DESK_USERNAME,
+  clearGameOver,
   computerCount,
   getDb,
+  readGameOver,
+  readGoal,
   seedBots,
   setComputerCount,
+  writeGameOver,
+  writeGoal,
   setStipendMs,
   stipendMs,
   getItemAuthorized,
@@ -56,6 +61,7 @@ import {
   type BotProfile,
 } from "@/lib/game/bots";
 import { isOfficeUsername } from "@/lib/game/office";
+import { describeGoal, meetsGoal, sortByGoal, validateGoalDraft, type GoalConfig } from "@/lib/game/goal";
 import { computeFairValue, MV_PRINTS } from "@/lib/game/market";
 import {
   chalkboardItem,
@@ -928,6 +934,10 @@ function insertLiveOrder(
   return Number(info.lastInsertRowid);
 }
 
+function requireOpenGame() {
+  if (readGameOver().over) throw new Error("The game is over. Jesse can start a new game from Admin.");
+}
+
 export function placeOrder(
   userId: number,
   itemId: string,
@@ -936,6 +946,7 @@ export function placeOrder(
   quantity: number
 ) {
   resolveBusy(userId);
+  requireOpenGame();
   const item = itemById[itemId];
   if (!item) throw new Error("Unknown item.");
   const treasury = isGov(userId);
@@ -985,6 +996,7 @@ export function placeOrder(
 
 export function takeOrder(userId: number, orderId: number, quantity = 1) {
   resolveBusy(userId);
+  requireOpenGame();
   const db = getDb();
   const order = db
     .prepare(
@@ -1292,9 +1304,18 @@ export function adminStartGame(userId: number, _timeZone?: string, count?: numbe
   }
   const db = getDb();
   const dayKey = stipendSlotKey(Date.now(), stipendMs());
-  db.transaction(() => {
+    db.transaction(() => {
     seedBots(db);
     setComputerCount(count ?? computerCount(db), db);
+    clearGameOver(db);
+    const goal = readGoal(db);
+    writeGoal(
+      {
+        ...goal,
+        endsAt: goal.mode === "timed" ? Date.now() + goal.durationMs : null,
+      },
+      db
+    );
     db.exec(`
       DELETE FROM swap_legs;
       DELETE FROM swap_offers;
@@ -2295,24 +2316,63 @@ function netWorthLeaders(prices: MarketPrice[]): LeaderRow[] {
     }));
 }
 
-function noteTrillionWins(leaders: LeaderRow[], viewerId: number) {
-  const db = getDb();
+function markWinnerName(username: string, now: number) {
+  const user = getDb()
+    .prepare("SELECT id FROM users WHERE username = ?")
+    .get(username) as { id: number } | undefined;
+  if (!user) return;
+  getDb()
+    .prepare("UPDATE players SET has_won = 1, won_at = COALESCE(won_at, ?) WHERE user_id = ?")
+    .run(now, user.id);
+}
+
+function resolveGoal(leaders: LeaderRow[], viewerId: number) {
   const now = nowMs();
-  for (const row of leaders) {
-    if (row.netWorth < NET_WORTH_GOAL) continue;
-    const user = db
-      .prepare(
-        `SELECT u.id, COALESCE(u.is_bot, 0) AS is_bot, COALESCE(p.has_won, 0) AS has_won
-         FROM users u JOIN players p ON p.user_id = u.id
-         WHERE u.username = ?`
-      )
-      .get(row.username) as { id: number; is_bot: number; has_won: number } | undefined;
-    if (!user || user.is_bot || user.has_won) continue;
-    db.prepare("UPDATE players SET has_won = 1, won_at = ? WHERE user_id = ?").run(now, user.id);
-    if (user.id === viewerId) {
-      setEvent(viewerId, "You are worth a trillion. That is the game.");
+  let goal = readGoal();
+  const current = readGameOver();
+  if (current.over) return { goal, over: current };
+  if (goal.mode === "timed") {
+    const endsAt = goal.endsAt ?? now + goal.durationMs;
+    if (goal.endsAt == null) {
+      goal = { ...goal, endsAt };
+      writeGoal(goal);
     }
+    if (now < endsAt) return { goal, over: current };
+    const winner = sortByGoal(leaders, goal)[0]?.username ?? null;
+    const over = { over: true, winner, endedAt: now, reason: "time" as const };
+    writeGameOver(over);
+    if (winner) markWinnerName(winner, now);
+    if (winner === loadPlayerRow(viewerId).username) {
+      setEvent(viewerId, `Game over. You had the most ${goal.score === "gold" ? "coins" : goal.score === "items" ? "of those goods" : "net worth"}.`);
+    }
+    return { goal, over };
   }
+  const crossed = sortByGoal(
+    leaders.filter((row) => meetsGoal(row, goal)),
+    goal
+  );
+  const winner = crossed[0]?.username;
+  if (!winner) return { goal, over: current };
+  const over = { over: true, winner, endedAt: now, reason: "threshold" as const };
+  writeGameOver(over);
+  markWinnerName(winner, now);
+  if (winner === loadPlayerRow(viewerId).username) {
+    setEvent(viewerId, "Game over. You hit the mark.");
+  }
+  return { goal, over };
+}
+
+export function adminSetGoal(userId: number, draft: Partial<GoalConfig>) {
+  requireAdmin(userId);
+  const now = nowMs();
+  const goal = validateGoalDraft(draft);
+  const next: GoalConfig = {
+    ...goal,
+    endsAt: goal.mode === "timed" ? now + goal.durationMs : null,
+  };
+  writeGoal(next);
+  clearGameOver();
+  setEvent(userId, `Goal set. ${describeGoal(next)}`);
 }
 
 function priceSheet(timeZone?: string): MarketPrice[] {
@@ -2491,6 +2551,7 @@ function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: num
 }
 
 export function tickBots() {
+  if (readGameOver().over) return;
   const seated = computerCount();
   if (seated < 1) return;
   const now = nowMs();
@@ -2645,6 +2706,7 @@ function describeBundle(gold: number, legs: { itemId: string; quantity: number }
 
 export function proposeSwap(userId: number, draft: SwapDraft) {
   resolveBusy(userId);
+  requireOpenGame();
   const giveGold = Number(draft.giveGold ?? 0);
   const wantGold = Number(draft.wantGold ?? 0);
   if (!Number.isInteger(giveGold) || giveGold < 0 || !Number.isInteger(wantGold) || wantGold < 0) {
@@ -2717,6 +2779,7 @@ export function declineSwap(userId: number, offerId: number) {
 
 export function acceptSwap(userId: number, offerId: number) {
   resolveBusy(userId);
+  requireOpenGame();
   const offer = loadSwap(offerId);
   if (offer.status !== "open") throw new Error("That deal is already closed.");
   if (offer.from_user_id === userId) throw new Error("You cannot take your own deal.");
@@ -2948,7 +3011,7 @@ export function getGameState(
 
   const prices = priceSheet(timeZone);
   const leaders = netWorthLeaders(prices);
-  noteTrillionWins(leaders, userId);
+  const { goal, over } = resolveGoal(leaders, userId);
   const winners = getDb()
     .prepare(
       `SELECT u.username, p.won_at AS wonAt
@@ -3009,7 +3072,9 @@ export function getGameState(
     travelerCount: travelerCount(),
     stipendMs: stipendMs(),
     adminRoster: canHoldOffice(userId) ? listAdminRoster() : [],
-    netWorthGoal: NET_WORTH_GOAL,
+    netWorthGoal: goal.score === "netWorth" ? goal.threshold : NET_WORTH_GOAL,
+    goal: { ...goal, label: describeGoal(goal) },
+    gameOver: over,
     leaders,
     deposit:
       depositNotice?.justPaid

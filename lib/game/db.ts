@@ -12,6 +12,12 @@ import {
 } from "@/lib/game/catalog";
 import { BOT_PROFILES, MAX_COMPUTERS } from "@/lib/game/bots";
 import { OFFICE_USERNAME } from "@/lib/game/office";
+import {
+  defaultGoal,
+  normalizeGoal,
+  type GameOverState,
+  type GoalConfig,
+} from "@/lib/game/goal";
 
 export const DESK_USERNAME = "Government";
 
@@ -536,6 +542,54 @@ export function stipendMs(db: Database.Database = getDb()) {
     | undefined;
   const ms = Number(row?.value);
   return Number.isFinite(ms) && ms >= 1_000 ? ms : 5 * 60 * 1000;
+}
+
+export function readGoal(db: Database.Database = getDb()): GoalConfig {
+  const row = db.prepare("SELECT value FROM game_meta WHERE key = 'goal'").get() as
+    | { value: string }
+    | undefined;
+  if (!row) return defaultGoal();
+  try {
+    return normalizeGoal(JSON.parse(row.value) as Partial<GoalConfig>);
+  } catch {
+    return defaultGoal();
+  }
+}
+
+export function writeGoal(goal: GoalConfig, db: Database.Database = getDb()) {
+  db.prepare(
+    `INSERT INTO game_meta (key, value) VALUES ('goal', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run(JSON.stringify(goal));
+}
+
+export function readGameOver(db: Database.Database = getDb()): GameOverState {
+  const row = db.prepare("SELECT value FROM game_meta WHERE key = 'game_over'").get() as
+    | { value: string }
+    | undefined;
+  if (!row) return { over: false, winner: null, endedAt: null, reason: null };
+  try {
+    const parsed = JSON.parse(row.value) as Partial<GameOverState>;
+    return {
+      over: Boolean(parsed.over),
+      winner: parsed.winner ? String(parsed.winner) : null,
+      endedAt: parsed.endedAt != null ? Number(parsed.endedAt) : null,
+      reason: parsed.reason === "threshold" || parsed.reason === "time" ? parsed.reason : null,
+    };
+  } catch {
+    return { over: false, winner: null, endedAt: null, reason: null };
+  }
+}
+
+export function writeGameOver(state: GameOverState, db: Database.Database = getDb()) {
+  db.prepare(
+    `INSERT INTO game_meta (key, value) VALUES ('game_over', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run(JSON.stringify(state));
+}
+
+export function clearGameOver(db: Database.Database = getDb()) {
+  writeGameOver({ over: false, winner: null, endedAt: null, reason: null }, db);
 }
 
 export function setStipendMs(ms: number, db: Database.Database = getDb()) {

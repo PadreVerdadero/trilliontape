@@ -38,6 +38,7 @@ export function InventoryPanel({
   selectedItemId,
   rankedItemIds,
   coinVolume,
+  goalLabel,
 }: {
   player: PlayerState;
   prices: MarketPrice[];
@@ -45,6 +46,7 @@ export function InventoryPanel({
   selectedItemId?: string;
   rankedItemIds: string[];
   coinVolume: number;
+  goalLabel?: string;
 }) {
   const rarityMap = rarityMapFromPrices(
     items.map((item) => item.id),
@@ -163,7 +165,8 @@ export function InventoryPanel({
         >
           <span className="block tabular-nums">{formatNumber(net)}</span>
           <span className="block text-[10px] font-normal text-muted-foreground">
-            Goal {formatCompact(NET_WORTH_GOAL)} · {formatNumber(player.gold)}🪙 ·{" "}
+            {goalLabel ? `${goalLabel} · ` : `Goal ${formatCompact(NET_WORTH_GOAL)} · `}
+            {formatNumber(player.gold)}🪙 ·{" "}
             {formatNumber(goods)} goods
           </span>
         </span>
