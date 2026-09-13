@@ -24,7 +24,7 @@ import { defaultStipendLadder, normalizeStipendLadder } from "@/lib/game/stipend
 
 export const DESK_USERNAME = "Government";
 
-const BOOTSTRAP_REV = 15;
+const BOOTSTRAP_REV = 16;
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: Database.Database;
@@ -538,7 +538,7 @@ export function insertShareType(
   },
   db: Database.Database = getDb()
 ) {
-  ensureShareTypesTable(db);
+  hydrateShareCatalog(db);
   const max = db.prepare("SELECT COALESCE(MAX(sort_order), -1) AS n FROM share_types").get() as { n: number };
   db.prepare(
     `INSERT INTO share_types (id, name, emoji, image, base_price, authorized, sort_order)

@@ -48,6 +48,7 @@ import {
   setItemAuthorized,
   insertShareType,
   removeShareType,
+  hydrateShareCatalog,
 } from "@/lib/game/db";
 import { parseStipendSlotKey, validateStipendLadder } from "@/lib/game/stipend-ladder";
 import {
@@ -3047,6 +3048,7 @@ export function getGameState(
   timeZone?: string,
   options?: { tick?: boolean }
 ): GameState {
+  hydrateShareCatalog();
   if (options?.tick !== false) {
     tickBots();
     alignIssuedToAuthorized();
