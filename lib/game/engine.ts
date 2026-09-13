@@ -465,18 +465,36 @@ function isBot(userId: number) {
   return Boolean(row?.is_bot);
 }
 
+function tradeDeskName(username: string, treasury: boolean) {
+  if (treasury || username === DESK_USERNAME || username === "Banker") return DESK_USERNAME;
+  return username;
+}
+
 function recordTrade(
   itemId: string,
   price: number,
   quantity: number,
   buyUserId: number,
-  sellUserId: number
+  sellUserId: number,
+  buyTreasury = false,
+  sellTreasury = false
 ) {
+  const deskId = buyTreasury || sellTreasury ? ensureDeskUser() : 0;
   getDb()
     .prepare(
-      "INSERT INTO trades (item_id, price, quantity, buy_user_id, sell_user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+      `INSERT INTO trades (item_id, price, quantity, buy_user_id, sell_user_id, created_at, buy_treasury, sell_treasury)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(itemId, price, quantity, buyUserId, sellUserId, nowMs());
+    .run(
+      itemId,
+      price,
+      quantity,
+      buyTreasury ? deskId : buyUserId,
+      sellTreasury ? deskId : sellUserId,
+      nowMs(),
+      buyTreasury ? 1 : 0,
+      sellTreasury ? 1 : 0
+    );
 }
 
 function executeFill(
@@ -509,7 +527,7 @@ function executeFill(
   else db.prepare("UPDATE orders SET remaining = ? WHERE id = ?").run(buyLeft, buy.id);
   if (sellLeft <= 0) db.prepare("DELETE FROM orders WHERE id = ?").run(sell.id);
   else db.prepare("UPDATE orders SET remaining = ? WHERE id = ?").run(sellLeft, sell.id);
-  recordTrade(itemId, price, quantity, buy.user_id, sell.user_id);
+  recordTrade(itemId, price, quantity, buy.user_id, sell.user_id, govBuy, govSell);
   if (buy.user_id !== sell.user_id) {
     if (!isBot(buy.user_id)) awardFirstTradeVp(buy.user_id);
     if (!isBot(sell.user_id)) awardFirstTradeVp(sell.user_id);
@@ -1569,6 +1587,8 @@ function mapTrade(row: {
   created_at: number;
   buy_name: string;
   sell_name: string;
+  buy_treasury?: number;
+  sell_treasury?: number;
 }): TradeRow {
   return {
     id: row.id,
@@ -1576,13 +1596,16 @@ function mapTrade(row: {
     price: row.price,
     quantity: row.quantity,
     createdAt: row.created_at,
-    buyUsername: row.buy_name,
-    sellUsername: row.sell_name,
+    buyUsername: tradeDeskName(row.buy_name, Boolean(row.buy_treasury)),
+    sellUsername: tradeDeskName(row.sell_name, Boolean(row.sell_treasury)),
   };
 }
 
 function loadRecentTrades(limit: number, itemId?: string): TradeRow[] {
-  const sql = `SELECT t.id, t.item_id, t.price, t.quantity, t.created_at, b.username AS buy_name, s.username AS sell_name
+  const sql = `SELECT t.id, t.item_id, t.price, t.quantity, t.created_at,
+              b.username AS buy_name, s.username AS sell_name,
+              COALESCE(t.buy_treasury, 0) AS buy_treasury,
+              COALESCE(t.sell_treasury, 0) AS sell_treasury
        FROM trades t
        JOIN users b ON b.id = t.buy_user_id
        JOIN users s ON s.id = t.sell_user_id
@@ -1601,6 +1624,8 @@ function loadRecentTrades(limit: number, itemId?: string): TradeRow[] {
     created_at: number;
     buy_name: string;
     sell_name: string;
+    buy_treasury: number;
+    sell_treasury: number;
   }[];
   return rows.map(mapTrade);
 }

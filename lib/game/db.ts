@@ -22,7 +22,7 @@ import { defaultStipendLadder, normalizeStipendLadder } from "@/lib/game/stipend
 
 export const DESK_USERNAME = "Government";
 
-const BOOTSTRAP_REV = 13;
+const BOOTSTRAP_REV = 14;
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: Database.Database;
@@ -221,6 +221,8 @@ function migrate(db: Database.Database) {
   ensureColumn(db, "player_daily", "login_paid", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "players", "login_days", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "players", "at_table", "INTEGER NOT NULL DEFAULT 1");
+  ensureColumn(db, "trades", "buy_treasury", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "trades", "sell_treasury", "INTEGER NOT NULL DEFAULT 0");
   seedInventoryCostBasis(db);
 }
 
