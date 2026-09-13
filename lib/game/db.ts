@@ -14,7 +14,7 @@ import { BOT_PROFILES, MAX_COMPUTERS } from "@/lib/game/bots";
 
 export const DESK_USERNAME = "Government";
 
-const BOOTSTRAP_REV = 11;
+const BOOTSTRAP_REV = 12;
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: Database.Database;
@@ -436,29 +436,30 @@ function purgeRetiredItems(db: Database.Database) {
   })();
 }
 
-function seedBots(db: Database.Database) {
-  const already = db.prepare("SELECT COUNT(*) AS n FROM users WHERE COALESCE(is_bot, 0) = 1").get() as {
-    n: number;
-  };
-  if (already.n >= BOT_PROFILES.length) return;
+export function seedBots(db: Database.Database = getDb()) {
   const hash = bcrypt.hashSync("bot-not-for-login", 6);
   const now = Date.now();
   const insertUser = db.prepare(
     "INSERT INTO users (username, password_hash, created_at, is_bot) VALUES (?, ?, ?, 1)"
   );
+  const insertPlayer = db.prepare(
+    "INSERT INTO players (user_id, gold, location_id, energy, energy_max, last_event) VALUES (?, 0, 'town', ?, ?, ?)"
+  );
+  const markBot = db.prepare("UPDATE users SET is_bot = 1 WHERE id = ?");
   for (const bot of BOT_PROFILES) {
     const existing = db
       .prepare("SELECT id FROM users WHERE username = ?")
       .get(bot.username) as { id: number } | undefined;
-    let userId = existing?.id;
-    if (!userId) {
+    if (!existing) {
       const info = insertUser.run(bot.username, hash, now);
-      userId = Number(info.lastInsertRowid);
-      db.prepare(
-        "INSERT INTO players (user_id, gold, location_id, energy, energy_max, last_event) VALUES (?, ?, 'town', ?, ?, ?)"
-      ).run(userId, STARTING_GOLD, ENERGY_MAX, ENERGY_MAX, "A computer trader keeping the book honest.");
+      insertPlayer.run(
+        Number(info.lastInsertRowid),
+        ENERGY_MAX,
+        ENERGY_MAX,
+        "Sitting this table out."
+      );
     } else {
-      db.prepare("UPDATE users SET is_bot = 1 WHERE id = ?").run(userId);
+      markBot.run(existing.id);
     }
   }
 }

@@ -5,7 +5,7 @@ export type BotProfile = {
   style: "tight" | "wide" | "thin" | "wild";
 };
 
-export const BOT_PROFILES: BotProfile[] = [
+const NAMED_BOTS: BotProfile[] = [
   {
     username: "Piper",
     gold: 2400,
@@ -140,7 +140,38 @@ export const BOT_PROFILES: BotProfile[] = [
   },
 ];
 
-export const MAX_COMPUTERS = BOT_PROFILES.length;
+const EXTRA_BOT_NAMES = [
+  "Alder", "Aspen", "Basil", "Briar", "Brook", "Burdock", "Cairn", "Chive",
+  "Clove", "Copse", "Creek", "Daisy", "Dew", "Dock", "Elder", "Elm",
+  "Fennel", "Fern", "Flint", "Fog", "Forge", "Frost", "Gilt", "Glen",
+  "Grit", "Grove", "Hail", "Haw", "Hazel", "Heath", "Holly", "Honey",
+  "Ink", "Iris", "Ivy", "Jasper", "Juniper", "Kelp", "Kestrel", "Lark",
+  "Laurel", "Lichen", "Lotus", "Mallow", "Maple", "Marl", "Meadow", "Mint",
+  "Mist", "Moss", "Moth", "Mullein", "Oak", "Oat", "Osier", "Otter",
+  "Pebble", "Pepper", "Pine", "Plum", "Pond", "Poppy", "Quartz", "Rain",
+  "Ridge", "Rowan", "Rush", "Sage", "Sedge", "Shale", "Sloe", "Sparrow",
+  "Spruce", "Thistle", "Thorn", "Thyme", "Vale", "Vine", "Willow", "Wren",
+] as const;
+
+const GOODS = ["wheat", "berries", "wood", "fish", "flower", "stone", "mushrooms", "coal", "shell", "gem"];
+const STYLES = ["tight", "wide", "thin", "wild"] as const;
+
+function extraBot(name: string, index: number): BotProfile {
+  const specialty = [0, 3, 5, 7].map((step) => GOODS[(index + step) % GOODS.length]);
+  return {
+    username: name,
+    gold: 2100 + ((index * 170) % 1800),
+    specialty,
+    style: STYLES[index % STYLES.length],
+  };
+}
+
+export const MAX_COMPUTERS = 100;
+
+export const BOT_PROFILES: BotProfile[] = [
+  ...NAMED_BOTS,
+  ...EXTRA_BOT_NAMES.slice(0, MAX_COMPUTERS - NAMED_BOTS.length).map(extraBot),
+];
 
 export const BOT_USERNAMES = new Set(BOT_PROFILES.map((bot) => bot.username));
 

@@ -33,6 +33,7 @@ import {
   DESK_USERNAME,
   computerCount,
   getDb,
+  seedBots,
   setComputerCount,
   setStipendMs,
   stipendMs,
@@ -1276,6 +1277,7 @@ export function adminStartGame(userId: number, _timeZone?: string, count?: numbe
   const db = getDb();
   const dayKey = stipendSlotKey(Date.now(), stipendMs());
   db.transaction(() => {
+    seedBots(db);
     setComputerCount(count ?? computerCount(db), db);
     db.exec(`
       DELETE FROM swap_legs;
@@ -1362,6 +1364,7 @@ export function adminStartGame(userId: number, _timeZone?: string, count?: numbe
 }
 
 function applyComputerSeats(db: ReturnType<typeof getDb>, count: number) {
+  seedBots(db);
   const next = setComputerCount(count, db);
   const seated = new Set(seatedBotUsernames(db));
   const bots = db
@@ -2478,7 +2481,8 @@ export function tickBots() {
   if (botClock.bazaarBotTick && now - botClock.bazaarBotTick < 1200) return;
   botClock.bazaarBotTick = now;
   const db = getDb();
-  const picked = shufflePick(BOT_PROFILES.slice(0, seated), seated);
+  const seatedProfiles = BOT_PROFILES.slice(0, seated);
+  const picked = shufflePick(seatedProfiles, Math.min(seatedProfiles.length, 28));
   for (const profile of picked) {
     const user = db
       .prepare("SELECT id FROM users WHERE username = ? AND COALESCE(is_bot, 0) = 1")
