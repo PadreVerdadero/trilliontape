@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { STIPEND_PRESETS, stipendLabel } from "@/lib/game/catalog";
+import { MAX_STARTING_GOLD, STIPEND_PRESETS, stipendLabel } from "@/lib/game/catalog";
 import { ItemIcon } from "@/components/game/item-icon";
 import { ShareEditor } from "@/components/game/share-editor";
 import { MIN_SHARE_TYPES, playItemMap, playItems } from "@/lib/game/shares";
@@ -40,6 +40,7 @@ export function AdminScreen({
   const [qtyInput, setQtyInput] = useState("0");
   const [issuedDraft, setIssuedDraft] = useState<Record<string, string>>({});
   const [computerDraft, setComputerDraft] = useState(String(initialState.computerCount ?? 0));
+  const [startingDraft, setStartingDraft] = useState(String(initialState.startingGold ?? 1000));
   const [mobile, setMobile] = useMobileLayout();
 
   const player = state?.player;
@@ -64,6 +65,10 @@ export function AdminScreen({
   useEffect(() => {
     setComputerDraft(String(state?.computerCount ?? 0));
   }, [state?.computerCount]);
+
+  useEffect(() => {
+    setStartingDraft(String(state?.startingGold ?? 1000));
+  }, [state?.startingGold]);
 
   const capKey = `${catalog.map((item) => item.id).join(",")}|${(state?.prices ?? [])
     .map((row) => `${row.itemId}:${row.authorized}`)
@@ -289,6 +294,38 @@ export function AdminScreen({
                   onSave={(amounts) => run({ action: "adminStipendLadder", amounts })}
                 />
               ) : null}
+              <div className="space-y-1 pt-2">
+                <Label htmlFor="admin-starting-gold" className="text-amber-100/80">
+                  Starting purse
+                </Label>
+                <div className="flex items-end gap-2">
+                  <Input
+                    id="admin-starting-gold"
+                    inputMode="numeric"
+                    value={startingDraft}
+                    onChange={(event) => setStartingDraft(event.target.value)}
+                    className="border-amber-400/30 bg-amber-950/60"
+                  />
+                  <Button
+                    disabled={pending}
+                    className="bg-amber-300 text-amber-950 hover:bg-amber-200"
+                    onClick={() => {
+                      const next = Number(startingDraft);
+                      if (!Number.isInteger(next) || next < 0 || next > MAX_STARTING_GOLD) {
+                        setError(`Starting coins must be a whole number from 0 to ${MAX_STARTING_GOLD.toLocaleString("en-US")}.`);
+                        return;
+                      }
+                      void run({ action: "adminStartingGold", gold: next });
+                    }}
+                  >
+                    Set
+                  </Button>
+                </div>
+                <p className="text-xs text-amber-100/60">
+                  New travelers (and New game) start with {formatCoins(state.startingGold ?? 1000)}.
+                  Someone who joins late also gets every coin drop the table has already been paid.
+                </p>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="admin-computers" className="text-amber-100/80">
@@ -380,7 +417,7 @@ export function AdminScreen({
                   const ok = window.confirm(
                     `Start a new game? ${travelers} traveler${travelers === 1 ? "" : "s"} and ${bots} computer${
                       bots === 1 ? "" : "s"
-                    } (${seats} seat${seats === 1 ? "" : "s"}). Each gets 1,000 coins and floor(Issued ÷ ${seats}) of each good. Remainder stays in the treasury.`
+                    } (${seats} seat${seats === 1 ? "" : "s"}). Each gets ${formatNumber(state.startingGold ?? 1000)} coins and floor(Issued ÷ ${seats}) of each good. Remainder stays in the treasury.`
                   );
                   if (ok) void run({ action: "adminNewGame", count: bots });
                 }}

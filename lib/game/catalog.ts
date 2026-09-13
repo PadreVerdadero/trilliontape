@@ -3,6 +3,7 @@ import { defaultStipendLadder, stipendAmountAt } from "@/lib/game/stipend-ladder
 
 export const STARTING_GOLD = 1_000;
 export const TABLE_GOLD = 1_000;
+export const MAX_STARTING_GOLD = 99_999_999;
 export const NET_WORTH_GOAL = 1_000_000_000_000;
 
 export function seatGold(_computers?: boolean) {

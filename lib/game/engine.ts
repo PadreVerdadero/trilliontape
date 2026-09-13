@@ -9,8 +9,8 @@ import {
   materialsAt,
   ENERGY_MAX,
   SEARCH_COOLDOWN_MS,
-  TABLE_GOLD,
   NET_WORTH_GOAL,
+  MAX_STARTING_GOLD,
   dailyDeposit,
   stipendLabel,
   stipendSlotKey,
@@ -49,8 +49,12 @@ import {
   insertShareType,
   removeShareType,
   hydrateShareCatalog,
+  startingGold,
+  setStartingGold,
+  tablePaidDrops,
+  markStipendSlotPaid,
 } from "@/lib/game/db";
-import { parseStipendSlotKey, validateStipendLadder } from "@/lib/game/stipend-ladder";
+import { parseStipendSlotKey, stipendCatchUp, validateStipendLadder } from "@/lib/game/stipend-ladder";
 import {
   MAX_SHARE_TYPES,
   MIN_SHARE_TYPES,
@@ -1193,15 +1197,26 @@ export function enterDesk(userId: number) {
   if (isAdmin(userId)) db.prepare("UPDATE users SET is_admin = 0 WHERE id = ?").run(userId);
   if (isBot(userId)) return;
   const row = db
-    .prepare("SELECT COALESCE(at_table, 1) AS at_table, gold FROM players WHERE user_id = ?")
-    .get(userId) as { at_table: number; gold: number } | undefined;
+    .prepare(
+      "SELECT COALESCE(at_table, 1) AS at_table, gold, COALESCE(login_days, 0) AS login_days FROM players WHERE user_id = ?"
+    )
+    .get(userId) as { at_table: number; gold: number; login_days: number } | undefined;
   if (!row || row.at_table) return;
-  db.prepare("UPDATE players SET at_table = 1, gold = CASE WHEN gold < ? THEN ? ELSE gold END, last_event = ? WHERE user_id = ?").run(
-    TABLE_GOLD,
-    TABLE_GOLD,
-    "You sat down with 1,000 coins and an empty pack. The opening split already went out.",
-    userId
-  );
+  const start = startingGold(db);
+  const tablePaid = tablePaidDrops(db, userId);
+  const extra = stipendCatchUp(readStipendLadder(db), row.login_days, tablePaid);
+  const gold = Math.max(row.gold, start) + extra;
+  const loginDays = Math.max(row.login_days, tablePaid);
+  const note =
+    extra > 0
+      ? `You sat down with ${formatCoins(start)} plus ${formatNumber(tablePaid - row.login_days)} coin drop${
+          tablePaid - row.login_days === 1 ? "" : "s"
+        } the table already had (${formatCoins(extra)}). The opening split already went out.`
+      : `You sat down with ${formatCoins(Math.max(row.gold, start))} and an empty pack. The opening split already went out.`;
+  db.prepare(
+    "UPDATE players SET at_table = 1, gold = ?, login_days = ?, last_event = ? WHERE user_id = ?"
+  ).run(gold, loginDays, note, userId);
+  markStipendSlotPaid(userId, db);
 }
 
 export function enterAdmin(userId: number) {
@@ -1229,6 +1244,15 @@ export function enterGovernment(userId: number) {
       "You hold the treasury. Quotes always sit at MV. Asks mint until Outstanding reaches Authorized. Bids pay sellers with new coin and burn the goods."
     );
   }
+}
+
+export function adminSetStartingGold(userId: number, gold: number) {
+  requireAdmin(userId);
+  if (!Number.isInteger(gold) || gold < 0 || gold > MAX_STARTING_GOLD) {
+    throw new Error(`Starting coins must be a whole number from 0 to ${MAX_STARTING_GOLD.toLocaleString("en-US")}.`);
+  }
+  setStartingGold(gold);
+  setEvent(userId, `New travelers now start with ${formatCoins(gold)}. Late joiners also get coin drops the table already had.`);
 }
 
 export function adminSetStipend(userId: number, ms: number) {
@@ -1458,10 +1482,10 @@ export function adminStartGame(userId: number, _timeZone?: string, count?: numbe
          SELECT id FROM users WHERE ${sql}
        )`
     ).run(
-      TABLE_GOLD,
+      startingGold(db),
       ENERGY_MAX,
       ENERGY_MAX,
-      "A new game. 1,000 coins and an even opening pack for every traveler and seated computer.",
+      `A new game. ${formatNumber(startingGold(db))} coins and an even opening pack for every traveler and seated computer.`,
       ...params
     );
     const seatedNames = seatedBotUsernames(db);
@@ -1510,8 +1534,8 @@ export function adminStartGame(userId: number, _timeZone?: string, count?: numbe
     bots > 0
       ? `New game started. Every traveler and ${formatNumber(bots)} computer${
           bots === 1 ? "" : "s"
-        } got 1,000 coins and floor(Issued ÷ seats) of each good.${leftoverNote}`
-      : `New game started. Every traveler got 1,000 coins and floor(Issued ÷ seats) of each good.${leftoverNote}`
+        } got ${formatNumber(startingGold())} coins and floor(Issued ÷ seats) of each good.${leftoverNote}`
+      : `New game started. Every traveler got ${formatNumber(startingGold())} coins and floor(Issued ÷ seats) of each good.${leftoverNote}`
   );
 }
 
@@ -1542,7 +1566,7 @@ function applyComputerSeats(db: ReturnType<typeof getDb>, count: number) {
        WHERE user_id = ? AND gold = 0`
     );
     for (const id of seatIds) {
-      pay.run(TABLE_GOLD, "A computer trader keeping the book honest.", id);
+      pay.run(startingGold(db), "A computer trader keeping the book honest.", id);
     }
   }
   return next;
@@ -3194,6 +3218,7 @@ export function getGameState(
     computerCount: botsSeated,
     travelerCount: travelerCount(),
     stipendMs: stipendMs(),
+    startingGold: startingGold(),
     coinDrop: coinDropSnapshot(userId),
     adminRoster: canHoldOffice(userId) ? listAdminRoster() : [],
     netWorthGoal: goal.score === "netWorth" ? goal.threshold : NET_WORTH_GOAL,

@@ -34,6 +34,10 @@ export const GOAL_TIME_PRESETS = [
   { ms: 60 * 60_000, label: "1 hour" },
   { ms: 6 * 60 * 60_000, label: "6 hours" },
   { ms: 24 * 60 * 60_000, label: "1 day" },
+  { ms: 3 * 24 * 60 * 60_000, label: "3 days" },
+  { ms: 7 * 24 * 60 * 60_000, label: "7 days" },
+  { ms: 14 * 24 * 60 * 60_000, label: "2 weeks" },
+  { ms: 30 * 24 * 60 * 60_000, label: "1 month" },
 ];
 
 export function defaultGoal(): GoalConfig {
@@ -159,6 +163,10 @@ export function formatGoalScore(value: number, goal: GoalConfig) {
 export function goalTimeLabel(ms: number) {
   const preset = GOAL_TIME_PRESETS.find((row) => row.ms === ms);
   if (preset) return preset.label;
+  if (ms % (24 * 60 * 60_000) === 0) {
+    const days = ms / (24 * 60 * 60_000);
+    return `${days} day${days === 1 ? "" : "s"}`;
+  }
   if (ms % (60 * 60_000) === 0) return `${ms / (60 * 60_000)} hour${ms === 60 * 60_000 ? "" : "s"}`;
   if (ms % 60_000 === 0) return `${ms / 60_000} minute${ms === 60_000 ? "" : "s"}`;
   return `${Math.max(1, Math.round(ms / 1000))} seconds`;

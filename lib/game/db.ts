@@ -7,7 +7,8 @@ import {
   RETIRED_ITEM_IDS,
   STARTING_ENERGY,
   STARTING_GOLD,
-  seatGold,
+  MAX_STARTING_GOLD,
+  stipendSlotKey,
   itemById,
   defaultShareItems,
   setLiveItems,
@@ -20,7 +21,7 @@ import {
   type GameOverState,
   type GoalConfig,
 } from "@/lib/game/goal";
-import { defaultStipendLadder, normalizeStipendLadder } from "@/lib/game/stipend-ladder";
+import { defaultStipendLadder, normalizeStipendLadder, stipendCatchUp } from "@/lib/game/stipend-ladder";
 
 export const DESK_USERNAME = "Government";
 
@@ -417,16 +418,20 @@ function seedGuest(db: Database.Database) {
 }
 
 function createPlayerWithDb(db: Database.Database, userId: number) {
-  const gold = seatGold(computersEnabled(db));
+  const start = startingGold(db);
+  const tablePaid = tablePaidDrops(db, userId);
+  const extra = stipendCatchUp(readStipendLadder(db), 0, tablePaid);
+  const gold = start + extra;
+  const note =
+    tablePaid > 0
+      ? `You arrive with ${start.toLocaleString("en-US")} coins plus ${tablePaid} coin drop${
+          tablePaid === 1 ? "" : "s"
+        } the table already had (${extra.toLocaleString("en-US")}).`
+      : `You arrive with ${start.toLocaleString("en-US")} coins and a place at the desk.`;
   db.prepare(
-    "INSERT INTO players (user_id, gold, location_id, energy, energy_max, last_event) VALUES (?, ?, 'town', ?, ?, ?)"
-  ).run(
-    userId,
-    gold,
-    STARTING_ENERGY,
-    ENERGY_MAX,
-    `You arrive with ${gold.toLocaleString("en-US")} coins and a place at the desk.`
-  );
+    "INSERT INTO players (user_id, gold, location_id, energy, energy_max, login_days, last_event) VALUES (?, ?, 'town', ?, ?, ?, ?)"
+  ).run(userId, gold, STARTING_ENERGY, ENERGY_MAX, tablePaid, note);
+  markStipendSlotPaid(userId, db);
 }
 
 function purgeItemIds(db: Database.Database, ids: string[]) {
@@ -647,6 +652,51 @@ export function setComputersEnabled(on: boolean, db: Database.Database = getDb()
   }
   const current = computerCount(db);
   writeComputerMeta(current > 0 ? current : MAX_COMPUTERS, db);
+}
+
+export function startingGold(db: Database.Database = getDb()) {
+  const row = db.prepare("SELECT value FROM game_meta WHERE key = 'starting_gold'").get() as
+    | { value: string }
+    | undefined;
+  const n = Number(row?.value);
+  return Number.isInteger(n) && n >= 0 && n <= MAX_STARTING_GOLD ? n : STARTING_GOLD;
+}
+
+export function setStartingGold(gold: number, db: Database.Database = getDb()) {
+  db.prepare(
+    `INSERT INTO game_meta (key, value) VALUES ('starting_gold', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run(String(gold));
+}
+
+export function tablePaidDrops(db: Database.Database = getDb(), excludeUserId = 0) {
+  const bots = BOT_PROFILES.slice(0, computerCount(db)).map((bot) => bot.username);
+  const botSql = bots.length > 0 ? `OR (COALESCE(u.is_bot, 0) = 1 AND u.username IN (${bots.map(() => "?").join(", ")}))` : "";
+  const row = db
+    .prepare(
+      `SELECT COALESCE(MAX(p.login_days), 0) AS n
+       FROM players p JOIN users u ON u.id = p.user_id
+       WHERE p.user_id != ?
+         AND (
+           (
+             COALESCE(u.is_bot, 0) = 0 AND COALESCE(u.is_gov, 0) = 0
+             AND u.username NOT IN ('Banker', 'Government')
+             AND COALESCE(p.at_table, 1) = 1
+           )
+           ${botSql}
+         )`
+    )
+    .get(excludeUserId, ...bots) as { n: number };
+  return Math.max(0, Math.floor(row?.n ?? 0));
+}
+
+export function markStipendSlotPaid(userId: number, db: Database.Database = getDb()) {
+  const slot = stipendSlotKey(Date.now(), stipendMs(db));
+  db.prepare(
+    `INSERT INTO player_daily (user_id, day_key, first_trade, special_sold, login_paid)
+     VALUES (?, ?, 0, '', 1)
+     ON CONFLICT(user_id, day_key) DO UPDATE SET login_paid = 1`
+  ).run(userId, slot);
 }
 
 export function stipendMs(db: Database.Database = getDb()) {

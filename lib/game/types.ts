@@ -300,6 +300,7 @@ export type GameState = {
   computerCount: number;
   travelerCount: number;
   stipendMs: number;
+  startingGold: number;
   coinDrop: CoinDropState;
   adminRoster: AdminSeat[];
   netWorthGoal: number;

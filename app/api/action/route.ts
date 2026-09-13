@@ -18,6 +18,7 @@ import {
   adminSetComputerCount,
   adminSitOtherTravelers,
   adminSetStipend,
+  adminSetStartingGold,
   adminSetStipendLadder,
   adminSetIssued,
   adminSetGoal,
@@ -65,6 +66,7 @@ type ActionBody = {
   | { action: "adminComputers"; count?: number; on?: boolean }
   | { action: "adminSitOthers" }
   | { action: "adminStipend"; ms: number }
+  | { action: "adminStartingGold"; gold: number }
   | { action: "adminStipendLadder"; amounts: number[] }
   | {
       action: "adminGoal";
@@ -162,6 +164,9 @@ export async function POST(request: Request) {
         break;
       case "adminStipend":
         adminSetStipend(userId, Number(body.ms));
+        break;
+      case "adminStartingGold":
+        adminSetStartingGold(userId, Number(body.gold));
         break;
       case "adminStipendLadder":
         adminSetStipendLadder(userId, body.amounts);

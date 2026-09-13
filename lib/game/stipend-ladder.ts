@@ -64,6 +64,14 @@ export function stipendAmountAt(ladder: number[], paymentNumber: number) {
   return rungs[paymentNumber - 1];
 }
 
+export function stipendCatchUp(ladder: number[], alreadyPaid: number, tablePaid: number) {
+  const from = Math.max(0, Math.floor(alreadyPaid));
+  const through = Math.max(0, Math.floor(tablePaid));
+  let sum = 0;
+  for (let n = from + 1; n <= through; n += 1) sum += stipendAmountAt(ladder, n);
+  return sum;
+}
+
 export function parseStipendSlotKey(key: string | null | undefined) {
   if (!key) return null;
   const match = /^slot:(\d+):(\d+)$/.exec(key);
