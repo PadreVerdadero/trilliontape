@@ -107,6 +107,7 @@ export type PlayerState = {
   titles: string[];
   isGov: boolean;
   isAdmin: boolean;
+  canOffice: boolean;
 };
 
 export type MarketPrice = {

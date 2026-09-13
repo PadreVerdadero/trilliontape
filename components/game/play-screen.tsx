@@ -122,18 +122,22 @@ export function PlayScreen({
           </div>
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             <MobileToggle checked={mobile} onChange={setMobile} />
-            <Link
-              href="/government"
-              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9 px-2 sm:px-3")}
-            >
-              {mobile ? "Gov" : "Government"}
-            </Link>
-            <Link
-              href="/admin"
-              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9 px-2 sm:px-3")}
-            >
-              Admin
-            </Link>
+            {player.canOffice ? (
+              <>
+                <Link
+                  href="/government"
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9 px-2 sm:px-3")}
+                >
+                  {mobile ? "Gov" : "Government"}
+                </Link>
+                <Link
+                  href="/admin"
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9 px-2 sm:px-3")}
+                >
+                  Admin
+                </Link>
+              </>
+            ) : null}
             <form action="/auth/logout" method="post">
               <button
                 type="submit"

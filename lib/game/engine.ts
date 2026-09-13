@@ -55,6 +55,7 @@ import {
   waitSteps,
   type BotProfile,
 } from "@/lib/game/bots";
+import { isOfficeUsername } from "@/lib/game/office";
 import { computeFairValue, MV_PRINTS } from "@/lib/game/market";
 import {
   chalkboardItem,
@@ -1096,8 +1097,20 @@ export function cancelOrders(userId: number, orderIds: number[], quantity = Infi
   setEvent(userId, pulled === 1 ? "Pulled 1 from the board." : `Pulled ${formatNumber(pulled)} from the board.`);
 }
 
+export function canHoldOffice(userId: number) {
+  const row = getDb()
+    .prepare("SELECT username FROM users WHERE id = ?")
+    .get(userId) as { username: string } | undefined;
+  return Boolean(row && isOfficeUsername(row.username));
+}
+
+function requireOffice(userId: number) {
+  if (!canHoldOffice(userId)) throw new Error("That office is locked.");
+}
+
 export function setGovernment(userId: number, on: boolean) {
   resolveBusy(userId);
+  requireOffice(userId);
   if (isBot(userId)) throw new Error("Plaza regulars cannot hold office.");
   getDb().prepare("UPDATE users SET is_gov = ? WHERE id = ?").run(on ? 1 : 0, userId);
   if (on) {
@@ -1121,11 +1134,12 @@ function isAdmin(userId: number) {
 }
 
 function requireAdmin(userId: number) {
-  if (!isAdmin(userId)) throw new Error("Admin mode is off.");
+  if (!canHoldOffice(userId)) throw new Error("Admin mode is off.");
 }
 
 export function setAdmin(userId: number, on: boolean) {
   resolveBusy(userId);
+  requireOffice(userId);
   if (isBot(userId)) throw new Error("Plaza regulars cannot open admin.");
   getDb().prepare("UPDATE users SET is_admin = ? WHERE id = ?").run(on ? 1 : 0, userId);
   setEvent(userId, on ? "Admin mode on. Set coins, pack qty, or start a new game." : "Admin mode off.");
@@ -1150,6 +1164,7 @@ export function enterDesk(userId: number) {
 
 export function enterAdmin(userId: number) {
   resolveBusy(userId);
+  requireOffice(userId);
   if (isBot(userId)) throw new Error("Plaza regulars cannot open admin.");
   const db = getDb();
   if (isGov(userId)) db.prepare("UPDATE users SET is_gov = 0 WHERE id = ?").run(userId);
@@ -1161,6 +1176,7 @@ export function enterAdmin(userId: number) {
 
 export function enterGovernment(userId: number) {
   resolveBusy(userId);
+  requireOffice(userId);
   if (isBot(userId)) throw new Error("Plaza regulars cannot hold office.");
   const db = getDb();
   if (isAdmin(userId)) db.prepare("UPDATE users SET is_admin = 0 WHERE id = ?").run(userId);
@@ -2904,6 +2920,7 @@ export function getGameState(
     titles: [],
     isGov: Boolean(player.is_gov),
     isAdmin: Boolean(player.is_admin),
+    canOffice: canHoldOffice(userId),
   };
 
   const myOrders = (
@@ -2991,7 +3008,7 @@ export function getGameState(
     computerCount: botsSeated,
     travelerCount: travelerCount(),
     stipendMs: stipendMs(),
-    adminRoster: isAdmin(userId) ? listAdminRoster() : [],
+    adminRoster: canHoldOffice(userId) ? listAdminRoster() : [],
     netWorthGoal: NET_WORTH_GOAL,
     leaders,
     deposit:

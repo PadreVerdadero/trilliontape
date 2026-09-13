@@ -11,10 +11,11 @@ import {
   itemById,
 } from "@/lib/game/catalog";
 import { BOT_PROFILES, MAX_COMPUTERS } from "@/lib/game/bots";
+import { OFFICE_USERNAME } from "@/lib/game/office";
 
 export const DESK_USERNAME = "Government";
 
-const BOOTSTRAP_REV = 12;
+const BOOTSTRAP_REV = 13;
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: Database.Database;
@@ -464,6 +465,14 @@ export function seedBots(db: Database.Database = getDb()) {
   }
 }
 
+function lockOffice(db: Database.Database) {
+  db.prepare("UPDATE users SET is_admin = 0 WHERE username != ?").run(OFFICE_USERNAME);
+  db.prepare("UPDATE users SET is_admin = 1 WHERE username = ?").run(OFFICE_USERNAME);
+  db.prepare(
+    "UPDATE users SET is_gov = 0 WHERE username NOT IN (?, ?) AND COALESCE(is_gov, 0) = 1"
+  ).run(OFFICE_USERNAME, DESK_USERNAME);
+}
+
 function bootstrap(db: Database.Database) {
   migrate(db);
   clearBankerBook(db);
@@ -472,6 +481,7 @@ function bootstrap(db: Database.Database) {
   seedBots(db);
   purgeRetiredItems(db);
   shareBankerHoldings(db);
+  lockOffice(db);
 }
 
 function writeComputerMeta(count: number, db: Database.Database) {
