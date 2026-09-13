@@ -30,6 +30,16 @@ npm run dev
 
 Open [http://127.0.0.1:43147](http://127.0.0.1:43147) on the same machine that is running `npm run dev`. Data lives in `data/bazaar.db` (created on first boot).
 
+Check **Phone layout** on the gate or the desk to switch to a one-column phone screen (Pack / Book / Orders). The choice sticks in this browser. Phones default to that layout.
+
+To play with friends on one table, leave the server running and share a public URL that points at port `43147`:
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:43147
+```
+
+Each friend creates their own traveler name on the same landing page. Quick `trycloudflare.com` links last only while that tunnel process is up.
+
 If you are in a Cursor Cloud Agent, **Preview** is a tunnel from your laptop to that remote machine — `127.0.0.1` in your browser is your laptop, not the game. This repo lists port `43147` in `.cursor/environment.json` so new agents can forward it. When that tunnel fails, the agent can open a temporary `trycloudflare.com` URL to the same server.
 
 No extra services or API keys. Accounts are stored on this machine; do not reuse a real password.

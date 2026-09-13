@@ -1,18 +1,23 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { InventoryPanel } from "@/components/game/inventory-panel";
 import { LeaderTicker } from "@/components/game/leader-ticker";
 import { MarketPanel } from "@/components/game/market-panel";
+import { MobileToggle } from "@/components/game/mobile-toggle";
 import { OpenOrdersPanel } from "@/components/game/open-orders-panel";
 import { useGame } from "@/hooks/use-game";
+import { useMobileLayout } from "@/hooks/use-mobile-layout";
 import { useSelectedItem } from "@/hooks/use-selected-item";
 import { useMarketSort } from "@/hooks/use-market-sort";
 import { DepositDialog } from "@/components/game/deposit-dialog";
 import { GAME_NAME, GAME_PITCH } from "@/lib/game/brand";
 import { cn } from "@/lib/utils";
 import type { GameState } from "@/lib/game/types";
+
+type PhoneTab = "pack" | "book" | "orders";
 
 export function PlayScreen({
   initialState,
@@ -24,6 +29,8 @@ export function PlayScreen({
   const { state, error, loading, pending, run, setError } = useGame(initialState);
   const [itemId, setItemId] = useSelectedItem(initialItemId);
   const marketSort = useMarketSort(state?.prices ?? []);
+  const [mobile, setMobile] = useMobileLayout();
+  const [tab, setTab] = useState<PhoneTab>("book");
 
   if (loading) {
     return (
@@ -49,39 +56,90 @@ export function PlayScreen({
 
   const { player } = state;
 
+  const market = (
+    <MarketPanel
+      state={state}
+      pending={pending}
+      compact={mobile}
+      selectedItemId={itemId}
+      onSelectItem={setItemId}
+      rankedItems={marketSort.rankedItems}
+      rarityMap={marketSort.rarityMap}
+      sort={marketSort.sort}
+      sortDir={marketSort.sortDir}
+      cycleSort={marketSort.cycleSort}
+      onOrder={(input) => run({ action: "order", ...input })}
+      onTake={(orderId) => run({ action: "take", orderId })}
+      onCancel={(orderId) => run({ action: "cancel", orderId })}
+      onProposeSwap={(input) => run({ action: "swapPropose", ...input })}
+      onAcceptSwap={(offerId) => run({ action: "swapAccept", offerId })}
+      onCancelSwap={(offerId) => run({ action: "swapCancel", offerId })}
+      onDeclineSwap={(offerId) => run({ action: "swapDecline", offerId })}
+    />
+  );
+
+  const pack = (
+    <InventoryPanel
+      player={player}
+      prices={state.prices}
+      onSelect={(id) => {
+        setItemId(id);
+        if (mobile) setTab("book");
+      }}
+      selectedItemId={itemId}
+      rankedItemIds={marketSort.rankedItems.map((item) => item.id)}
+      coinVolume={state.coinVolume}
+    />
+  );
+
+  const orders = (
+    <OpenOrdersPanel
+      orders={state.myOrders}
+      prices={state.prices}
+      selectedItemId={itemId}
+      pending={pending}
+      onCancel={(orderIds) => void run({ action: "cancel", orderIds })}
+    />
+  );
+
   return (
     <div className="flex h-dvh flex-col overflow-hidden pb-[env(safe-area-inset-bottom)]">
       <DepositDialog deposit={state.deposit} stipendMs={state.stipendMs} />
       <header className="z-20 shrink-0 border-b border-border/80 bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur">
         <LeaderTicker leaders={state.leaders ?? []} you={player.username} />
-        <div className="flex w-full items-center justify-between gap-3 px-3 py-2 sm:px-4">
+        <div className="flex w-full items-center justify-between gap-2 px-3 py-2 sm:px-4">
           <div className="flex min-w-0 items-center gap-3">
             <p className="font-heading text-lg">{GAME_NAME}</p>
-            <span className="hidden truncate text-sm text-muted-foreground sm:inline">
-              {GAME_PITCH}
-              <span className="text-border"> · </span>
-              {player.username}
-            </span>
+            {mobile ? (
+              <span className="truncate text-sm text-muted-foreground">{player.username}</span>
+            ) : (
+              <span className="hidden truncate text-sm text-muted-foreground sm:inline">
+                {GAME_PITCH}
+                <span className="text-border"> · </span>
+                {player.username}
+              </span>
+            )}
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            <MobileToggle checked={mobile} onChange={setMobile} />
             <Link
               href="/government"
-              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9")}
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9 px-2 sm:px-3")}
             >
-              Government
+              {mobile ? "Gov" : "Government"}
             </Link>
             <Link
               href="/admin"
-              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9")}
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9 px-2 sm:px-3")}
             >
               Admin
             </Link>
             <form action="/auth/logout" method="post">
               <button
                 type="submit"
-                className="inline-flex h-9 items-center rounded-lg px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="inline-flex h-9 items-center rounded-lg px-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground sm:px-3"
               >
-                Sign out
+                {mobile ? "Out" : "Sign out"}
               </button>
             </form>
           </div>
@@ -108,58 +166,51 @@ export function PlayScreen({
         ) : null}
       </header>
 
-      <div className="flex min-h-0 w-full flex-1 overflow-hidden">
-        <aside className="flex w-[13.5rem] shrink-0 flex-col overflow-hidden border-r border-border/70 bg-card/40 sm:w-[17.5rem] lg:w-[20.5rem]">
-          <div className="min-h-0 flex-1 overflow-y-auto pb-1" data-keep-scroll>
-            <InventoryPanel
-              player={player}
-              prices={state.prices}
-              onSelect={setItemId}
-              selectedItemId={itemId}
-              rankedItemIds={marketSort.rankedItems.map((item) => item.id)}
-              coinVolume={state.coinVolume}
-            />
+      {mobile ? (
+        <>
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-3" data-keep-scroll>
+            {tab === "pack" ? pack : null}
+            {tab === "book" ? market : null}
+            {tab === "orders" ? orders : null}
           </div>
-        </aside>
-        <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 sm:px-3" data-keep-scroll>
-          <MarketPanel
-            state={state}
-            pending={pending}
-            selectedItemId={itemId}
-            onSelectItem={setItemId}
-            rankedItems={marketSort.rankedItems}
-            rarityMap={marketSort.rarityMap}
-            sort={marketSort.sort}
-            sortDir={marketSort.sortDir}
-            cycleSort={marketSort.cycleSort}
-            onOrder={(input) => run({ action: "order", ...input })}
-            onTake={(orderId) => run({ action: "take", orderId })}
-            onCancel={(orderId) => run({ action: "cancel", orderId })}
-            onProposeSwap={(input) => run({ action: "swapPropose", ...input })}
-            onAcceptSwap={(offerId) => run({ action: "swapAccept", offerId })}
-            onCancelSwap={(offerId) => run({ action: "swapCancel", offerId })}
-            onDeclineSwap={(offerId) => run({ action: "swapDecline", offerId })}
-          />
-          <div className="mt-4 md:hidden">
-            <OpenOrdersPanel
-              orders={state.myOrders}
-              prices={state.prices}
-              selectedItemId={itemId}
-              pending={pending}
-              onCancel={(orderIds) => void run({ action: "cancel", orderIds })}
-            />
-          </div>
-        </main>
-        <aside className="hidden w-[15rem] shrink-0 flex-col overflow-hidden border-l border-border/70 bg-card/40 md:flex lg:w-[17rem]">
-          <OpenOrdersPanel
-            orders={state.myOrders}
-            prices={state.prices}
-            selectedItemId={itemId}
-            pending={pending}
-            onCancel={(orderIds) => void run({ action: "cancel", orderIds })}
-          />
-        </aside>
-      </div>
+          <nav className="grid shrink-0 grid-cols-3 gap-1 border-t border-border/80 bg-background/95 px-2 py-2">
+            {(
+              [
+                ["pack", "Pack"],
+                ["book", "Book"],
+                ["orders", "Orders"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTab(id)}
+                className={cn(
+                  "h-11 rounded-lg text-sm font-medium",
+                  tab === id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+        </>
+      ) : (
+        <div className="flex min-h-0 w-full flex-1 overflow-hidden">
+          <aside className="flex w-[13.5rem] shrink-0 flex-col overflow-hidden border-r border-border/70 bg-card/40 sm:w-[17.5rem] lg:w-[20.5rem]">
+            <div className="min-h-0 flex-1 overflow-y-auto pb-1" data-keep-scroll>
+              {pack}
+            </div>
+          </aside>
+          <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 sm:px-3" data-keep-scroll>
+            {market}
+            <div className="mt-4 md:hidden">{orders}</div>
+          </main>
+          <aside className="hidden w-[15rem] shrink-0 flex-col overflow-hidden border-l border-border/70 bg-card/40 md:flex lg:w-[17rem]">
+            {orders}
+          </aside>
+        </div>
+      )}
     </div>
   );
 }

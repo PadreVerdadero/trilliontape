@@ -213,6 +213,7 @@ export function MarketPanel({
   sort,
   sortDir,
   cycleSort,
+  compact = false,
 }: {
   state: GameState;
   pending: boolean;
@@ -241,6 +242,7 @@ export function MarketPanel({
   sort: MarketSort;
   sortDir: SortDir;
   cycleSort: (column: SortColumn) => void;
+  compact?: boolean;
 }) {
   const selected = itemById[selectedItemId];
   const price = state.prices.find((row) => row.itemId === selectedItemId);
@@ -420,9 +422,9 @@ export function MarketPanel({
         <div>
           <p className="font-heading text-xl sm:text-2xl">Player market</p>
           <p className="text-xs text-muted-foreground">
-            Crossing bids fill at the ask. Bid/Ask is units on the book. Volume is trades today.
-            Tap a column to sort. Bid/Ask: two taps on bids, then two on asks. Pack on the left
-            follows this order. W/S select · A fills MV · D qty 1 · arrows nudge · Shift/Ctrl step place · V buy · X sell · Q take bid · E take ask · T buy treasury · R sell treasury.
+            {compact
+              ? "Crossing bids fill at the ask. Tap a column to sort, then tap a row to trade that good."
+              : "Crossing bids fill at the ask. Bid/Ask is units on the book. Volume is trades today. Tap a column to sort. Bid/Ask: two taps on bids, then two on asks. Pack on the left follows this order. W/S select · A fills MV · D qty 1 · arrows nudge · Shift/Ctrl step place · V buy · X sell · Q take bid · E take ask · T buy treasury · R sell treasury."}
           </p>
         </div>
         {state.recentTrades[0] ? (
@@ -507,11 +509,13 @@ export function MarketPanel({
           <div className="grid gap-2 lg:grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)] lg:items-start">
             <div className="rounded-lg bg-background/40 p-2 ring-1 ring-foreground/10">
               <p className="mb-1 font-heading text-sm">Post your own order</p>
+              {compact ? null : (
               <p className="mb-1 text-[10px] leading-4 text-muted-foreground">
                 <kbd className="text-foreground">A</kbd> MV · arrows ±{formatNumber(nudgeStep)} · Shift/Ctrl
                 place · <kbd className="text-foreground">D</kbd> qty 1 ·{" "}
                 <kbd className="text-foreground">V</kbd> buy · <kbd className="text-foreground">X</kbd> sell
               </p>
+              )}
               {state.player.isGov ? (
                 <p className="mb-1 text-[10px] leading-4 text-amber-100/90">
                   Treasury always quotes at MV. Asks mint on fill until Outstanding reaches
@@ -527,7 +531,7 @@ export function MarketPanel({
                   <Input
                     id="px"
                     ref={priceRef}
-                    className="h-8 md:h-7"
+                    className={compact ? "h-11 text-base" : "h-8 md:h-7"}
                     inputMode="numeric"
                     value={state.player.isGov ? String(mvCoins) : priceInput}
                     placeholder={suggested}
@@ -543,21 +547,27 @@ export function MarketPanel({
                   <Input
                     id="qty"
                     ref={qtyRef}
-                    className="h-8 md:h-7"
+                    className={compact ? "h-11 text-base" : "h-8 md:h-7"}
                     inputMode="numeric"
                     value={qtyInput}
                     onChange={(event) => setQtyInput(event.target.value)}
                   />
                 </div>
                 <Button
-                  className="h-8 bg-emerald-600 text-white hover:bg-emerald-500"
+                  className={cn(
+                    "bg-emerald-600 text-white hover:bg-emerald-500",
+                    compact ? "h-11 text-base" : "h-8"
+                  )}
                   disabled={pending}
                   onClick={() => void place("buy")}
                 >
                   Buy
                 </Button>
                 <Button
-                  className="h-8 bg-rose-600 text-white hover:bg-rose-500"
+                  className={cn(
+                    "bg-rose-600 text-white hover:bg-rose-500",
+                    compact ? "h-11 text-base" : "h-8"
+                  )}
                   disabled={pending}
                   onClick={() => void place("sell")}
                 >
@@ -617,6 +627,7 @@ export function MarketPanel({
             </div>
           </div>
 
+          {compact ? null : (
           <PriceChart
             trades={book?.trades ?? []}
             basePrice={selected.basePrice}
@@ -624,6 +635,7 @@ export function MarketPanel({
             bestBid={price?.bestBid}
             bestAsk={price?.bestAsk}
           />
+          )}
 
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
@@ -695,10 +707,17 @@ export function MarketPanel({
       ) : null}
 
       <div className="overflow-x-auto rounded-2xl bg-card ring-1 ring-foreground/10">
-        <div className="grid min-w-[52rem] grid-cols-[minmax(7rem,0.9fr)_minmax(9rem,1.25fr)_minmax(9rem,1.25fr)_minmax(8.5rem,1.15fr)_minmax(4.5rem,0.55fr)_minmax(4.5rem,0.55fr)] gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium text-muted-foreground sm:px-4">
+        <div
+          className={cn(
+            "grid gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium text-muted-foreground sm:px-4",
+            compact
+              ? "grid-cols-[minmax(0,1.3fr)_4.5rem_4.5rem_4.5rem]"
+              : "min-w-[52rem] grid-cols-[minmax(7rem,0.9fr)_minmax(9rem,1.25fr)_minmax(9rem,1.25fr)_minmax(8.5rem,1.15fr)_minmax(4.5rem,0.55fr)_minmax(4.5rem,0.55fr)]"
+          )}
+        >
           <SortHead label="Item" column="item" sort={sort} dir={sortDir} onSort={cycleSort} />
           <SortHead
-            label="Best bid"
+            label="Bid"
             column="bid"
             sort={sort}
             dir={sortDir}
@@ -706,7 +725,7 @@ export function MarketPanel({
             className="text-emerald-200/90"
           />
           <SortHead
-            label="Best ask"
+            label="Ask"
             column="ask"
             sort={sort}
             dir={sortDir}
@@ -721,6 +740,8 @@ export function MarketPanel({
             onSort={cycleSort}
             className="text-sky-200/90"
           />
+          {compact ? null : (
+            <>
           <SortHead
             label={
               <>
@@ -758,8 +779,10 @@ export function MarketPanel({
             onSort={cycleSort}
             className="text-violet-200/90"
           />
+            </>
+          )}
         </div>
-        <div className="max-h-[min(72vh,40rem)] overflow-auto">
+        <div className={cn(compact ? "max-h-none" : "max-h-[min(72vh,40rem)] overflow-auto")}>
           {rankedItems.map((item) => {
             const quote = state.prices.find((row) => row.itemId === item.id);
             const active = item.id === selectedItemId;
@@ -774,7 +797,10 @@ export function MarketPanel({
                 data-market-item={item.id}
                 onClick={() => pick(item.id)}
                 className={cn(
-                  "grid w-full min-w-[52rem] grid-cols-[minmax(7rem,0.9fr)_minmax(9rem,1.25fr)_minmax(9rem,1.25fr)_minmax(8.5rem,1.15fr)_minmax(4.5rem,0.55fr)_minmax(4.5rem,0.55fr)] items-center gap-2 border-b border-border/40 px-3 py-2.5 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4 sm:py-3",
+                  "grid w-full items-center gap-2 border-b border-border/40 px-3 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4",
+                  compact
+                    ? "grid-cols-[minmax(0,1.3fr)_4.5rem_4.5rem_4.5rem] py-3"
+                    : "min-w-[52rem] grid-cols-[minmax(7rem,0.9fr)_minmax(9rem,1.25fr)_minmax(9rem,1.25fr)_minmax(8.5rem,1.15fr)_minmax(4.5rem,0.55fr)_minmax(4.5rem,0.55fr)] py-2.5 sm:py-3",
                   active && "bg-primary/15"
                 )}
               >
@@ -788,14 +814,16 @@ export function MarketPanel({
                   </span>
                 </span>
                 <span className="min-w-0 truncate font-medium tabular-nums text-emerald-200" title={quote?.bestBid != null ? formatCoins(quote.bestBid) : undefined}>
-                  {quote?.bestBid != null ? formatCoins(quote.bestBid) : "—"}
+                  {quote?.bestBid != null ? (compact ? formatCompact(quote.bestBid) : formatCoins(quote.bestBid)) : "—"}
                 </span>
                 <span className="min-w-0 truncate font-medium tabular-nums text-rose-200" title={quote?.bestAsk != null ? formatCoins(quote.bestAsk) : undefined}>
-                  {quote?.bestAsk != null ? formatCoins(quote.bestAsk) : "—"}
+                  {quote?.bestAsk != null ? (compact ? formatCompact(quote.bestAsk) : formatCoins(quote.bestAsk)) : "—"}
                 </span>
                 <span className="min-w-0 truncate font-medium tabular-nums text-sky-200" title={formatCoins(quote?.vwap ?? item.basePrice)}>
-                  {formatCoins(quote?.vwap ?? item.basePrice)}
+                  {compact ? formatCompact(quote?.vwap ?? item.basePrice) : formatCoins(quote?.vwap ?? item.basePrice)}
                 </span>
+                {compact ? null : (
+                  <>
                 <span className="font-medium tabular-nums text-amber-200">
                   <span
                     className={cn(
@@ -818,6 +846,8 @@ export function MarketPanel({
                 <span className="font-medium text-violet-200">
                   {formatNumber(volume)}
                 </span>
+                  </>
+                )}
               </button>
             );
           })}

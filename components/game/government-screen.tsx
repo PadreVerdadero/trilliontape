@@ -8,7 +8,9 @@ import { Label } from "@/components/ui/label";
 import { OpenOrdersPanel } from "@/components/game/open-orders-panel";
 import { items, itemById } from "@/lib/game/catalog";
 import { formatCoins, formatNumber } from "@/lib/game/format";
+import { MobileToggle } from "@/components/game/mobile-toggle";
 import { useGame } from "@/hooks/use-game";
+import { useMobileLayout } from "@/hooks/use-mobile-layout";
 import { useSelectedItem } from "@/hooks/use-selected-item";
 import { cn } from "@/lib/utils";
 import { GAME_NAME } from "@/lib/game/brand";
@@ -24,6 +26,7 @@ export function GovernmentScreen({
   const { state, error, loading, pending, run, setError } = useGame(initialState);
   const [itemId, setItemId] = useSelectedItem(initialItemId);
   const [qtyInput, setQtyInput] = useState("1");
+  const [mobile, setMobile] = useMobileLayout();
 
   if (loading) {
     return (
@@ -69,15 +72,22 @@ export function GovernmentScreen({
               {player.username} · you hold the government desk
             </p>
           </div>
-          <Link
-            href="/play"
-            className={cn(
-              buttonVariants({ variant: "outline", size: "sm" }),
-              "h-9 shrink-0 border-emerald-200/40 bg-transparent text-emerald-50 hover:bg-emerald-900"
-            )}
-          >
-            Back to the desk
-          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            <MobileToggle
+              checked={mobile}
+              onChange={setMobile}
+              className="text-emerald-100/80 hover:bg-emerald-900 hover:text-emerald-50"
+            />
+            <Link
+              href="/play"
+              className={cn(
+                buttonVariants({ variant: "outline", size: "sm" }),
+                "h-9 shrink-0 border-emerald-200/40 bg-transparent text-emerald-50 hover:bg-emerald-900"
+              )}
+            >
+              Back to the desk
+            </Link>
+          </div>
         </div>
       </header>
 

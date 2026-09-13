@@ -8,7 +8,9 @@ import { Label } from "@/components/ui/label";
 import { items, itemById, STIPEND_PRESETS, stipendLabel } from "@/lib/game/catalog";
 import { MAX_COMPUTERS } from "@/lib/game/bots";
 import { formatCoins, formatNumber } from "@/lib/game/format";
+import { MobileToggle } from "@/components/game/mobile-toggle";
 import { useGame } from "@/hooks/use-game";
+import { useMobileLayout } from "@/hooks/use-mobile-layout";
 import { useSelectedItem } from "@/hooks/use-selected-item";
 import { cn } from "@/lib/utils";
 import { GAME_NAME } from "@/lib/game/brand";
@@ -28,6 +30,7 @@ export function AdminScreen({
   const [qtyInput, setQtyInput] = useState("0");
   const [issuedDraft, setIssuedDraft] = useState<Record<string, string>>({});
   const [computerDraft, setComputerDraft] = useState(String(initialState.computerCount ?? 0));
+  const [mobile, setMobile] = useMobileLayout();
 
   const player = state?.player;
   const roster = state?.adminRoster ?? [];
@@ -99,12 +102,19 @@ export function AdminScreen({
                 : ""}
             </p>
           </div>
-          <Link
-            href="/play"
-            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9 shrink-0 border-amber-200/40 bg-transparent text-amber-50 hover:bg-amber-900")}
-          >
-            Back to the desk
-          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            <MobileToggle
+              checked={mobile}
+              onChange={setMobile}
+              className="text-amber-100/80 hover:bg-amber-900 hover:text-amber-50"
+            />
+            <Link
+              href="/play"
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9 shrink-0 border-amber-200/40 bg-transparent text-amber-50 hover:bg-amber-900")}
+            >
+              Back to the desk
+            </Link>
+          </div>
         </div>
       </header>
 

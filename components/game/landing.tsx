@@ -1,4 +1,8 @@
+"use client";
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { MobileToggle } from "@/components/game/mobile-toggle";
+import { useMobileLayout } from "@/hooks/use-mobile-layout";
 import { GAME_NAME, GAME_PITCH, GAME_TAGLINE } from "@/lib/game/brand";
 import { items } from "@/lib/game/catalog";
 
@@ -35,6 +39,7 @@ const outlineBtn =
   "inline-flex h-11 w-full items-center justify-center rounded-lg border border-border bg-background px-3 text-base font-medium hover:bg-muted md:h-9 md:text-sm";
 
 export function Landing({ error, next }: { error?: string; next?: string }) {
+  const [mobile, setMobile] = useMobileLayout();
   const nextField = next ? <input type="hidden" name="next" value={next} /> : null;
   return (
     <div className="relative min-h-full">
@@ -42,9 +47,12 @@ export function Landing({ error, next }: { error?: string; next?: string }) {
       <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 py-10 md:py-16">
         <header className="flex items-center justify-between gap-4">
           <p className="font-heading text-lg tracking-wide">{GAME_NAME}</p>
-          <p className="hidden text-sm text-muted-foreground sm:block">
-            {GAME_TAGLINE} · {GAME_PITCH}
-          </p>
+          <div className="flex items-center gap-3">
+            <MobileToggle checked={mobile} onChange={setMobile} />
+            <p className="hidden text-sm text-muted-foreground sm:block">
+              {GAME_TAGLINE} · {GAME_PITCH}
+            </p>
+          </div>
         </header>
 
         <div className="grid items-start gap-10 lg:grid-cols-[1.2fr_0.8fr]">

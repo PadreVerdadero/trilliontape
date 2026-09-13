@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { MobileToggle } from "@/components/game/mobile-toggle";
 import { useGame } from "@/hooks/use-game";
+import { useMobileLayout } from "@/hooks/use-mobile-layout";
 import { items, NET_WORTH_GOAL } from "@/lib/game/catalog";
 import { formatCoins, formatNetWorth, formatNumber } from "@/lib/game/format";
 import { cn } from "@/lib/utils";
@@ -58,6 +60,7 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
     );
   }
 
+  const [mobile, setMobile] = useMobileLayout();
   const { player, leaders } = state;
   const you = leaders.find((row) => row.username === player.username);
   const goods = items;
@@ -84,12 +87,15 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
               {player.username}
             </span>
           </div>
-          <Link
-            href="/play"
-            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9 shrink-0 px-3")}
-          >
-            Back to the desk
-          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            <MobileToggle checked={mobile} onChange={setMobile} />
+            <Link
+              href="/play"
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9 shrink-0 px-3")}
+            >
+              Back to the desk
+            </Link>
+          </div>
         </div>
       </header>
 

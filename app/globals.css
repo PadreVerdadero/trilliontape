@@ -170,3 +170,14 @@
     overflow-x: auto;
   }
 }
+
+html.mobile-desk {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html.mobile-desk input,
+html.mobile-desk select,
+html.mobile-desk button {
+  font-size: 16px;
+}
