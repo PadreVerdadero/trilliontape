@@ -1,4 +1,6 @@
-import { itemById } from "@/lib/game/catalog";
+import { ItemIcon } from "@/components/game/item-icon";
+import { playItemMap } from "@/lib/game/shares";
+import type { Item } from "@/lib/game/types";
 import { formatNumber } from "@/lib/game/format";
 import { rarityClass, rarityLabel, rarityOf, rarityText, type RarityMap } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
@@ -9,14 +11,16 @@ export function ItemChip({
   className,
   muted,
   rarityMap,
+  catalog,
 }: {
   itemId: string;
   qty?: number;
   className?: string;
   muted?: boolean;
   rarityMap?: RarityMap;
+  catalog?: Item[];
 }) {
-  const item = itemById[itemId];
+  const item = playItemMap(catalog)[itemId];
   if (!item) return null;
   const rarity = rarityOf(itemId, rarityMap);
   return (
@@ -30,7 +34,7 @@ export function ItemChip({
       title={`${item.purpose} · ${rarityLabel[rarity]}`}
     >
       <span aria-hidden className="text-sm">
-        {item.emoji}
+        <ItemIcon item={item} />
       </span>
       <span className="font-medium">{item.name}</span>
       {qty != null ? <span className="text-muted-foreground">×{formatNumber(qty)}</span> : null}

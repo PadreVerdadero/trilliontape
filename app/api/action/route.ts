@@ -21,6 +21,8 @@ import {
   adminSetStipendLadder,
   adminSetIssued,
   adminSetGoal,
+  adminAddShare,
+  adminRemoveShare,
 } from "@/lib/game/engine";
 
 type ActionBody = {
@@ -57,6 +59,8 @@ type ActionBody = {
   | { action: "adminGold"; gold: number; targetUserId?: number }
   | { action: "adminItem"; itemId: string; quantity: number; targetUserId?: number }
   | { action: "adminIssued"; itemId: string; authorized: number }
+  | { action: "adminShareAdd"; name: string; emoji?: string; image?: string | null }
+  | { action: "adminShareRemove"; itemId: string }
   | { action: "adminNewGame"; count?: number }
   | { action: "adminComputers"; count?: number; on?: boolean }
   | { action: "adminSitOthers" }
@@ -139,6 +143,12 @@ export async function POST(request: Request) {
         break;
       case "adminIssued":
         adminSetIssued(userId, String(body.itemId), Number(body.authorized));
+        break;
+      case "adminShareAdd":
+        adminAddShare(userId, { name: body.name, emoji: body.emoji, image: body.image });
+        break;
+      case "adminShareRemove":
+        adminRemoveShare(userId, String(body.itemId));
         break;
       case "adminNewGame":
         adminStartGame(userId, tz, body.count != null ? Number(body.count) : undefined);

@@ -5,7 +5,10 @@ import { useEffect, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { items, itemById, STIPEND_PRESETS, stipendLabel } from "@/lib/game/catalog";
+import { STIPEND_PRESETS, stipendLabel } from "@/lib/game/catalog";
+import { ItemIcon } from "@/components/game/item-icon";
+import { ShareEditor } from "@/components/game/share-editor";
+import { MIN_SHARE_TYPES, playItemMap, playItems } from "@/lib/game/shares";
 import { MAX_COMPUTERS } from "@/lib/game/bots";
 import { formatCoins, formatNumber } from "@/lib/game/format";
 import { MobileToggle } from "@/components/game/mobile-toggle";
@@ -26,7 +29,12 @@ export function AdminScreen({
   initialItemId?: string;
 }) {
   const { state, error, loading, pending, run, setError } = useGame(initialState);
-  const [itemId, setItemId] = useSelectedItem(initialItemId);
+  const catalog = playItems(state?.items);
+  const catalogById = playItemMap(catalog);
+  const [itemId, setItemId] = useSelectedItem(
+    initialItemId,
+    catalog.map((item) => item.id)
+  );
   const [seatId, setSeatId] = useState<number | null>(null);
   const [goldInput, setGoldInput] = useState("");
   const [qtyInput, setQtyInput] = useState("0");
@@ -39,7 +47,7 @@ export function AdminScreen({
   const selectedSeat =
     roster.find((row) => row.id === seatId) ?? roster.find((row) => row.id === player?.id) ?? roster[0];
   const held = selectedSeat?.holdings[itemId] ?? 0;
-  const selected = itemById[itemId];
+  const selected = catalogById[itemId];
 
   useEffect(() => {
     if (player && seatId == null) setSeatId(player.id);
@@ -57,11 +65,13 @@ export function AdminScreen({
     setComputerDraft(String(state?.computerCount ?? 0));
   }, [state?.computerCount]);
 
-  const capKey = (state?.prices ?? []).map((row) => `${row.itemId}:${row.authorized}`).join("|");
+  const capKey = `${catalog.map((item) => item.id).join(",")}|${(state?.prices ?? [])
+    .map((row) => `${row.itemId}:${row.authorized}`)
+    .join("|")}`;
   useEffect(() => {
     if (!state) return;
     const next: Record<string, string> = {};
-    for (const item of items) {
+    for (const item of catalog) {
       const row = state.prices.find((price) => price.itemId === item.id);
       next[item.id] = String(row?.authorized ?? item.authorized ?? 0);
     }
@@ -202,7 +212,7 @@ export function AdminScreen({
           <div className="space-y-3 rounded-xl border border-amber-400/25 bg-amber-900/30 p-4">
             <h2 className="font-heading text-lg">Pack quantity</h2>
             <div className="flex flex-wrap gap-1.5">
-              {items.map((item) => (
+              {catalog.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -214,7 +224,7 @@ export function AdminScreen({
                       : "bg-amber-950/50 text-amber-100 ring-1 ring-amber-400/20"
                   )}
                 >
-                  {item.emoji} {item.name}
+                  <ItemIcon item={item} /> {item.name}
                 </button>
               ))}
             </div>
@@ -325,6 +335,7 @@ export function AdminScreen({
               {state.goal ? (
                 <GoalEditor
                   goal={state.goal}
+                  catalog={catalog}
                   pending={pending}
                   onSave={(draft) =>
                     run({
@@ -381,7 +392,14 @@ export function AdminScreen({
         </section>
 
         <section className="space-y-3 rounded-xl border border-amber-400/25 bg-amber-900/30 p-4">
-          <h2 className="font-heading text-lg">Share structure</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-heading text-lg">Share structure</h2>
+            <ShareEditor
+              pending={pending}
+              count={catalog.length}
+              onAdd={(draft) => run({ action: "adminShareAdd", ...draft })}
+            />
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[36rem] text-left text-sm">
               <thead className="text-amber-100/70">
@@ -390,16 +408,19 @@ export function AdminScreen({
                   <th className="py-2 pr-3 font-medium">MV</th>
                   <th className="py-2 pr-3 font-medium">Issued</th>
                   <th className="py-2 pr-3 font-medium">Outstanding</th>
-                  <th className="py-2 font-medium">Treasury</th>
+                  <th className="py-2 pr-3 font-medium">Treasury</th>
+                  <th className="py-2 font-medium"> </th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => {
+                {catalog.map((item) => {
                   const row = state.prices.find((price) => price.itemId === item.id);
                   return (
                     <tr key={item.id} className="border-b border-amber-400/10">
                       <td className="py-2 pr-3">
-                        {item.emoji} {item.name}
+                        <span className="inline-flex items-center gap-1.5">
+                          <ItemIcon item={item} /> {item.name}
+                        </span>
                       </td>
                       <td className="py-2 pr-3 tabular-nums">{formatNumber(row?.vwap ?? item.basePrice)}</td>
                       <td className="py-2 pr-3">
@@ -429,7 +450,23 @@ export function AdminScreen({
                         </div>
                       </td>
                       <td className="py-2 pr-3 tabular-nums">{formatNumber(row?.held ?? 0)}</td>
-                      <td className="py-2 tabular-nums">{formatNumber(row?.treasury ?? 0)}</td>
+                      <td className="py-2 pr-3 tabular-nums">{formatNumber(row?.treasury ?? 0)}</td>
+                      <td className="py-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={pending || catalog.length <= MIN_SHARE_TYPES}
+                          className="h-8 border-red-400/40 bg-transparent text-red-100 hover:bg-red-950"
+                          onClick={() => {
+                            const ok = window.confirm(
+                              `Are you sure? This removes ${item.emoji || ""} ${item.name} from the share structure. Packs, orders, and tape prints of this good are wiped.`
+                            );
+                            if (ok) void run({ action: "adminShareRemove", itemId: item.id });
+                          }}
+                        >
+                          Delete
+                        </Button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -439,6 +476,8 @@ export function AdminScreen({
           <p className="text-xs text-amber-100/60">
             Issued is the cap. Changing it lists leftover on the treasury or buys surplus at MV.
             Outstanding is every unit sitting in traveler packs. Treasury is Issued minus Outstanding.
+            Add a share type with an emoji or image. Delete asks are you sure, and you must keep at
+            least one good.
           </p>
         </section>
       </main>

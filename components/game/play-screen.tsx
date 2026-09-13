@@ -15,6 +15,7 @@ import { useMarketSort } from "@/hooks/use-market-sort";
 import { DepositDialog } from "@/components/game/deposit-dialog";
 import { GameOverBanner, GameOverScreen, GoalClock } from "@/components/game/game-over-screen";
 import { GAME_NAME, GAME_PITCH } from "@/lib/game/brand";
+import { playItems } from "@/lib/game/shares";
 import { cn } from "@/lib/utils";
 import type { GameState } from "@/lib/game/types";
 
@@ -28,8 +29,12 @@ export function PlayScreen({
   initialItemId?: string;
 }) {
   const { state, error, loading, pending, run, setError } = useGame(initialState);
-  const [itemId, setItemId] = useSelectedItem(initialItemId);
-  const marketSort = useMarketSort(state?.prices ?? []);
+  const catalog = playItems(state?.items);
+  const [itemId, setItemId] = useSelectedItem(
+    initialItemId,
+    catalog.map((item) => item.id)
+  );
+  const marketSort = useMarketSort(state?.prices ?? [], catalog);
   const [mobile, setMobile] = useMobileLayout();
   const [tab, setTab] = useState<PhoneTab>("book");
 
@@ -94,6 +99,7 @@ export function PlayScreen({
       now={state.now}
       stipendMs={state.stipendMs}
       coinDrop={state.coinDrop}
+      catalog={catalog}
     />
   );
 
@@ -101,6 +107,7 @@ export function PlayScreen({
     <OpenOrdersPanel
       orders={state.myOrders}
       prices={state.prices}
+      catalog={catalog}
       selectedItemId={itemId}
       pending={pending}
       onCancel={(orderIds) => void run({ action: "cancel", orderIds })}

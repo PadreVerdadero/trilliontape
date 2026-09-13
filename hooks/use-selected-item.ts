@@ -19,15 +19,27 @@ function persist(id: string) {
   }
 }
 
-export function useSelectedItem(initialId?: string) {
+export function useSelectedItem(initialId?: string, allowedIds?: string[]) {
   const [itemId, setItemIdState] = useState(
     selectedItemFromCookie(initialId ?? SELECTED_ITEM_DEFAULT)
   );
+  const allowedKey = allowedIds?.join("|") ?? "";
+
+  useLayoutEffect(() => {
+    if (!allowedIds?.length) return;
+    if (!allowedIds.includes(itemId)) {
+      const next = allowedIds[0];
+      setItemIdState(next);
+      persist(next);
+    }
+    // Snap to a live share if the saved one was removed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowedKey]);
 
   useLayoutEffect(() => {
     try {
       const saved = catalogItemId(window.localStorage.getItem(SELECTED_ITEM_COOKIE));
-      if (saved && saved !== itemId) {
+      if (saved && (!allowedIds?.length || allowedIds.includes(saved)) && saved !== itemId) {
         setItemIdState(saved);
         persist(saved);
       } else {

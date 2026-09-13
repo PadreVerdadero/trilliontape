@@ -2,13 +2,12 @@
 
 import { Button } from "@/components/ui/button";
 import { ItemChip } from "@/components/game/item-chip";
-import { itemById, items } from "@/lib/game/catalog";
+import { items as defaultItems } from "@/lib/game/catalog";
 import { formatCoins, formatNumber } from "@/lib/game/format";
+import { playItems } from "@/lib/game/shares";
 import { rarityMapFromPrices } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
-import type { MarketPrice, OrderRow } from "@/lib/game/types";
-
-const itemIndex = new Map(items.map((item, index) => [item.id, index]));
+import type { Item, MarketPrice, OrderRow } from "@/lib/game/types";
 
 type Stack = {
   itemId: string;
@@ -19,7 +18,9 @@ type Stack = {
   ids: number[];
 };
 
-function groupOpenOrders(orders: OrderRow[]) {
+function groupOpenOrders(orders: OrderRow[], catalog: Item[]) {
+  const itemIndex = new Map(catalog.map((item, index) => [item.id, index]));
+  const byId = Object.fromEntries(catalog.map((item) => [item.id, item]));
   const stacks = new Map<string, Stack>();
   for (const order of orders) {
     const qty = Math.max(0, order.remaining);
@@ -53,7 +54,7 @@ function groupOpenOrders(orders: OrderRow[]) {
       const ia = itemIndex.get(a) ?? 999;
       const ib = itemIndex.get(b) ?? 999;
       if (ia !== ib) return ia - ib;
-      return (itemById[a]?.name ?? a).localeCompare(itemById[b]?.name ?? b);
+      return (byId[a]?.name ?? a).localeCompare(byId[b]?.name ?? b);
     })
     .map(([itemId, lines]) => ({
       itemId,
@@ -69,19 +70,22 @@ export function OpenOrdersPanel({
   prices,
   selectedItemId,
   pending,
+  catalog,
   onCancel,
 }: {
   orders: OrderRow[];
   prices: MarketPrice[];
   selectedItemId: string;
   pending: boolean;
+  catalog?: Item[];
   onCancel: (orderIds: number[]) => void;
 }) {
+  const goods = playItems(catalog ?? defaultItems);
   const rarityMap = rarityMapFromPrices(
-    items.map((item) => item.id),
+    goods.map((item) => item.id),
     prices
   );
-  const groups = groupOpenOrders(orders);
+  const groups = groupOpenOrders(orders, goods);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -103,7 +107,7 @@ export function OpenOrdersPanel({
               return (
                 <li key={group.itemId}>
                   <div className="px-1.5 pb-1">
-                    <ItemChip itemId={group.itemId} rarityMap={rarityMap} />
+                    <ItemChip itemId={group.itemId} rarityMap={rarityMap} catalog={goods} />
                   </div>
                   <ul className="space-y-1">
                     {group.lines.map((stack) => {

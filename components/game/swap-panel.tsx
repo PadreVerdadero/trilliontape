@@ -4,12 +4,14 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { itemById, items } from "@/lib/game/catalog";
+import { ItemIcon } from "@/components/game/item-icon";
+import { items as defaultItems } from "@/lib/game/catalog";
+import { playItemMap, playItems } from "@/lib/game/shares";
 import { bundleMarketValue } from "@/lib/game/deal-value";
 import { formatCoins, formatNumber } from "@/lib/game/format";
 import { rarityClass, type RarityMap } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
-import type { InventoryRow, MarketPrice, SwapOffer, TravelerRow } from "@/lib/game/types";
+import type { InventoryRow, Item, MarketPrice, SwapOffer, TravelerRow } from "@/lib/game/types";
 
 type LegDraft = { itemId: string; quantity: number };
 
@@ -45,6 +47,7 @@ export function SwapPanel({
   pending,
   rarityMap,
   prices,
+  catalog,
   onPropose,
   onAccept,
   onCancel,
@@ -57,6 +60,7 @@ export function SwapPanel({
   pending: boolean;
   rarityMap?: RarityMap;
   prices: MarketPrice[];
+  catalog?: Item[];
   onPropose: (payload: {
     toUsername: string | null;
     giveGold: number;
@@ -68,6 +72,8 @@ export function SwapPanel({
   onCancel: (id: number) => Promise<unknown>;
   onDecline: (id: number) => Promise<unknown>;
 }) {
+  const liveItems = playItems(catalog ?? defaultItems);
+  const catalogById = playItemMap(liveItems);
   const [toUsername, setToUsername] = useState("");
   const [giveGold, setGiveGold] = useState("");
   const [wantGold, setWantGold] = useState("");
@@ -80,7 +86,7 @@ export function SwapPanel({
         .filter((row) => row.quantity > 0)
         .map((row) => ({
           itemId: row.itemId,
-          name: itemById[row.itemId]?.name ?? row.itemId,
+          name: catalogById[row.itemId]?.name ?? row.itemId,
           quantity: row.quantity,
         })),
     [inventory]
@@ -160,6 +166,7 @@ export function SwapPanel({
           goldHint={`You have ${formatCoins(gold)} free.`}
           legs={giveLegs}
           itemChoices={owned}
+          catalogById={catalogById}
           rarityMap={rarityMap}
           total={draftGive}
           onPick={(itemId) =>
@@ -176,7 +183,8 @@ export function SwapPanel({
           onGold={setWantGold}
           goldHint="Gold they must send you."
           legs={wantLegs}
-          itemChoices={items.map((item) => ({ itemId: item.id, name: item.name }))}
+          itemChoices={liveItems.map((item) => ({ itemId: item.id, name: item.name }))}
+          catalogById={catalogById}
           rarityMap={rarityMap}
           total={draftWant}
           onPick={(itemId) => setWantLegs((rows) => pickLeg(rows, itemId))}
@@ -257,6 +265,7 @@ function LegEditor({
   goldHint,
   legs,
   itemChoices,
+  catalogById,
   rarityMap,
   total,
   onPick,
@@ -269,6 +278,7 @@ function LegEditor({
   goldHint: string;
   legs: LegDraft[];
   itemChoices: { itemId: string; name: string; quantity?: number }[];
+  catalogById: Record<string, Item>;
   rarityMap?: RarityMap;
   total: number;
   onPick: (itemId: string) => void;
@@ -289,7 +299,7 @@ function LegEditor({
       ) : (
         <div className="-mx-1 flex flex-wrap gap-1 px-1">
           {itemChoices.map((item) => {
-            const catalog = itemById[item.itemId];
+            const catalog = catalogById[item.itemId];
             const active = selected.has(item.itemId);
             return (
               <button
@@ -303,7 +313,7 @@ function LegEditor({
                   rarityClass(item.itemId, rarityMap)
                 )}
               >
-                {catalog?.emoji ?? "?"}
+                <ItemIcon item={catalog} />
               </button>
             );
           })}
@@ -315,11 +325,11 @@ function LegEditor({
           .map((leg, index) => ({ leg, index }))
           .filter(({ leg }) => leg.itemId)
           .map(({ leg, index }) => {
-            const catalog = itemById[leg.itemId];
+            const catalog = catalogById[leg.itemId];
             return (
               <div key={`${title}-${leg.itemId}-${index}`} className="flex items-center gap-2">
                 <span className="min-w-0 flex-1 truncate text-sm">
-                  {catalog?.emoji} {catalog?.name ?? leg.itemId}
+                  <ItemIcon item={catalog} /> {catalog?.name ?? leg.itemId}
                 </span>
                 <Input
                   className="w-20"

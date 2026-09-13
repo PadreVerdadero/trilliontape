@@ -6,7 +6,8 @@ import { GameOverScreen } from "@/components/game/game-over-screen";
 import { MobileToggle } from "@/components/game/mobile-toggle";
 import { useGame } from "@/hooks/use-game";
 import { useMobileLayout } from "@/hooks/use-mobile-layout";
-import { items } from "@/lib/game/catalog";
+import { ItemIcon } from "@/components/game/item-icon";
+import { playItems } from "@/lib/game/shares";
 import { formatCoins, formatNetWorth, formatNumber } from "@/lib/game/format";
 import { cn } from "@/lib/utils";
 import { GAME_NAME } from "@/lib/game/brand";
@@ -64,7 +65,7 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
   const [mobile, setMobile] = useMobileLayout();
   const { player, leaders } = state;
   const you = leaders.find((row) => row.username === player.username);
-  const goods = items;
+  const goods = playItems(state.items);
   const totals = {
     gold: 0,
     netWorth: 0,
@@ -171,7 +172,7 @@ export function LeaderboardScreen({ initialState }: { initialState: GameState })
                       className="sticky top-0 z-30 bg-card px-1.5 py-2 text-center text-lg sm:px-2"
                       title={item.name}
                     >
-                      {item.emoji}
+                      <ItemIcon item={item} />
                     </th>
                   ))}
                   <th

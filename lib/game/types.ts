@@ -7,6 +7,7 @@ export type Rarity = "common" | "uncommon" | "rare" | "legendary";
 export type Item = {
   id: string;
   emoji: string;
+  image?: string | null;
   name: string;
   kind: ItemKind;
   description: string;
@@ -305,6 +306,7 @@ export type GameState = {
   goal: GoalView;
   gameOver: GameOverView;
   leaders: LeaderRow[];
+  items: Item[];
   deposit: { amount: number; day: number; gold: number } | null;
 };
 

@@ -1,9 +1,11 @@
 import { CoinDropTimeline } from "@/components/game/coin-drop-timeline";
-import { itemById, items, NET_WORTH_GOAL } from "@/lib/game/catalog";
+import { ItemIcon } from "@/components/game/item-icon";
+import { items as defaultItems, NET_WORTH_GOAL } from "@/lib/game/catalog";
 import { formatCoins, formatCompact, formatNetWorth, formatNumber } from "@/lib/game/format";
+import { playItemMap, playItems } from "@/lib/game/shares";
 import { rarityClass, rarityMapFromPrices } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
-import type { CoinDropState, InventoryRow, MarketPrice, PlayerState } from "@/lib/game/types";
+import type { CoinDropState, InventoryRow, Item, MarketPrice, PlayerState } from "@/lib/game/types";
 
 const PACK_PAD = "px-1.5 sm:px-2";
 const PACK_GRID =
@@ -11,9 +13,9 @@ const PACK_GRID =
 const PACK_SOLO =
   `grid w-full grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-1.5 ${PACK_PAD}`;
 
-function packRows(inventory: InventoryRow[], rankedIds: string[]) {
+function packRows(inventory: InventoryRow[], rankedIds: string[], catalog: Item[]) {
   const held = new Map(inventory.map((row) => [row.itemId, row]));
-  const ids = rankedIds.length > 0 ? rankedIds : items.map((item) => item.id);
+  const ids = rankedIds.length > 0 ? rankedIds : catalog.map((item) => item.id);
   return ids.map((itemId) => {
     const stack = held.get(itemId);
     return {
@@ -43,6 +45,7 @@ export function InventoryPanel({
   now,
   stipendMs,
   coinDrop,
+  catalog,
 }: {
   player: PlayerState;
   prices: MarketPrice[];
@@ -54,15 +57,18 @@ export function InventoryPanel({
   now?: number;
   stipendMs?: number;
   coinDrop?: CoinDropState;
+  catalog?: Item[];
 }) {
+  const catalogRows = playItems(catalog ?? defaultItems);
+  const byId = playItemMap(catalogRows);
   const rarityMap = rarityMapFromPrices(
-    items.map((item) => item.id),
+    catalogRows.map((item) => item.id),
     prices
   );
-  const rows = packRows(player.inventory, rankedItemIds);
+  const rows = packRows(player.inventory, rankedItemIds, catalogRows);
   const goods = rows.reduce((sum, row) => {
     const mv =
-      prices.find((quote) => quote.itemId === row.itemId)?.vwap ?? itemById[row.itemId]?.basePrice ?? 0;
+      prices.find((quote) => quote.itemId === row.itemId)?.vwap ?? byId[row.itemId]?.basePrice ?? 0;
     return sum + row.quantity * mv;
   }, 0);
   const net = player.gold + goods;
@@ -111,7 +117,7 @@ export function InventoryPanel({
         </span>
       </div>
       {rows.map((row) => {
-        const item = itemById[row.itemId];
+        const item = byId[row.itemId];
         const reserved = player.reservedItems[row.itemId] ?? 0;
         const free = Math.max(0, row.quantity - reserved);
         const mv =
@@ -137,7 +143,9 @@ export function InventoryPanel({
               rarityClass(row.itemId, rarityMap)
             )}
           >
-            <span className="text-base leading-none">{item?.emoji}</span>
+            <span className="text-base leading-none">
+              <ItemIcon item={item} />
+            </span>
             <span className="truncate text-xs font-medium sm:text-sm">{item?.name}</span>
             <span className="min-w-0 truncate text-right tabular-nums text-xs sm:text-sm">
               <span className="font-medium">{formatCompact(free)}</span>

@@ -6,7 +6,8 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { OpenOrdersPanel } from "@/components/game/open-orders-panel";
-import { items, itemById } from "@/lib/game/catalog";
+import { ItemIcon } from "@/components/game/item-icon";
+import { playItemMap, playItems } from "@/lib/game/shares";
 import { formatCoins, formatNumber } from "@/lib/game/format";
 import { MobileToggle } from "@/components/game/mobile-toggle";
 import { useGame } from "@/hooks/use-game";
@@ -24,7 +25,12 @@ export function GovernmentScreen({
   initialItemId?: string;
 }) {
   const { state, error, loading, pending, run, setError } = useGame(initialState);
-  const [itemId, setItemId] = useSelectedItem(initialItemId);
+  const catalog = playItems(state?.items);
+  const catalogById = playItemMap(catalog);
+  const [itemId, setItemId] = useSelectedItem(
+    initialItemId,
+    catalog.map((item) => item.id)
+  );
   const [qtyInput, setQtyInput] = useState("1");
   const [mobile, setMobile] = useMobileLayout();
 
@@ -49,7 +55,7 @@ export function GovernmentScreen({
   }
 
   const { player } = state;
-  const selected = itemById[itemId];
+  const selected = catalogById[itemId];
   const price = state.prices.find((row) => row.itemId === itemId);
   const mv = Math.max(1, Math.round(price?.vwap ?? selected?.basePrice ?? 1));
   const qty = Number(qtyInput);
@@ -120,7 +126,7 @@ export function GovernmentScreen({
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => {
+              {catalog.map((item) => {
                 const row = state.prices.find((priceRow) => priceRow.itemId === item.id);
                 const active = item.id === itemId;
                 return (
@@ -133,7 +139,7 @@ export function GovernmentScreen({
                     onClick={() => setItemId(item.id)}
                   >
                     <td className="px-3 py-2">
-                      {item.emoji} {item.name}
+                      <ItemIcon item={item} /> {item.name}
                     </td>
                     <td className="px-3 py-2 tabular-nums">{formatNumber(row?.vwap ?? item.basePrice)}</td>
                     <td className="px-3 py-2 tabular-nums">{formatNumber(row?.issued ?? 0)}</td>
@@ -148,7 +154,14 @@ export function GovernmentScreen({
 
         <section className="space-y-3 rounded-xl border border-emerald-300/20 bg-emerald-900/30 p-4">
           <h2 className="font-heading text-lg">
-            {selected ? `${selected.emoji} ${selected.name}` : "Pick a good"} at {formatCoins(mv)}
+            {selected ? (
+              <>
+                <ItemIcon item={selected} /> {selected.name}
+              </>
+            ) : (
+              "Pick a good"
+            )}{" "}
+            at {formatCoins(mv)}
           </h2>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="min-w-0 flex-1 space-y-1">
@@ -185,6 +198,7 @@ export function GovernmentScreen({
           <OpenOrdersPanel
             orders={state.myOrders.filter((row) => row.isGov)}
             prices={state.prices}
+            catalog={catalog}
             selectedItemId={itemId}
             pending={pending}
             onCancel={(orderIds) => void run({ action: "cancel", orderIds })}

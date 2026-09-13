@@ -12,7 +12,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { items } from "@/lib/game/catalog";
+import { items as defaultItems } from "@/lib/game/catalog";
+import { ItemIcon } from "@/components/game/item-icon";
+import { playItems } from "@/lib/game/shares";
+import type { Item } from "@/lib/game/types";
 import { GOAL_TIME_PRESETS, describeGoal } from "@/lib/game/goal";
 import type { GoalView } from "@/lib/game/types";
 import { cn } from "@/lib/utils";
@@ -20,9 +23,11 @@ import { cn } from "@/lib/utils";
 export function GoalEditor({
   goal,
   pending,
+  catalog,
   onSave,
 }: {
   goal: GoalView;
+  catalog?: Item[];
   pending: boolean;
   onSave: (draft: {
     mode: GoalView["mode"];
@@ -39,6 +44,7 @@ export function GoalEditor({
   const [durationMs, setDurationMs] = useState(goal.durationMs);
   const [customMin, setCustomMin] = useState("");
   const [qty, setQty] = useState<Record<string, string>>({});
+  const goods = playItems(catalog ?? defaultItems);
 
   useEffect(() => {
     if (open) return;
@@ -156,7 +162,7 @@ export function GoalEditor({
                   {mode === "threshold" ? "Need at least this many of each checked good" : "Rank by these goods"}
                 </Label>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {items.map((item) => {
+                  {goods.map((item) => {
                     const on = qty[item.id] != null && qty[item.id] !== "";
                     return (
                       <label
@@ -179,7 +185,7 @@ export function GoalEditor({
                           }
                         />
                         <span className="min-w-0 flex-1 truncate text-sm">
-                          {item.emoji} {item.name}
+                          <ItemIcon item={item} /> {item.name}
                         </span>
                         {on ? (
                           <Input

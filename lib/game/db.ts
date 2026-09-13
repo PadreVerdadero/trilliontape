@@ -9,6 +9,8 @@ import {
   STARTING_GOLD,
   seatGold,
   itemById,
+  defaultShareItems,
+  setLiveItems,
 } from "@/lib/game/catalog";
 import { BOT_PROFILES, MAX_COMPUTERS } from "@/lib/game/bots";
 import { OFFICE_USERNAME } from "@/lib/game/office";
@@ -22,7 +24,7 @@ import { defaultStipendLadder, normalizeStipendLadder } from "@/lib/game/stipend
 
 export const DESK_USERNAME = "Government";
 
-const BOOTSTRAP_REV = 14;
+const BOOTSTRAP_REV = 15;
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: Database.Database;
@@ -427,23 +429,130 @@ function createPlayerWithDb(db: Database.Database, userId: number) {
   );
 }
 
-function purgeRetiredItems(db: Database.Database) {
-  const retired = [...RETIRED_ITEM_IDS];
-  if (retired.length === 0) return;
-  const slots = retired.map(() => "?").join(", ");
+function purgeItemIds(db: Database.Database, ids: string[]) {
+  if (ids.length === 0) return;
+  const slots = ids.map(() => "?").join(", ");
   db.transaction(() => {
     const offerIds = db
       .prepare(`SELECT DISTINCT offer_id FROM swap_legs WHERE item_id IN (${slots})`)
-      .all(...retired) as { offer_id: number }[];
+      .all(...ids) as { offer_id: number }[];
     for (const row of offerIds) {
       db.prepare("DELETE FROM swap_legs WHERE offer_id = ?").run(row.offer_id);
       db.prepare("DELETE FROM swap_offers WHERE id = ?").run(row.offer_id);
     }
-    db.prepare(`DELETE FROM inventory WHERE item_id IN (${slots})`).run(...retired);
-    db.prepare(`DELETE FROM orders WHERE item_id IN (${slots})`).run(...retired);
-    db.prepare(`DELETE FROM trades WHERE item_id IN (${slots})`).run(...retired);
-    db.prepare(`DELETE FROM festival_contracts WHERE item_id IN (${slots})`).run(...retired);
+    db.prepare(`DELETE FROM inventory WHERE item_id IN (${slots})`).run(...ids);
+    db.prepare(`DELETE FROM orders WHERE item_id IN (${slots})`).run(...ids);
+    db.prepare(`DELETE FROM trades WHERE item_id IN (${slots})`).run(...ids);
+    db.prepare(`DELETE FROM festival_contracts WHERE item_id IN (${slots})`).run(...ids);
+    db.prepare(`DELETE FROM item_caps WHERE item_id IN (${slots})`).run(...ids);
+    db.prepare(`DELETE FROM item_float WHERE item_id IN (${slots})`).run(...ids);
+    db.prepare(`DELETE FROM bank_intake WHERE item_id IN (${slots})`).run(...ids);
   })();
+}
+
+function purgeRetiredItems(db: Database.Database) {
+  purgeItemIds(db, [...RETIRED_ITEM_IDS]);
+}
+
+function ensureShareTypesTable(db: Database.Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS share_types (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      image TEXT,
+      base_price INTEGER NOT NULL,
+      authorized INTEGER NOT NULL,
+      sort_order INTEGER NOT NULL
+    )
+  `);
+}
+
+export function readShareTypes(db: Database.Database = getDb()) {
+  ensureShareTypesTable(db);
+  ensureItemCaps(db);
+  const rows = db
+    .prepare(
+      "SELECT id, name, emoji, image, base_price, authorized, sort_order FROM share_types ORDER BY sort_order ASC, name COLLATE NOCASE ASC"
+    )
+    .all() as {
+    id: string;
+    name: string;
+    emoji: string;
+    image: string | null;
+    base_price: number;
+    authorized: number;
+    sort_order: number;
+  }[];
+  return rows.map((row) => {
+    const cap = db
+      .prepare("SELECT authorized FROM item_caps WHERE item_id = ?")
+      .get(row.id) as { authorized: number } | undefined;
+    const authorized =
+      cap && Number.isInteger(cap.authorized) && cap.authorized > 0 ? cap.authorized : row.authorized;
+    return {
+      id: row.id,
+      name: row.name,
+      emoji: row.emoji,
+      image: row.image || null,
+      kind: "material" as const,
+      purpose: "Trade it on the board.",
+      description: row.name,
+      basePrice: row.base_price,
+      authorized,
+    };
+  });
+}
+
+export function hydrateShareCatalog(db: Database.Database = getDb()) {
+  ensureShareTypesTable(db);
+  const count = db.prepare("SELECT COUNT(*) AS n FROM share_types").get() as { n: number };
+  if (count.n === 0) {
+    const insert = db.prepare(
+      `INSERT INTO share_types (id, name, emoji, image, base_price, authorized, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    );
+    defaultShareItems().forEach((item, index) => {
+      insert.run(
+        item.id,
+        item.name,
+        item.emoji,
+        item.image ?? null,
+        item.basePrice,
+        getItemAuthorized(item.id, db) || item.authorized || 15,
+        index
+      );
+    });
+  }
+  setLiveItems(readShareTypes(db));
+}
+
+export function insertShareType(
+  item: {
+    id: string;
+    name: string;
+    emoji: string;
+    image: string | null;
+    basePrice: number;
+    authorized: number;
+  },
+  db: Database.Database = getDb()
+) {
+  ensureShareTypesTable(db);
+  const max = db.prepare("SELECT COALESCE(MAX(sort_order), -1) AS n FROM share_types").get() as { n: number };
+  db.prepare(
+    `INSERT INTO share_types (id, name, emoji, image, base_price, authorized, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(item.id, item.name, item.emoji, item.image, item.basePrice, item.authorized, max.n + 1);
+  setItemAuthorized(item.id, item.authorized, db);
+  hydrateShareCatalog(db);
+}
+
+export function removeShareType(itemId: string, db: Database.Database = getDb()) {
+  ensureShareTypesTable(db);
+  purgeItemIds(db, [itemId]);
+  db.prepare("DELETE FROM share_types WHERE id = ?").run(itemId);
+  hydrateShareCatalog(db);
 }
 
 export function seedBots(db: Database.Database = getDb()) {
@@ -491,6 +600,7 @@ function bootstrap(db: Database.Database) {
   purgeRetiredItems(db);
   shareBankerHoldings(db);
   lockOffice(db);
+  hydrateShareCatalog(db);
 }
 
 function writeComputerMeta(count: number, db: Database.Database) {

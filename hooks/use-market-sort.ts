@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { items } from "@/lib/game/catalog";
+import { items as defaultItems } from "@/lib/game/catalog";
 import {
   cycleMarketSort,
   rankCatalogItems,
@@ -10,21 +10,21 @@ import {
   type SortDir,
 } from "@/lib/game/market-sort";
 import { rarityMapFromPrices } from "@/lib/game/rarity";
-import type { MarketPrice } from "@/lib/game/types";
+import type { Item, MarketPrice } from "@/lib/game/types";
 
-export function useMarketSort(prices: MarketPrice[]) {
+export function useMarketSort(prices: MarketPrice[], catalog: Item[] = defaultItems) {
   const [sort, setSort] = useState<MarketSort>("item");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const rarityMap = useMemo(
     () => rarityMapFromPrices(
-      items.map((item) => item.id),
+      catalog.map((item) => item.id),
       prices
     ),
-    [prices]
+    [catalog, prices]
   );
   const rankedItems = useMemo(
-    () => rankCatalogItems(prices, sort, sortDir, rarityMap),
-    [prices, rarityMap, sort, sortDir]
+    () => rankCatalogItems(prices, sort, sortDir, rarityMap, catalog),
+    [catalog, prices, rarityMap, sort, sortDir]
   );
 
   function cycleSort(column: SortColumn) {

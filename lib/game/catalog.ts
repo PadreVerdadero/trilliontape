@@ -78,7 +78,7 @@ export const locations: Location[] = [
   },
 ];
 
-export const items: Item[] = [
+const SHARE_SEED: Item[] = [
   {
     id: "wheat",
     emoji: "🌿",
@@ -302,8 +302,24 @@ export function itemAuthorized(item: Item | undefined) {
   return item?.authorized ?? 0;
 }
 
-export const itemById = Object.fromEntries(items.map((item) => [item.id, item]));
+export const items: Item[] = SHARE_SEED.map((item) => ({ ...item }));
+export const itemById: Record<string, Item> = Object.fromEntries(items.map((item) => [item.id, item]));
 export const itemsByCommonness = [...items].sort((a, b) => a.name.localeCompare(b.name));
+
+export function defaultShareItems(): Item[] {
+  return SHARE_SEED.map((item) => ({ ...item }));
+}
+
+export function setLiveItems(next: Item[]) {
+  items.splice(
+    0,
+    items.length,
+    ...next.map((item) => ({ ...item }))
+  );
+  for (const key of Object.keys(itemById)) delete itemById[key];
+  for (const item of items) itemById[item.id] = item;
+  itemsByCommonness.splice(0, itemsByCommonness.length, ...[...items].sort((a, b) => a.name.localeCompare(b.name)));
+}
 export const locationById = Object.fromEntries(
   locations.map((location) => [location.id, location])
 );

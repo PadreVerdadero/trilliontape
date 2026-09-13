@@ -46,8 +46,16 @@ import {
   writeStipendLadder,
   getItemAuthorized,
   setItemAuthorized,
+  insertShareType,
+  removeShareType,
 } from "@/lib/game/db";
 import { parseStipendSlotKey, validateStipendLadder } from "@/lib/game/stipend-ladder";
+import {
+  MAX_SHARE_TYPES,
+  MIN_SHARE_TYPES,
+  shareIdFromName,
+  validateShareDraft,
+} from "@/lib/game/shares";
 import {
   BOT_PROFILES,
   MAX_COMPUTERS,
@@ -1338,6 +1346,50 @@ export function adminSetIssued(userId: number, itemId: string, authorized: numbe
   setEvent(userId, `Issued ${item.emoji} ${item.name} is now ${formatNumber(authorized)}.`);
 }
 
+export function adminAddShare(
+  userId: number,
+  draft: { name: string; emoji?: string; image?: string | null }
+) {
+  requireAdmin(userId);
+  if (items.length >= MAX_SHARE_TYPES) {
+    throw new Error(`The table can list at most ${MAX_SHARE_TYPES} share types.`);
+  }
+  const next = validateShareDraft(draft);
+  const id = shareIdFromName(
+    next.name,
+    items.map((item) => item.id)
+  );
+  insertShareType({
+    id,
+    name: next.name,
+    emoji: next.emoji,
+    image: next.image,
+    basePrice: 10,
+    authorized: 15,
+  });
+  alignIssuedToAuthorized(true);
+  const item = itemById[id];
+  setEvent(
+    userId,
+    `Added ${item?.emoji ?? next.emoji} ${next.name} to the share structure. Issued 15 at MV 10. Set Issued if you want a different float.`
+  );
+}
+
+export function adminRemoveShare(userId: number, itemId: string) {
+  requireAdmin(userId);
+  const item = itemById[itemId];
+  if (!item) throw new Error("Unknown share type.");
+  if (items.length <= MIN_SHARE_TYPES) {
+    throw new Error("Keep at least one share type on the table.");
+  }
+  const goal = readGoal();
+  const needs = goal.needs.filter((need) => need.itemId !== itemId);
+  if (needs.length !== goal.needs.length) writeGoal({ ...goal, needs });
+  removeShareType(itemId);
+  alignIssuedToAuthorized(true);
+  setEvent(userId, `Removed ${item.emoji} ${item.name} from the share structure.`);
+}
+
 function dealOpeningShares(db: ReturnType<typeof getDb>, travelerIds: number[]) {
   const seats = travelerIds.length;
   if (seats === 0) return;
@@ -2480,7 +2532,7 @@ function priceSheet(timeZone?: string): MarketPrice[] {
       )
       .get(itemId) as { p: number | null };
     const prints = marketPrints(itemId);
-    const vwap = computeFairValue(itemById[itemId].basePrice, [...prints].reverse());
+    const vwap = computeFairValue(itemById[itemId]?.basePrice ?? item.basePrice, [...prints].reverse());
     const book = depth[itemId] ?? { listed: 0, wanted: 0 };
     const outstanding = packs[itemId] ?? 0;
     const shares = shareStructure(itemId, outstanding);
@@ -3146,6 +3198,7 @@ export function getGameState(
     goal: { ...goal, label: describeGoal(goal) },
     gameOver: over,
     leaders,
+    items: items.map((item) => ({ ...item })),
     deposit:
       depositNotice?.justPaid
         ? { amount: depositNotice.amount, day: depositNotice.day, gold: player.gold }

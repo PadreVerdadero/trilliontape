@@ -4,8 +4,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { itemById } from "@/lib/game/catalog";
+import { ItemIcon } from "@/components/game/item-icon";
 import { formatCoins, formatCompact, formatMilitaryTime, formatNumber } from "@/lib/game/format";
+import { playItemMap, playItems } from "@/lib/game/shares";
 import type { MarketSort, SortColumn, SortDir } from "@/lib/game/market-sort";
 import {
   rarityClass,
@@ -244,7 +245,8 @@ export function MarketPanel({
   cycleSort: (column: SortColumn) => void;
   compact?: boolean;
 }) {
-  const selected = itemById[selectedItemId];
+  const catalogById = playItemMap(playItems(state.items));
+  const selected = catalogById[selectedItemId];
   const price = state.prices.find((row) => row.itemId === selectedItemId);
   const { book, reloadBook } = useOrderBook(selectedItemId);
   const [priceInput, setPriceInput] = useState("");
@@ -430,7 +432,7 @@ export function MarketPanel({
         {state.recentTrades[0] ? (
           <p className="rounded-lg bg-primary/10 px-2 py-1 text-xs">
             Last tape: {formatMilitaryTime(state.recentTrades[0].createdAt, true)} ·{" "}
-            {itemById[state.recentTrades[0].itemId]?.emoji}{" "}
+            <ItemIcon item={catalogById[state.recentTrades[0].itemId]} />{" "}
             {formatNumber(state.recentTrades[0].quantity)} @{" "}
             {formatCoins(state.recentTrades[0].price)}
           </p>
@@ -444,7 +446,7 @@ export function MarketPanel({
           <div className="space-y-2">
             <div className="min-w-0">
               <p className="font-heading text-xl">
-                {selected.emoji} {selected.name}
+                <ItemIcon item={selected} /> {selected.name}
               </p>
             </div>
             <div
@@ -584,7 +586,7 @@ export function MarketPanel({
 
             <div>
               <p className="mb-1 font-heading text-sm">
-                Recent {selected.emoji} {selected.name} trades
+                Recent <ItemIcon item={selected} /> {selected.name} trades
               </p>
               {(book?.trades ?? []).length === 0 ? (
                 <p className="rounded-lg bg-background/40 p-2 text-xs text-muted-foreground ring-1 ring-foreground/10">
@@ -812,7 +814,9 @@ export function MarketPanel({
                 )}
               >
                 <span className="flex min-w-0 items-center gap-2">
-                  <span className={cn("text-xl", rarityClass(item.id, rarityMap))}>{item.emoji}</span>
+                  <span className={cn("text-xl", rarityClass(item.id, rarityMap))}>
+                    <ItemIcon item={item} />
+                  </span>
                   <span className="min-w-0">
                     <span className="block truncate font-medium">{item.name}</span>
                     <span className={cn("text-[10px] uppercase tracking-wide", rarityText[rarity])}>
@@ -868,13 +872,13 @@ export function MarketPanel({
         ) : (
           <ul className="space-y-2">
             {state.recentTrades.map((trade) => {
-              const item = itemById[trade.itemId];
+              const item = catalogById[trade.itemId];
               return (
                 <li key={trade.id} className="text-sm">
                   <span className="tabular-nums text-muted-foreground">
                     {formatMilitaryTime(trade.createdAt, true)}
                   </span>{" "}
-                  · {item?.emoji} {item?.name} · {formatNumber(trade.quantity)} @ {formatCoins(trade.price)}{" "}
+                  · <ItemIcon item={item} /> {item?.name} · {formatNumber(trade.quantity)} @ {formatCoins(trade.price)}{" "}
                   · {trade.buyUsername} bought from {trade.sellUsername}
                 </li>
               );
@@ -896,6 +900,7 @@ export function MarketPanel({
         pending={pending}
         rarityMap={rarityMap}
         prices={state.prices}
+        catalog={playItems(state.items)}
         onPropose={onProposeSwap}
         onAccept={onAcceptSwap}
         onCancel={onCancelSwap}
