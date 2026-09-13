@@ -10,6 +10,7 @@ import { MAX_COMPUTERS } from "@/lib/game/bots";
 import { formatCoins, formatNumber } from "@/lib/game/format";
 import { MobileToggle } from "@/components/game/mobile-toggle";
 import { GoalEditor } from "@/components/game/goal-editor";
+import { StipendEditor } from "@/components/game/stipend-editor";
 import { useGame } from "@/hooks/use-game";
 import { useMobileLayout } from "@/hooks/use-mobile-layout";
 import { useSelectedItem } from "@/hooks/use-selected-item";
@@ -271,6 +272,13 @@ export function AdminScreen({
               <p className="text-xs text-amber-100/60">
                 Travelers who sit at the desk get the next ladder purse every {stipendLabel(state.stipendMs)}.
               </p>
+              {state.coinDrop ? (
+                <StipendEditor
+                  ladder={state.coinDrop.ladder}
+                  pending={pending}
+                  onSave={(amounts) => run({ action: "adminStipendLadder", amounts })}
+                />
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="admin-computers" className="text-amber-100/80">

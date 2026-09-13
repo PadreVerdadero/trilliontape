@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { itemById } from "@/lib/game/catalog";
-import { formatCoins, formatCompact, formatNumber } from "@/lib/game/format";
+import { formatCoins, formatCompact, formatMilitaryTime, formatNumber } from "@/lib/game/format";
 import type { MarketSort, SortColumn, SortDir } from "@/lib/game/market-sort";
 import {
   rarityClass,
@@ -429,7 +429,8 @@ export function MarketPanel({
         </div>
         {state.recentTrades[0] ? (
           <p className="rounded-lg bg-primary/10 px-2 py-1 text-xs">
-            Last tape: {itemById[state.recentTrades[0].itemId]?.emoji}{" "}
+            Last tape: {formatMilitaryTime(state.recentTrades[0].createdAt, true)} ·{" "}
+            {itemById[state.recentTrades[0].itemId]?.emoji}{" "}
             {formatNumber(state.recentTrades[0].quantity)} @{" "}
             {formatCoins(state.recentTrades[0].price)}
           </p>
@@ -604,6 +605,12 @@ export function MarketPanel({
                           <ul className="space-y-1 text-xs">
                             {slice.map((trade) => (
                               <li key={trade.id} className="flex min-w-0 items-baseline gap-1.5">
+                                <span
+                                  className="shrink-0 tabular-nums text-muted-foreground"
+                                  title={formatMilitaryTime(trade.createdAt, true)}
+                                >
+                                  {formatMilitaryTime(trade.createdAt)}
+                                </span>
                                 <span
                                   className="shrink-0 tabular-nums"
                                   title={formatCoins(trade.price)}
@@ -864,9 +871,11 @@ export function MarketPanel({
               const item = itemById[trade.itemId];
               return (
                 <li key={trade.id} className="text-sm">
-                  {item?.emoji} {item?.name} · {formatNumber(trade.quantity)} @ {formatCoins(trade.price)}{" "}
-                  ·{" "}
-                  {trade.buyUsername} bought from {trade.sellUsername}
+                  <span className="tabular-nums text-muted-foreground">
+                    {formatMilitaryTime(trade.createdAt, true)}
+                  </span>{" "}
+                  · {item?.emoji} {item?.name} · {formatNumber(trade.quantity)} @ {formatCoins(trade.price)}{" "}
+                  · {trade.buyUsername} bought from {trade.sellUsername}
                 </li>
               );
             })}

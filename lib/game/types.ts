@@ -276,6 +276,13 @@ export type GameOverView = {
   reason: "threshold" | "time" | null;
 };
 
+export type CoinDropState = {
+  ladder: number[];
+  loginDays: number;
+  lastSlotKey: string | null;
+  paidThisSlot: boolean;
+};
+
 export type GameState = {
   now: number;
   player: PlayerState;
@@ -292,6 +299,7 @@ export type GameState = {
   computerCount: number;
   travelerCount: number;
   stipendMs: number;
+  coinDrop: CoinDropState;
   adminRoster: AdminSeat[];
   netWorthGoal: number;
   goal: GoalView;

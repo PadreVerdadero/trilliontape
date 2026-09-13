@@ -42,9 +42,12 @@ import {
   writeGoal,
   setStipendMs,
   stipendMs,
+  readStipendLadder,
+  writeStipendLadder,
   getItemAuthorized,
   setItemAuthorized,
 } from "@/lib/game/db";
+import { parseStipendSlotKey, validateStipendLadder } from "@/lib/game/stipend-ladder";
 import {
   BOT_PROFILES,
   MAX_COMPUTERS,
@@ -634,7 +637,7 @@ function grantDailyLogin(userId: number, _timeZone?: string): {
     return null;
   }
   const next = (paidDays?.login_days ?? 0) + 1;
-  const amount = dailyDeposit(next);
+  const amount = dailyDeposit(next, readStipendLadder());
   getDb()
     .prepare("UPDATE players SET gold = gold + ?, login_days = ? WHERE user_id = ?")
     .run(amount, next, userId);
@@ -1208,6 +1211,47 @@ export function adminSetStipend(userId: number, ms: number) {
   }
   setStipendMs(ms);
   setEvent(userId, `Coin drops now every ${stipendLabel(ms)}.`);
+}
+
+export function adminSetStipendLadder(userId: number, amounts: number[]) {
+  requireAdmin(userId);
+  const ladder = validateStipendLadder(amounts);
+  writeStipendLadder(ladder);
+  setEvent(
+    userId,
+    `Coin drop ladder saved. ${formatNumber(ladder.length)} level${ladder.length === 1 ? "" : "s"}. First drop ${formatCoins(ladder[0])}.`
+  );
+}
+
+function coinDropSnapshot(userId: number) {
+  const ms = stipendMs();
+  const now = nowMs();
+  const slot = stipendSlotKey(now, ms);
+  const paid = getDb()
+    .prepare("SELECT COALESCE(login_paid, 0) AS login_paid FROM player_daily WHERE user_id = ? AND day_key = ?")
+    .get(userId, slot) as { login_paid: number } | undefined;
+  const days = getDb()
+    .prepare("SELECT COALESCE(login_days, 0) AS login_days FROM players WHERE user_id = ?")
+    .get(userId) as { login_days: number } | undefined;
+  const keys = getDb()
+    .prepare("SELECT day_key FROM player_daily WHERE user_id = ? AND COALESCE(login_paid, 0) = 1")
+    .all(userId) as { day_key: string }[];
+  let lastSlotKey: string | null = paid?.login_paid ? slot : null;
+  let lastStart = lastSlotKey ? parseStipendSlotKey(lastSlotKey)?.start ?? 0 : 0;
+  for (const row of keys) {
+    const parsed = parseStipendSlotKey(row.day_key);
+    if (!parsed) continue;
+    if (!lastSlotKey || parsed.start > lastStart) {
+      lastSlotKey = row.day_key;
+      lastStart = parsed.start;
+    }
+  }
+  return {
+    ladder: readStipendLadder(),
+    loginDays: days?.login_days ?? 0,
+    lastSlotKey,
+    paidThisSlot: Boolean(paid?.login_paid),
+  };
 }
 
 function adminSeat(actorId: number, targetUserId?: number) {
@@ -3071,6 +3115,7 @@ export function getGameState(
     computerCount: botsSeated,
     travelerCount: travelerCount(),
     stipendMs: stipendMs(),
+    coinDrop: coinDropSnapshot(userId),
     adminRoster: canHoldOffice(userId) ? listAdminRoster() : [],
     netWorthGoal: goal.score === "netWorth" ? goal.threshold : NET_WORTH_GOAL,
     goal: { ...goal, label: describeGoal(goal) },

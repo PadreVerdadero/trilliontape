@@ -65,6 +65,15 @@ export function formatMilitary(hour: number, minute = 0) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+export function formatMilitaryTime(ms: number, withSeconds = false) {
+  const date = new Date(ms);
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  if (!withSeconds) return `${hour}:${minute}`;
+  const second = String(date.getSeconds()).padStart(2, "0");
+  return `${hour}:${minute}:${second}`;
+}
+
 export function formatMilitaryRange(startHour: number, endHour: number) {
   return `${formatMilitary(startHour)}–${formatMilitary(endHour)}`;
 }

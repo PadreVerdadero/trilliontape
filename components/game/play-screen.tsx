@@ -91,6 +91,9 @@ export function PlayScreen({
       rankedItemIds={marketSort.rankedItems.map((item) => item.id)}
       coinVolume={state.coinVolume}
       goalLabel={state.goal?.label}
+      now={state.now}
+      stipendMs={state.stipendMs}
+      coinDrop={state.coinDrop}
     />
   );
 

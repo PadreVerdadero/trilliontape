@@ -18,6 +18,7 @@ import {
   adminSetComputerCount,
   adminSitOtherTravelers,
   adminSetStipend,
+  adminSetStipendLadder,
   adminSetIssued,
   adminSetGoal,
 } from "@/lib/game/engine";
@@ -60,6 +61,7 @@ type ActionBody = {
   | { action: "adminComputers"; count?: number; on?: boolean }
   | { action: "adminSitOthers" }
   | { action: "adminStipend"; ms: number }
+  | { action: "adminStipendLadder"; amounts: number[] }
   | {
       action: "adminGoal";
       mode: "threshold" | "timed";
@@ -150,6 +152,9 @@ export async function POST(request: Request) {
         break;
       case "adminStipend":
         adminSetStipend(userId, Number(body.ms));
+        break;
+      case "adminStipendLadder":
+        adminSetStipendLadder(userId, body.amounts);
         break;
       case "adminGoal":
         adminSetGoal(userId, {

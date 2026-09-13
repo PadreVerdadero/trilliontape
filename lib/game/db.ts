@@ -18,6 +18,7 @@ import {
   type GameOverState,
   type GoalConfig,
 } from "@/lib/game/goal";
+import { defaultStipendLadder, normalizeStipendLadder } from "@/lib/game/stipend-ladder";
 
 export const DESK_USERNAME = "Government";
 
@@ -542,6 +543,25 @@ export function stipendMs(db: Database.Database = getDb()) {
     | undefined;
   const ms = Number(row?.value);
   return Number.isFinite(ms) && ms >= 1_000 ? ms : 5 * 60 * 1000;
+}
+
+export function readStipendLadder(db: Database.Database = getDb()) {
+  const row = db.prepare("SELECT value FROM game_meta WHERE key = 'stipend_ladder'").get() as
+    | { value: string }
+    | undefined;
+  if (!row) return defaultStipendLadder();
+  try {
+    return normalizeStipendLadder(JSON.parse(row.value) as unknown);
+  } catch {
+    return defaultStipendLadder();
+  }
+}
+
+export function writeStipendLadder(ladder: number[], db: Database.Database = getDb()) {
+  db.prepare(
+    `INSERT INTO game_meta (key, value) VALUES ('stipend_ladder', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run(JSON.stringify(normalizeStipendLadder(ladder)));
 }
 
 export function readGoal(db: Database.Database = getDb()): GoalConfig {
