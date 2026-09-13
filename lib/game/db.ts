@@ -496,7 +496,9 @@ export function computerCount(db: Database.Database = getDb()) {
   const flag = db.prepare("SELECT value FROM game_meta WHERE key = 'computers'").get() as
     | { value: string }
     | undefined;
-  return flag?.value === "0" ? 0 : MAX_COMPUTERS;
+  const fallback = flag?.value === "0" ? 0 : MAX_COMPUTERS;
+  writeComputerMeta(fallback, db);
+  return fallback;
 }
 
 export function computersEnabled(db: Database.Database = getDb()) {

@@ -294,21 +294,26 @@ export function AdminScreen({
                 </Button>
               </div>
               <p className="text-xs text-amber-100/60">
-                {state.computerCount ?? 0} of {MAX_COMPUTERS} seated. New game splits Issued across
-                travelers plus this many computers; leftover units stay in the treasury.
+                {state.computerCount ?? 0} of {MAX_COMPUTERS} seated. Set applies it now. New game
+                uses the number in this box, splits Issued across travelers plus that many
+                computers, and leaves the remainder in the treasury.
               </p>
               <Button
                 variant="outline"
                 disabled={pending}
                 className="w-full border-amber-400/50 bg-transparent text-amber-50 hover:bg-amber-900"
                 onClick={() => {
-                  const bots = state.computerCount ?? 0;
+                  const bots = Number(computerDraft);
+                  if (!Number.isInteger(bots) || bots < 0 || bots > MAX_COMPUTERS) {
+                    setError(`Computers must be a whole number from 0 to ${MAX_COMPUTERS}.`);
+                    return;
+                  }
                   const ok = window.confirm(
                     `Start a new game? This clears packs, the book, and the tape. Every traveler and ${bots} seated computer${
                       bots === 1 ? "" : "s"
                     } start with 1,000 coins and floor(Issued ÷ seats) of each good. Remainder stays in the treasury for the government to sell at MV.`
                   );
-                  if (ok) void run({ action: "adminNewGame" });
+                  if (ok) void run({ action: "adminNewGame", count: bots });
                 }}
               >
                 New game

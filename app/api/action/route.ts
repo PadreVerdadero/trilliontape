@@ -54,7 +54,7 @@ type ActionBody = {
   | { action: "adminGold"; gold: number; targetUserId?: number }
   | { action: "adminItem"; itemId: string; quantity: number; targetUserId?: number }
   | { action: "adminIssued"; itemId: string; authorized: number }
-  | { action: "adminNewGame" }
+  | { action: "adminNewGame"; count?: number }
   | { action: "adminComputers"; count?: number; on?: boolean }
   | { action: "adminStipend"; ms: number }
 );
@@ -128,7 +128,7 @@ export async function POST(request: Request) {
         adminSetIssued(userId, String(body.itemId), Number(body.authorized));
         break;
       case "adminNewGame":
-        adminStartGame(userId, tz);
+        adminStartGame(userId, tz, body.count != null ? Number(body.count) : undefined);
         break;
       case "adminComputers":
         if (body.count != null) adminSetComputerCount(userId, Number(body.count));

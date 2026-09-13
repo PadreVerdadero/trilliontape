@@ -1244,11 +1244,15 @@ function dealOpeningShares(db: ReturnType<typeof getDb>, travelerIds: number[]) 
   }
 }
 
-export function adminStartGame(userId: number, _timeZone?: string) {
+export function adminStartGame(userId: number, _timeZone?: string, count?: number) {
   requireAdmin(userId);
+  if (count != null && (!Number.isInteger(count) || count < 0 || count > MAX_COMPUTERS)) {
+    throw new Error(`Computers must be a whole number from 0 to ${MAX_COMPUTERS}.`);
+  }
   const db = getDb();
   const dayKey = stipendSlotKey(Date.now(), stipendMs());
   db.transaction(() => {
+    setComputerCount(count ?? computerCount(db), db);
     db.exec(`
       DELETE FROM swap_legs;
       DELETE FROM swap_offers;
