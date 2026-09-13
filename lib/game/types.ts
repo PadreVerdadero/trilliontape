@@ -267,6 +267,7 @@ export type GameState = {
   coinVolume: number;
   computers: boolean;
   computerCount: number;
+  travelerCount: number;
   stipendMs: number;
   adminRoster: AdminSeat[];
   netWorthGoal: number;

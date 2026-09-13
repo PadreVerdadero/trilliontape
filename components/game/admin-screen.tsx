@@ -294,10 +294,28 @@ export function AdminScreen({
                 </Button>
               </div>
               <p className="text-xs text-amber-100/60">
-                {state.computerCount ?? 0} of {MAX_COMPUTERS} seated. Set applies it now. New game
-                uses the number in this box, splits Issued across travelers plus that many
-                computers, and leaves the remainder in the treasury.
+                {state.travelerCount ?? 0} traveler{state.travelerCount === 1 ? "" : "s"} +{" "}
+                {state.computerCount ?? 0} computer{(state.computerCount ?? 0) === 1 ? "" : "s"} ={" "}
+                {(state.travelerCount ?? 0) + (state.computerCount ?? 0)} seats. Computers are
+                0–{MAX_COMPUTERS}. Zero computers still leaves every traveler account at the table
+                — leftover test names count as players.
               </p>
+              {(state.travelerCount ?? 0) > 1 ? (
+                <Button
+                  variant="outline"
+                  disabled={pending}
+                  className="w-full border-amber-400/50 bg-transparent text-amber-50 hover:bg-amber-900"
+                  onClick={() => {
+                    const extras = (state.travelerCount ?? 1) - 1;
+                    const ok = window.confirm(
+                      `Sit ${extras} other traveler${extras === 1 ? "" : "s"} out? Their packs go back to the treasury. You stay as the only traveler. They can sit down again by opening the desk.`
+                    );
+                    if (ok) void run({ action: "adminSitOthers" });
+                  }}
+                >
+                  Sit other travelers out
+                </Button>
+              ) : null}
               <Button
                 variant="outline"
                 disabled={pending}
@@ -308,10 +326,12 @@ export function AdminScreen({
                     setError(`Computers must be a whole number from 0 to ${MAX_COMPUTERS}.`);
                     return;
                   }
+                  const travelers = state.travelerCount ?? 1;
+                  const seats = travelers + bots;
                   const ok = window.confirm(
-                    `Start a new game? This clears packs, the book, and the tape. Every traveler and ${bots} seated computer${
+                    `Start a new game? ${travelers} traveler${travelers === 1 ? "" : "s"} and ${bots} computer${
                       bots === 1 ? "" : "s"
-                    } start with 1,000 coins and floor(Issued ÷ seats) of each good. Remainder stays in the treasury for the government to sell at MV.`
+                    } (${seats} seat${seats === 1 ? "" : "s"}). Each gets 1,000 coins and floor(Issued ÷ ${seats}) of each good. Remainder stays in the treasury.`
                   );
                   if (ok) void run({ action: "adminNewGame", count: bots });
                 }}

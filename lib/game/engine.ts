@@ -643,19 +643,32 @@ function seatedBotUsernames(db: ReturnType<typeof getDb> = getDb()) {
   return BOT_PROFILES.slice(0, computerCount(db)).map((bot) => bot.username);
 }
 
+function humanAtTableSql() {
+  return `COALESCE(is_bot, 0) = 0 AND COALESCE(is_gov, 0) = 0 AND username NOT IN ('Banker', 'Government')
+    AND COALESCE((SELECT at_table FROM players WHERE user_id = id), 1) = 1`;
+}
+
 function tableSeatWhere(db: ReturnType<typeof getDb> = getDb()) {
   const names = seatedBotUsernames(db);
   if (names.length === 0) {
     return {
-      sql: `username NOT IN ('Banker', 'Government') AND COALESCE(is_bot, 0) = 0`,
+      sql: humanAtTableSql(),
       params: [] as string[],
     };
   }
   const slots = names.map(() => "?").join(", ");
   return {
-    sql: `username NOT IN ('Banker', 'Government') AND (COALESCE(is_bot, 0) = 0 OR username IN (${slots}))`,
+    sql: `(${humanAtTableSql()} OR username IN (${slots}))`,
     params: names,
   };
+}
+
+function travelerCount(db: ReturnType<typeof getDb> = getDb()) {
+  return (
+    db
+      .prepare(`SELECT COUNT(*) AS n FROM users WHERE ${humanAtTableSql()}`)
+      .get() as { n: number }
+  ).n;
 }
 
 function tableSeatIds() {
@@ -1121,6 +1134,17 @@ export function enterDesk(userId: number) {
   const db = getDb();
   if (isGov(userId)) db.prepare("UPDATE users SET is_gov = 0 WHERE id = ?").run(userId);
   if (isAdmin(userId)) db.prepare("UPDATE users SET is_admin = 0 WHERE id = ?").run(userId);
+  if (isBot(userId)) return;
+  const row = db
+    .prepare("SELECT COALESCE(at_table, 1) AS at_table, gold FROM players WHERE user_id = ?")
+    .get(userId) as { at_table: number; gold: number } | undefined;
+  if (!row || row.at_table) return;
+  db.prepare("UPDATE players SET at_table = 1, gold = CASE WHEN gold < ? THEN ? ELSE gold END, last_event = ? WHERE user_id = ?").run(
+    TABLE_GOLD,
+    TABLE_GOLD,
+    "You sat down with 1,000 coins and an empty pack. The opening split already went out.",
+    userId
+  );
 }
 
 export function enterAdmin(userId: number) {
@@ -1303,6 +1327,14 @@ export function adminStartGame(userId: number, _timeZone?: string, count?: numbe
       ).run(...seatedNames);
     }
     db.prepare(
+      `UPDATE players SET gold = 0, last_event = 'Sitting this table out.'
+       WHERE COALESCE(at_table, 1) = 0
+         AND user_id IN (
+           SELECT id FROM users
+           WHERE COALESCE(is_bot, 0) = 0 AND username NOT IN ('Banker', 'Government')
+         )`
+    ).run();
+    db.prepare(
       `UPDATE players SET gold = 0, last_event = 'The treasury desk is open.'
        WHERE user_id IN (SELECT id FROM users WHERE username IN ('Banker', 'Government'))`
     ).run();
@@ -1384,6 +1416,40 @@ export function adminSetComputerCount(userId: number, count: number) {
 export function adminSetComputers(userId: number, on: boolean) {
   const seated = computerCount();
   adminSetComputerCount(userId, on ? (seated > 0 ? seated : MAX_COMPUTERS) : 0);
+}
+
+export function adminSitOtherTravelers(userId: number) {
+  requireAdmin(userId);
+  const db = getDb();
+  const others = db
+    .prepare(
+      `SELECT id FROM users
+       WHERE id != ? AND COALESCE(is_bot, 0) = 0 AND COALESCE(is_gov, 0) = 0
+         AND username NOT IN ('Banker', 'Government')`
+    )
+    .all(userId) as { id: number }[];
+  if (others.length === 0) {
+    db.prepare("UPDATE players SET at_table = 1 WHERE user_id = ?").run(userId);
+    setEvent(userId, "You are the only traveler at the table.");
+    return;
+  }
+  const ids = others.map((row) => row.id);
+  db.transaction(() => {
+    db.prepare("UPDATE players SET at_table = 1 WHERE user_id = ?").run(userId);
+    const slots = ids.map(() => "?").join(", ");
+    db.prepare(`DELETE FROM orders WHERE user_id IN (${slots})`).run(...ids);
+    db.prepare(`DELETE FROM inventory WHERE user_id IN (${slots})`).run(...ids);
+    db.prepare(
+      `UPDATE players SET at_table = 0, gold = 0, last_event = 'Sitting this table out.'
+       WHERE user_id IN (${slots})`
+    ).run(...ids);
+  })();
+  deskClock.bazaarDeskFloat = 0;
+  alignIssuedToAuthorized(true);
+  setEvent(
+    userId,
+    `${formatNumber(ids.length)} other traveler${ids.length === 1 ? "" : "s"} sat out. Their packs went back to the treasury. You are the only traveler at the table.`
+  );
 }
 
 function mapOrder(row: {
@@ -2686,12 +2752,13 @@ function listAdminRoster(): AdminSeat[] {
   const seatedBots = new Set(seatedBotUsernames());
   const people = getDb()
     .prepare(
-      `SELECT u.id, u.username, p.gold, COALESCE(u.is_bot, 0) AS is_bot
+      `SELECT u.id, u.username, p.gold, COALESCE(u.is_bot, 0) AS is_bot,
+              COALESCE(p.at_table, 1) AS at_table
        FROM users u JOIN players p ON p.user_id = u.id
        WHERE u.username NOT IN ('Banker', 'Government')
        ORDER BY COALESCE(u.is_bot, 0) ASC, u.username COLLATE NOCASE`
     )
-    .all() as { id: number; username: string; gold: number; is_bot: number }[];
+    .all() as { id: number; username: string; gold: number; is_bot: number; at_table: number }[];
   const packs = getDb()
     .prepare(
       `SELECT user_id, item_id, quantity FROM inventory WHERE quantity > 0`
@@ -2708,7 +2775,7 @@ function listAdminRoster(): AdminSeat[] {
     username: row.username,
     gold: row.gold,
     bot: Boolean(row.is_bot),
-    seated: !row.is_bot || seatedBots.has(row.username),
+    seated: row.is_bot ? seatedBots.has(row.username) : Boolean(row.at_table),
     holdings: byUser.get(row.id) ?? {},
   }));
 }
@@ -2720,6 +2787,7 @@ function listTravelers(userId: number): TravelerRow[] {
         `SELECT u.id, u.username, COALESCE(u.is_bot, 0) AS is_bot
          FROM users u JOIN players p ON p.user_id = u.id
          WHERE u.id != ? AND u.username != 'Banker' AND COALESCE(u.is_bot, 0) = 0 AND COALESCE(u.is_gov, 0) = 0
+           AND COALESCE(p.at_table, 1) = 1
          ORDER BY u.username COLLATE NOCASE ASC`
       )
       .all(userId) as { id: number; username: string; is_bot: number }[]
@@ -2917,6 +2985,7 @@ export function getGameState(
     coinVolume,
     computers,
     computerCount: botsSeated,
+    travelerCount: travelerCount(),
     stipendMs: stipendMs(),
     adminRoster: isAdmin(userId) ? listAdminRoster() : [],
     netWorthGoal: NET_WORTH_GOAL,
