@@ -10,6 +10,8 @@ app = "trilliontape-data"
 primary_region = "iad"
 
 [build]
+  # Launch UI must use this image. Never deploy a
+  # registry.fly.io/trilliontape-data:deployment-* tag — those 404.
   image = "ghcr.io/tursodatabase/libsql-server:latest"
 
 [env]

@@ -82,14 +82,26 @@ This is a **second** Fly app, not another copy of the desk. You do not clone Git
 7. Secret **`SQLD_AUTH_JWT_KEY`** = the one-line contents of `data-host/keys/jwt.pub.b64url` (from `npm run data-host:auth`).
 8. On the overview page, allocate **Shared IPv4** (and **IPv6**) the same way you did for the desk.
 
-Or from a terminal already logged into Fly:
+If Launch fails with **Could not find image** `registry.fly.io/trilliontape-data:deployment-…` and **org_slug is only supported with private_v6**, stop. Do not rerun that command. The UI invented a tag that was never built. In a terminal already logged into Fly (`fly auth login` if needed), paste this instead — it pulls Turso’s public image, not that tag:
+
+```bash
+fly ips allocate-v4 --shared -a trilliontape-data
+fly ips allocate-v6 -a trilliontape-data
+fly volumes create trilliontape_libsql --region iad --size 1 --app trilliontape-data --yes
+fly secrets set SQLD_AUTH_JWT_KEY="$(cat data-host/keys/jwt.pub.b64url)" --app trilliontape-data
+fly deploy -a trilliontape-data --image ghcr.io/tursodatabase/libsql-server:latest --ha=false
+```
+
+If the volume already exists, skip `fly volumes create`. `trilliontape-data.fly.dev` is the database, not the game — it will not show TrillionTape.
+
+Or from a checkout of this repo:
 
 ```bash
 cd data-host
 fly apps create trilliontape-data
 fly volumes create trilliontape_libsql --region iad --size 1 --app trilliontape-data --yes
 fly secrets set SQLD_AUTH_JWT_KEY="$(cat keys/jwt.pub.b64url)" --app trilliontape-data
-fly deploy --config fly.toml --app trilliontape-data
+fly deploy --config fly.toml --app trilliontape-data --image ghcr.io/tursodatabase/libsql-server:latest --ha=false
 fly ips allocate-v4 --shared -a trilliontape-data
 fly ips allocate-v6 -a trilliontape-data
 ```
