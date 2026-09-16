@@ -1,35 +1,30 @@
-# TrillionTape libSQL data host — not the Next.js desk.
-# Fly Launch from GitHub (New app, not the existing desk):
-#   working directory = data-host
-#   config path = fly.toml
-# Do not set config path to data-host/fly.toml while the working directory
-# is also data-host. Leave working directory blank and Fly builds the desk.
-# After deploy, allocate Shared IPv4 on https://fly.io/apps/trilliontape-data
-# Change `app` only if this name is already taken.
-app = "trilliontape-data"
-primary_region = "iad"
+# fly.toml app configuration file generated for trilliontape-data on 2026-09-16T04:05:07Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'trilliontape-data'
+primary_region = 'iad'
 
 [build]
-  # Launch UI must use this image. Never deploy a
-  # registry.fly.io/trilliontape-data:deployment-* tag — those 404.
-  image = "ghcr.io/tursodatabase/libsql-server:latest"
+  image = 'ghcr.io/tursodatabase/libsql-server:latest'
 
 [env]
-  SQLD_NODE = "primary"
-  SQLD_HTTP_LISTEN_ADDR = "0.0.0.0:8080"
+  SQLD_HTTP_LISTEN_ADDR = '0.0.0.0:8080'
+  SQLD_NODE = 'primary'
 
-[mounts]
-  source = "trilliontape_libsql"
-  destination = "/var/lib/sqld"
+[[mounts]]
+  source = 'trilliontape_libsql'
+  destination = '/var/lib/sqld'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "off"
+  auto_stop_machines = 'off'
   auto_start_machines = true
   min_machines_running = 1
-  processes = ["app"]
+  processes = ['app']
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "256mb"
+  size = 'shared-cpu-1x'
+  memory = '256mb'
