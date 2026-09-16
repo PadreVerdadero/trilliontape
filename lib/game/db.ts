@@ -25,7 +25,7 @@ export const DESK_USERNAME = "Government";
 
 export type GamePhase = "lobby" | "live";
 
-const BOOTSTRAP_REV = 18;
+const BOOTSTRAP_REV = 19;
 const INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 const globalForDb = globalThis as unknown as {
@@ -670,6 +670,15 @@ async function lockOffice(db: GameDb) {
   ).run(OFFICE_USERNAME, DESK_USERNAME);
 }
 
+async function retireGuest(db: GameDb) {
+  await db
+    .prepare(
+      `UPDATE players SET at_table = 0, last_event = ?
+       WHERE user_id IN (SELECT id FROM users WHERE username = 'Guest' COLLATE NOCASE)`
+    )
+    .run("Guest play is closed.");
+}
+
 async function bootstrap(db: GameDb) {
   await migrate(db);
   await clearBankerBook(db);
@@ -679,6 +688,7 @@ async function bootstrap(db: GameDb) {
   await purgeRetiredItems(db);
   await shareBankerHoldings(db);
   await lockOffice(db);
+  await retireGuest(db);
   await hydrateShareCatalog(db);
 }
 

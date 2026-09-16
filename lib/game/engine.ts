@@ -691,7 +691,7 @@ async function seatedBotUsernames(db: ReturnType<typeof getDb> = getDb()) {
 }
 
 function humanAtTableSql() {
-  return `COALESCE(is_bot, 0) = 0 AND COALESCE(is_gov, 0) = 0 AND username NOT IN ('Banker', 'Government')
+  return `COALESCE(is_bot, 0) = 0 AND COALESCE(is_gov, 0) = 0 AND username NOT IN ('Banker', 'Government', 'Guest')
     AND COALESCE((SELECT at_table FROM players WHERE user_id = id), 1) = 1`;
 }
 
@@ -1562,7 +1562,7 @@ async function runNewGame(userId: number, count?: number) {
        WHERE COALESCE(at_table, 1) = 0
          AND user_id IN (
            SELECT id FROM users
-           WHERE COALESCE(is_bot, 0) = 0 AND username NOT IN ('Banker', 'Government')
+           WHERE COALESCE(is_bot, 0) = 0 AND username NOT IN ('Banker', 'Government', 'Guest')
          )`
     ).run();
     await db.prepare(
@@ -3171,7 +3171,7 @@ async function listLobbyTravelers(): Promise<TravelerRow[]> {
       .prepare(
         `SELECT u.id, u.username, COALESCE(u.is_bot, 0) AS is_bot
          FROM users u JOIN players p ON p.user_id = u.id
-         WHERE u.username != 'Banker' AND COALESCE(u.is_bot, 0) = 0 AND COALESCE(u.is_gov, 0) = 0
+         WHERE u.username NOT IN ('Banker', 'Guest') AND COALESCE(u.is_bot, 0) = 0 AND COALESCE(u.is_gov, 0) = 0
            AND COALESCE(p.at_table, 1) = 1
          ORDER BY u.username COLLATE NOCASE ASC`
       )
