@@ -1,6 +1,6 @@
 "use client";
 
-export type DeskSound = "buy" | "sell" | "deposit" | "fail";
+export type DeskSound = "buy" | "sell" | "post" | "deposit" | "fail";
 
 type WebAudioWindow = Window & {
   webkitAudioContext?: typeof AudioContext;
@@ -101,7 +101,17 @@ function mixTone(
 
 function renderCue(kind: DeskSound | "silent") {
   const duration =
-    kind === "silent" ? 0.05 : kind === "deposit" ? 0.55 : kind === "fail" ? 0.32 : kind === "sell" ? 0.5 : 0.38;
+    kind === "silent"
+      ? 0.05
+      : kind === "deposit"
+        ? 0.55
+        : kind === "fail"
+          ? 0.32
+          : kind === "sell"
+            ? 0.5
+            : kind === "post"
+              ? 0.2
+              : 0.38;
   const out = new Float32Array(Math.floor(SAMPLE_RATE * duration));
   if (kind === "buy") {
     mixTone(out, 523.25, 0, 0.12, 0.62);
@@ -120,6 +130,9 @@ function renderCue(kind: DeskSound | "silent") {
     mixTone(out, 2637, 0.21, 0.09, 0.58);
     mixTone(out, 523.25, 0.04, 0.4, 0.28);
     mixTone(out, 783.99, 0.16, 0.36, 0.32);
+  } else if (kind === "post") {
+    mixTone(out, 698.46, 0, 0.08, 0.36);
+    mixTone(out, 830.61, 0.06, 0.11, 0.32);
   } else if (kind === "fail") {
     mixTone(out, 196, 0, 0.28, 0.7, 130.81);
     mixTone(out, 147, 0.03, 0.22, 0.55, 110);
@@ -259,13 +272,23 @@ function playWebFallback(audio: AudioContext, kind: DeskSound) {
     beep(audio, 2349, t + 0.07, 0.08, 0.16, "square");
     beep(audio, 1976, t + 0.14, 0.08, 0.16, "square");
     beep(audio, 783.99, t + 0.1, 0.28, 0.18);
+  } else if (kind === "post") {
+    beep(audio, 698.46, t, 0.08, 0.14);
+    beep(audio, 830.61, t + 0.06, 0.1, 0.12);
   } else {
     beep(audio, 147, t, 0.24, 0.3, "triangle", 98);
   }
 }
 
-export function deskSoundForAction(action: string, side?: unknown): DeskSound | null {
-  if (action === "order") return side === "sell" ? "sell" : "buy";
+export function deskSoundForAction(
+  action: string,
+  side?: unknown,
+  resting?: boolean
+): DeskSound | null {
+  if (action === "order") {
+    if (resting) return "post";
+    return side === "sell" ? "sell" : "buy";
+  }
   if (action === "take") return side === "buy" ? "sell" : "buy";
   return null;
 }

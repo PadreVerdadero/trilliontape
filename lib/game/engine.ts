@@ -1023,20 +1023,32 @@ export async function placeOrder(
       );
     }
   }
+  const ids: number[] = [];
   for (let n = 0; n < quantity; n += 1) {
-    await insertLiveOrder(userId, itemId, side, px, 1, treasury);
+    ids.push(await insertLiveOrder(userId, itemId, side, px, 1, treasury));
   }
   await matchItem(itemId);
+  let resting = 0;
+  for (const id of ids) {
+    const live = await loadLiveOrder(id);
+    if (live) resting += live.remaining;
+  }
+  const filled = Math.max(0, quantity - resting);
   await setEvent(
     userId,
     treasury
       ? side === "buy"
         ? `Treasury bid: will burn ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(px)} (MV).`
         : `Treasury ask: will mint ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(px)} (MV).`
-      : side === "buy"
-        ? `Bid posted: ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(px)}.`
-        : `Ask posted: ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(px)}.`
+      : filled > 0 && resting === 0
+        ? `Filled ${item.emoji} ${item.name} ×${formatNumber(filled)} at ${formatCoins(px)}.`
+        : filled > 0
+          ? `Filled ${item.emoji} ${item.name} ×${formatNumber(filled)} at ${formatCoins(px)}; ${formatNumber(resting)} still on the book.`
+          : side === "buy"
+            ? `Bid posted: ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(px)}.`
+            : `Ask posted: ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(px)}.`
   );
+  return { filled, resting };
 }
 
 type LiveOrder = {

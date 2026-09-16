@@ -77,7 +77,7 @@ export function useGame(initialState?: GameState | null) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...body, timeZone: clientTimeZone() }),
       });
-      const data = (await response.json()) as GameState & { error?: string };
+      const data = (await response.json()) as GameState & { error?: string; deskCue?: "buy" | "sell" | "post" };
       if (!response.ok) {
         setError(data.error ?? "That action failed.");
         if (isDeskTradeAction(body.action)) void playDeskSound("fail");
@@ -85,7 +85,7 @@ export function useGame(initialState?: GameState | null) {
       }
       setState(data);
       lastEvent.current = data.player.lastEvent;
-      const cue = deskSoundForAction(body.action, body.side);
+      const cue = data.deskCue ?? deskSoundForAction(body.action, body.side);
       if (cue) void playDeskSound(cue);
       return data;
     } catch {

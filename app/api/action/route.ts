@@ -89,6 +89,7 @@ export async function POST(request: Request) {
     const userId = await requireUser();
     const body = (await request.json()) as ActionBody;
     const tz = body.timeZone;
+    let deskCue: "buy" | "sell" | "post" | null = null;
     switch (body.action) {
       case "travel":
       case "arrive":
@@ -103,9 +104,22 @@ export async function POST(request: Request) {
         throw new Error("The stalls are gone. Trade on the board.");
       case "craft":
         throw new Error("Items are not combined. Trade them on the board.");
-      case "order":
-        await placeOrder(userId, body.itemId, body.side, Number(body.price), Number(body.quantity));
+      case "order": {
+        const result = await placeOrder(
+          userId,
+          body.itemId,
+          body.side,
+          Number(body.price),
+          Number(body.quantity)
+        );
+        deskCue =
+          result.resting > 0 && result.filled === 0
+            ? "post"
+            : body.side === "sell"
+              ? "sell"
+              : "buy";
         break;
+      }
       case "take":
         await takeOrder(userId, Number(body.orderId), Number(body.quantity ?? 1), {
           itemId: body.itemId,
@@ -113,6 +127,7 @@ export async function POST(request: Request) {
           price: body.price != null ? Number(body.price) : undefined,
           treasury: body.treasury,
         });
+        deskCue = body.side === "buy" ? "sell" : "buy";
         break;
       case "cancel": {
         const ids = Array.isArray(body.orderIds)
@@ -208,7 +223,8 @@ export async function POST(request: Request) {
       default:
         throw new Error("Unknown action.");
     }
-    return asJson(await getGameState(userId, tz, { tick: false }));
+    const state = await getGameState(userId, tz, { tick: false });
+    return asJson(deskCue ? { ...state, deskCue } : state);
   } catch (error) {
     return handleError(error);
   }
