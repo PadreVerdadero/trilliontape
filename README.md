@@ -88,7 +88,7 @@ If Launch fails with **Could not find image** `registry.fly.io/trilliontape-data
 fly ips allocate-v4 --shared -a trilliontape-data
 fly ips allocate-v6 -a trilliontape-data
 fly volumes create trilliontape_libsql --region iad --size 1 --app trilliontape-data --yes
-fly secrets set SQLD_AUTH_JWT_KEY="$(cat data-host/keys/jwt.pub.b64url)" --app trilliontape-data
+fly secrets set SQLD_AUTH_JWT_KEY="<jwt.pub.b64url from npm run data-host:auth>" --app trilliontape-data
 fly deploy -a trilliontape-data --image ghcr.io/tursodatabase/libsql-server:latest --ha=false
 ```
 
