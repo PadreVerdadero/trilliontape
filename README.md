@@ -71,14 +71,16 @@ That writes `data-host/keys/` (gitignored): a public key the data host checks, a
 
 ### 2. Data host on Fly (`trilliontape-data`)
 
-This is a **second** Fly app, not another copy of the desk. In Launch from GitHub:
+This is a **second** Fly app, not another copy of the desk. You do not clone GitHub. Fly’s website reads the repo for you.
 
-1. App name **`trilliontape-data`**.
-2. Config file **`data-host/fly.toml`**.
-3. Working directory **`data-host`** (if this is blank, Fly builds the Next.js desk again — wrong).
-4. Region **iad** (Ashburn). Create the volume **`trilliontape_libsql`** (1 GB) mounted at `/var/lib/sqld` when asked.
-5. Secret **`SQLD_AUTH_JWT_KEY`** = the one-line contents of `data-host/keys/jwt.pub.b64url` (from `npm run data-host:auth`).
-6. On the overview page, allocate **Shared IPv4** (and **IPv6**) the same way you did for the desk.
+1. Open [https://fly.io/dashboard/personal/new](https://fly.io/dashboard/personal/new) (**New app**, not the existing `trilliontape` page).
+2. Choose **GitHub**, repo **PadreVerdadero/trilliontape**, branch **main**.
+3. App name **`trilliontape-data`**.
+4. **Current working directory:** `data-host` (if this is blank, Fly builds the desk again — wrong).
+5. **Config path:** `fly.toml` only. Do not type `data-host/fly.toml` here — that path is already inside the working directory.
+6. Region **iad** (Ashburn). Create the volume **`trilliontape_libsql`** (1 GB) mounted at `/var/lib/sqld` when asked.
+7. Secret **`SQLD_AUTH_JWT_KEY`** = the one-line contents of `data-host/keys/jwt.pub.b64url` (from `npm run data-host:auth`).
+8. On the overview page, allocate **Shared IPv4** (and **IPv6**) the same way you did for the desk.
 
 Or from a terminal already logged into Fly:
 
