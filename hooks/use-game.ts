@@ -26,15 +26,20 @@ export function useGame(initialState?: GameState | null) {
   const hurry = busy || state?.gamePhase === "lobby";
   pendingRef.current = pending;
 
+  const refreshGen = useRef(0);
+
   const refresh = useCallback(async () => {
+    const gen = (refreshGen.current += 1);
     const response = await fetch(`/api/state?tz=${encodeURIComponent(clientTimeZone())}`, {
       cache: "no-store",
     });
+    if (gen !== refreshGen.current) return;
     if (response.status === 401) {
       router.replace("/");
       return;
     }
     const data = (await response.json()) as GameState & { error?: string };
+    if (gen !== refreshGen.current) return;
     if (!response.ok) {
       setError(data.error ?? "Could not load the bazaar.");
       setLoading(false);
@@ -46,11 +51,12 @@ export function useGame(initialState?: GameState | null) {
   }, [router]);
 
   useEffect(() => {
+    if (initialState) return;
     const timeout = window.setTimeout(() => {
       void refresh();
     }, 0);
     return () => window.clearTimeout(timeout);
-  }, [refresh]);
+  }, [refresh, initialState]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -107,7 +113,7 @@ export function useOrderBook(itemId: string | null) {
     }, 0);
     const id = window.setInterval(() => {
       void load();
-    }, 2500);
+    }, 4000);
     return () => {
       window.clearTimeout(timeout);
       window.clearInterval(id);

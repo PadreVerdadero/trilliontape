@@ -550,6 +550,7 @@ async function executeFill(
   if (sellLeft <= 0) await db.prepare("DELETE FROM orders WHERE id = ?").run(sell.id);
   else await db.prepare("UPDATE orders SET remaining = ? WHERE id = ?").run(sellLeft, sell.id);
   await recordTrade(itemId, price, quantity, buy.user_id, sell.user_id, govBuy, govSell);
+  bustPriceSheet();
   if (buy.user_id !== sell.user_id) {
     if (!await isBot(buy.user_id)) await awardFirstTradeVp(buy.user_id);
     if (!await isBot(sell.user_id)) await awardFirstTradeVp(sell.user_id);
@@ -625,6 +626,7 @@ async function matchItem(itemId: string) {
     }
     await executeFill(pair.buy, pair.sell, itemId, qty, pair.sell.price);
   }
+  bustPriceSheet();
 }
 
 async function requireIdle(userId: number) {
@@ -2661,52 +2663,90 @@ export async function adminSetGoal(userId: number, draft: Partial<GoalConfig>) {
 }
 
 async function priceSheet(timeZone?: string): Promise<MarketPrice[]> {
+  const tz = timeZone || "UTC";
+  const hit = sheetCache.bazaarSheet;
+  if (hit && hit.tz === tz && Date.now() - hit.at < 450) return hit.data;
+  const data = await buildPriceSheet(tz);
+  sheetCache.bazaarSheet = { at: Date.now(), tz, data };
+  return data;
+}
+
+const sheetCache = globalThis as unknown as {
+  bazaarSheet?: { at: number; tz: string; data: MarketPrice[] };
+};
+
+function bustPriceSheet() {
+  sheetCache.bazaarSheet = undefined;
+}
+
+async function buildPriceSheet(timeZone: string): Promise<MarketPrice[]> {
   const db = getDb();
-  const depth = await bookDepth();
-  const packs = await packTotals();
   const dayStart = startOfLocalDayMs(timeZone);
-  const tradesToday = await qtyByItem(
-    "SELECT item_id, COUNT(*) AS qty FROM trades WHERE created_at >= ? GROUP BY item_id",
-    [dayStart]
-  );
+  const [depth, packs, todayRows, statRows, lastRows, bidRows, askRows, capRows] = await Promise.all([
+    bookDepth(),
+    packTotals(),
+    db
+      .prepare(
+        "SELECT item_id, COUNT(*) AS qty FROM trades WHERE created_at >= ? GROUP BY item_id"
+      )
+      .all(dayStart) as Promise<{ item_id: string; qty: number }[]>,
+    db
+      .prepare(
+        "SELECT item_id, SUM(price * quantity) AS notional, SUM(quantity) AS volume, MAX(id) AS last_id FROM trades GROUP BY item_id"
+      )
+      .all() as Promise<{ item_id: string; notional: number | null; volume: number | null; last_id: number | null }[]>,
+    db
+      .prepare(
+        `SELECT t.item_id, t.price FROM trades t
+         JOIN (SELECT item_id, MAX(id) AS last_id FROM trades GROUP BY item_id) x ON t.id = x.last_id`
+      )
+      .all() as Promise<{ item_id: string; price: number }[]>,
+    db
+      .prepare(
+        `SELECT item_id, MAX(price) AS p FROM orders
+         WHERE side = 'buy' AND remaining > 0 AND COALESCE(treasury, 0) = 0
+           AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')
+         GROUP BY item_id`
+      )
+      .all() as Promise<{ item_id: string; p: number | null }[]>,
+    db
+      .prepare(
+        `SELECT item_id, MIN(price) AS p FROM orders
+         WHERE side = 'sell' AND remaining > 0 AND COALESCE(treasury, 0) = 0
+           AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')
+         GROUP BY item_id`
+      )
+      .all() as Promise<{ item_id: string; p: number | null }[]>,
+    db.prepare("SELECT item_id, authorized FROM item_caps").all() as Promise<
+      { item_id: string; authorized: number }[]
+    >,
+  ]);
+  const tradesToday: Record<string, number> = {};
+  for (const row of todayRows) tradesToday[row.item_id] = row.qty;
+  const stats = new Map(statRows.map((row) => [row.item_id, row]));
+  const lastPrice = new Map(lastRows.map((row) => [row.item_id, row.price]));
+  const bids = new Map(bidRows.map((row) => [row.item_id, row.p]));
+  const asks = new Map(askRows.map((row) => [row.item_id, row.p]));
+  const caps = new Map(capRows.map((row) => [row.item_id, row.authorized]));
+  const printLists = await Promise.all(items.map((item) => marketPrints(item.id, 120)));
   const sheet: MarketPrice[] = [];
-  for (const item of items) {
+  for (const [index, item] of items.entries()) {
     const itemId = item.id;
-    const stats = (await db
-      .prepare(
-        "SELECT SUM(price * quantity) AS notional, SUM(quantity) AS volume, MAX(id) AS last_id FROM trades WHERE item_id = ?"
-      )
-      .get(itemId)) as {
-      notional: number | null;
-      volume: number | null;
-      last_id: number | null;
-    };
-    const last = stats.last_id
-      ? ((await db.prepare("SELECT price FROM trades WHERE id = ?").get(stats.last_id)) as
-          | { price: number }
-          | undefined)
-      : undefined;
-    const bid = (await db
-      .prepare(
-        "SELECT MAX(price) AS p FROM orders WHERE item_id = ? AND side = 'buy' AND remaining > 0 AND COALESCE(treasury, 0) = 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')"
-      )
-      .get(itemId)) as { p: number | null };
-    const ask = (await db
-      .prepare(
-        "SELECT MIN(price) AS p FROM orders WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND COALESCE(treasury, 0) = 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')"
-      )
-      .get(itemId)) as { p: number | null };
-    const tapePrints = await marketPrints(itemId, 120);
+    const tapePrints = printLists[index] ?? [];
     const prints = tapePrints.slice(0, MV_PRINTS);
     const lastPrint = prints[0];
     const vwap = computeFairValue(itemById[itemId]?.basePrice ?? item.basePrice, [...prints].reverse());
     const book = depth[itemId] ?? { listed: 0, wanted: 0 };
     const outstanding = packs[itemId] ?? 0;
-    const shares = await shareStructure(itemId, outstanding);
+    const authorized =
+      caps.get(itemId) && Number.isInteger(caps.get(itemId)) && (caps.get(itemId) ?? 0) > 0
+        ? (caps.get(itemId) as number)
+        : item.authorized ?? 0;
+    const issued = authorized;
     sheet.push({
       itemId,
       vwap,
-      last: lastPrint?.price ?? last?.price ?? null,
+      last: lastPrint?.price ?? lastPrice.get(itemId) ?? null,
       lastQty: lastTapeQty(
         tapePrints.map((row) => ({
           price: row.price,
@@ -2716,17 +2756,17 @@ async function priceSheet(timeZone?: string): Promise<MarketPrice[]> {
         }))
       ),
       windowOpen: prints.length ? prints[prints.length - 1].price : null,
-      volume: stats.volume ?? 0,
+      volume: stats.get(itemId)?.volume ?? 0,
       tradesToday: tradesToday[itemId] ?? 0,
       prints: prints.length,
       listed: book.listed,
       wanted: book.wanted,
       held: outstanding,
-      authorized: shares.authorized,
-      issued: shares.issued,
-      treasury: shares.treasury,
-      bestBid: bid.p,
-      bestAsk: ask.p,
+      authorized,
+      issued,
+      treasury: Math.max(0, issued - outstanding),
+      bestBid: bids.get(itemId) ?? null,
+      bestAsk: asks.get(itemId) ?? null,
     });
   }
   return sheet;
@@ -2858,7 +2898,7 @@ export async function tickBots() {
   botClock.bazaarBotTick = now;
   const db = getDb();
   const seatedProfiles = BOT_PROFILES.slice(0, seated);
-  const picked = shufflePick(seatedProfiles, Math.min(seatedProfiles.length, 28));
+  const picked = shufflePick(seatedProfiles, Math.min(seatedProfiles.length, 10));
   for (const profile of picked) {
     const user = await db
       .prepare("SELECT id FROM users WHERE username = ? AND COALESCE(is_bot, 0) = 1")
@@ -2940,6 +2980,37 @@ export async function tickBots() {
     } catch {
       // One noisy step should not stall the book.
     }
+  }
+}
+
+const deskWork = globalThis as unknown as {
+  bazaarDeskTimer?: ReturnType<typeof setInterval>;
+  bazaarDeskBusy?: boolean;
+};
+
+export function startDeskWork() {
+  if (deskWork.bazaarDeskTimer) return;
+  deskWork.bazaarDeskTimer = setInterval(() => {
+    void runDeskWork();
+  }, 1600);
+  void runDeskWork();
+}
+
+async function runDeskWork() {
+  if (deskWork.bazaarDeskBusy) return;
+  deskWork.bazaarDeskBusy = true;
+  try {
+    if ((await readGamePhase()) !== "live") return;
+    if ((await readGameOver()).over) return;
+    await tickBots();
+    await alignIssuedToAuthorized();
+    for (const row of await tableSeatIds()) {
+      await grantDailyLogin(row.id);
+    }
+  } catch {
+    // Keep serving the desk even if a background tick fails.
+  } finally {
+    deskWork.bazaarDeskBusy = false;
   }
 }
 
@@ -3242,15 +3313,16 @@ export async function getGameState(
   timeZone?: string,
   options?: { tick?: boolean }
 ): Promise<GameState> {
+  startDeskWork();
   await hydrateShareCatalog();
   await maybeStartScheduledGame();
   const gamePhase = await readGamePhase();
   if (options?.tick !== false && gamePhase === "live") {
-    await tickBots();
-    await alignIssuedToAuthorized();
+    void runDeskWork();
   }
   await resolveBusy(userId);
-  const depositNotice = gamePhase === "live" ? await payTableStipends(userId, timeZone) : null;
+  const depositNotice = gamePhase === "live" ? await grantDailyLogin(userId, timeZone) : null;
+  const office = await canHoldOffice(userId);
   const player = await loadPlayerRow(userId);
   const stacks = await getDb()
     .prepare(
@@ -3302,7 +3374,7 @@ export async function getGameState(
     titles: [],
     isGov: Boolean(player.is_gov),
     isAdmin: Boolean(player.is_admin),
-    canOffice: await canHoldOffice(userId),
+    canOffice: office,
   };
 
   const myOrders = (
@@ -3395,11 +3467,11 @@ export async function getGameState(
     stipendMs: await stipendMs(),
     startingGold: await startingGold(),
     coinDrop: await coinDropSnapshot(userId),
-    adminRoster: (await canHoldOffice(userId)) ? await listAdminRoster() : [],
+    adminRoster: office ? await listAdminRoster() : [],
     gamePhase,
     scheduledStartAt: await readScheduledStartAt(),
     lobbyTravelers: await listLobbyTravelers(),
-    inviteCode: (await canHoldOffice(userId)) ? await readInviteCode() : null,
+    inviteCode: office ? await readInviteCode() : null,
     netWorthGoal: goal.score === "netWorth" ? goal.threshold : NET_WORTH_GOAL,
     goal: { ...goal, label: describeGoal(goal) },
     gameOver: over,

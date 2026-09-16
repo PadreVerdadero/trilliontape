@@ -219,9 +219,9 @@ export function PlayScreen({
       {mobile ? (
         <>
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-3" data-keep-scroll>
-            {tab === "pack" ? pack : null}
-            {tab === "book" ? market : null}
-            {tab === "orders" ? orders : null}
+            <div className={cn(tab !== "pack" && "hidden")}>{pack}</div>
+            <div className={cn(tab !== "book" && "hidden")}>{market}</div>
+            <div className={cn(tab !== "orders" && "hidden")}>{orders}</div>
           </div>
           <nav className="grid shrink-0 grid-cols-3 gap-1 border-t border-border/80 bg-background/95 px-2 py-2">
             {(

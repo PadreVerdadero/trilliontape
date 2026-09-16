@@ -21,8 +21,8 @@ primary_region = 'ord'
   processes = ['app']
 
 [[vm]]
-  size = 'shared-cpu-1x'
-  memory = '1024mb'
+  size = 'shared-cpu-2x'
+  memory = '2048mb'
 
 # Persist the local book across deploys and restarts until the data host is live.
 [[mounts]]

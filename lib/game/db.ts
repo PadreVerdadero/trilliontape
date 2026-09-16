@@ -208,6 +208,7 @@ async function migrate(db: GameDb) {
       authorized INTEGER NOT NULL
     );
   `);
+  await db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=2500;");
   await ensureColumn(db, "users", "is_bot", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "users", "is_gov", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "users", "is_admin", "INTEGER NOT NULL DEFAULT 0");
@@ -583,7 +584,10 @@ export async function readShareTypes(db: GameDb = getDb()) {
   return out;
 }
 
-export async function hydrateShareCatalog(db: GameDb = getDb()) {
+let catalogHydratedAt = 0;
+
+export async function hydrateShareCatalog(db: GameDb = getDb(), force = false) {
+  if (!force && catalogHydratedAt > 0 && Date.now() - catalogHydratedAt < 2500) return;
   await ensureShareTypesTable(db);
   const count = await db.prepare("SELECT COUNT(*) AS n FROM share_types").get() as { n: number };
   if (count.n === 0) {
@@ -604,6 +608,7 @@ export async function hydrateShareCatalog(db: GameDb = getDb()) {
     }
   }
   setLiveItems(await readShareTypes(db));
+  catalogHydratedAt = Date.now();
 }
 
 export async function insertShareType(
@@ -624,14 +629,14 @@ export async function insertShareType(
      VALUES (?, ?, ?, ?, ?, ?, ?)`
   ).run(item.id, item.name, item.emoji, item.image, item.basePrice, item.authorized, max.n + 1);
   await setItemAuthorized(item.id, item.authorized, db);
-  await hydrateShareCatalog(db);
+  await hydrateShareCatalog(db, true);
 }
 
 export async function removeShareType(itemId: string, db: GameDb = getDb()) {
   await ensureShareTypesTable(db);
   await purgeItemIds(db, [itemId]);
   await db.prepare("DELETE FROM share_types WHERE id = ?").run(itemId);
-  await hydrateShareCatalog(db);
+  await hydrateShareCatalog(db, true);
 }
 
 export async function seedBots(db: GameDb = getDb()) {
@@ -689,7 +694,7 @@ async function bootstrap(db: GameDb) {
   await shareBankerHoldings(db);
   await lockOffice(db);
   await retireGuest(db);
-  await hydrateShareCatalog(db);
+  await hydrateShareCatalog(db, true);
 }
 
 async function writeComputerMeta(count: number, db: GameDb) {
