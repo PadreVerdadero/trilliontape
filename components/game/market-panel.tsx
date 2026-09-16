@@ -197,6 +197,27 @@ function unitRows<T extends { remaining: number }>(rows: T[]) {
   );
 }
 
+function stackUnitRows<T extends { remaining: number; playerId: number; price: number; isGov?: boolean }>(
+  rows: T[]
+) {
+  const units = unitRows(rows);
+  const stacks: (T & { remaining: number; unit: number; count: number })[] = [];
+  for (const row of units) {
+    const prev = stacks[stacks.length - 1];
+    if (
+      prev &&
+      prev.playerId === row.playerId &&
+      prev.price === row.price &&
+      Boolean(prev.isGov) === Boolean(row.isGov)
+    ) {
+      prev.count += 1;
+      continue;
+    }
+    stacks.push({ ...row, count: 1 });
+  }
+  return stacks;
+}
+
 export function MarketPanel({
   state,
   pending,
@@ -617,6 +638,7 @@ export function MarketPanel({
                                   className="shrink-0 tabular-nums"
                                   title={formatCoins(trade.price)}
                                 >
+                                  {trade.quantity > 1 ? `${formatCompact(trade.quantity)} @ ` : null}
                                   {formatCompact(trade.price)}
                                 </span>
                                 <span className="min-w-0 truncate">
@@ -637,12 +659,13 @@ export function MarketPanel({
           </div>
 
           <PriceChart
-            trades={book?.trades ?? []}
+            trades={book?.chartTrades ?? book?.trades ?? []}
             basePrice={selected.basePrice}
             mv={price?.vwap ?? selected.basePrice}
             bestBid={price?.bestBid}
             bestAsk={price?.bestAsk}
             compact={compact}
+            now={state.now}
           />
 
           <div className="grid gap-4 lg:grid-cols-2">
@@ -1028,7 +1051,7 @@ function OrderList({
   if (rows.length === 0) {
     return <p className="text-sm leading-6 text-muted-foreground">{empty}</p>;
   }
-  const units = unitRows(rows);
+  const units = stackUnitRows(rows);
   return (
     <ul className="space-y-0.5 pr-0.5">
       {units.map((row) => {
@@ -1050,7 +1073,21 @@ function OrderList({
                 !row.isGov && !yours && "bg-background/60 ring-foreground/10 hover:bg-background"
               )}
             >
-              <span className="tabular-nums font-medium">{formatCoins(row.price)}</span>
+              <span className="tabular-nums font-medium">
+                {formatCoins(row.price)}
+                {row.count > 1 ? (
+                  <span
+                    className={cn(
+                      "ml-1 text-[11px] font-normal",
+                      govAsk && "text-zinc-600",
+                      govBid && "text-white/75",
+                      !row.isGov && "text-muted-foreground"
+                    )}
+                  >
+                    ×{row.count}
+                  </span>
+                ) : null}
+              </span>
               <span
                 className={cn(
                   "min-w-0 truncate text-right text-[11px]",

@@ -1,4 +1,6 @@
 export const MV_PRINTS = 25;
+export const CHART_MINUTES = 20;
+export const MINUTE_MS = 60_000;
 
 export type Print = {
   price: number;

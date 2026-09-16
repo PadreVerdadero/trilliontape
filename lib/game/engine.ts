@@ -78,7 +78,8 @@ import {
 } from "@/lib/game/bots";
 import { isOfficeUsername } from "@/lib/game/office";
 import { describeGoal, meetsGoal, sortByGoal, validateGoalDraft, type GoalConfig } from "@/lib/game/goal";
-import { computeFairValue, MV_PRINTS } from "@/lib/game/market";
+import { computeFairValue, CHART_MINUTES, MINUTE_MS, MV_PRINTS } from "@/lib/game/market";
+import { coalesceTrades, lastTapeQty } from "@/lib/game/prints";
 import {
   chalkboardItem,
   contractsForWeek,
@@ -453,10 +454,12 @@ function listAreas(playerLocationId = "town"): AreaCrowd[] {
   return [forage];
 }
 
-function marketPrints(itemId: string) {
+function marketPrints(itemId: string, limit = MV_PRINTS) {
   return getDb()
-    .prepare(`SELECT price, quantity FROM trades WHERE item_id = ? ORDER BY id DESC LIMIT ${MV_PRINTS}`)
-    .all(itemId) as { price: number; quantity: number }[];
+    .prepare(
+      `SELECT price, quantity, buy_user_id, sell_user_id FROM trades WHERE item_id = ? ORDER BY id DESC LIMIT ?`
+    )
+    .all(itemId, limit) as { price: number; quantity: number; buy_user_id: number; sell_user_id: number }[];
 }
 
 function marketPrice(itemId: string): number {
@@ -1707,6 +1710,34 @@ function loadRecentTrades(limit: number, itemId?: string): TradeRow[] {
   return rows.map(mapTrade);
 }
 
+function loadItemChartTrades(itemId: string): TradeRow[] {
+  const since = nowMs() - (CHART_MINUTES + 1) * MINUTE_MS;
+  const sql = `SELECT t.id, t.item_id, t.price, t.quantity, t.created_at,
+              b.username AS buy_name, s.username AS sell_name,
+              COALESCE(t.buy_treasury, 0) AS buy_treasury,
+              COALESCE(t.sell_treasury, 0) AS sell_treasury
+       FROM trades t
+       JOIN users b ON b.id = t.buy_user_id
+       JOIN users s ON s.id = t.sell_user_id
+       WHERE t.item_id = ? AND t.created_at >= ?
+       ORDER BY t.id ASC`;
+  const rows = getDb()
+    .prepare(sql)
+    .all(itemId, since) as {
+    id: number;
+    item_id: string;
+    price: number;
+    quantity: number;
+    created_at: number;
+    buy_name: string;
+    sell_name: string;
+    buy_treasury: number;
+    sell_treasury: number;
+  }[];
+  if (rows.length > 0) return rows.map(mapTrade);
+  return [...loadRecentTrades(80, itemId)].reverse();
+}
+
 function requireOpenStall(stallId: string, clock: FestivalClock) {
   const stall = stallById[stallId];
   if (!stall) throw new Error("That stall is not on the plaza.");
@@ -2180,7 +2211,8 @@ export function getOrderBook(itemId: string): OrderBook {
       .filter((row) => row.side === "sell")
       .sort((a, b) => a.price - b.price || a.createdAt - b.createdAt),
     history: getPriceHistory(itemId),
-    trades: loadRecentTrades(25, itemId),
+    trades: coalesceTrades(loadRecentTrades(80, itemId)).slice(0, 25),
+    chartTrades: loadItemChartTrades(itemId),
   };
 }
 
@@ -2556,7 +2588,8 @@ function priceSheet(timeZone?: string): MarketPrice[] {
         "SELECT MIN(price) AS p FROM orders WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND COALESCE(treasury, 0) = 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')"
       )
       .get(itemId) as { p: number | null };
-    const prints = marketPrints(itemId);
+    const tapePrints = marketPrints(itemId, 120);
+    const prints = tapePrints.slice(0, MV_PRINTS);
     const lastPrint = prints[0];
     const vwap = computeFairValue(itemById[itemId]?.basePrice ?? item.basePrice, [...prints].reverse());
     const book = depth[itemId] ?? { listed: 0, wanted: 0 };
@@ -2566,7 +2599,14 @@ function priceSheet(timeZone?: string): MarketPrice[] {
       itemId,
       vwap,
       last: lastPrint?.price ?? last?.price ?? null,
-      lastQty: lastPrint?.quantity ?? 0,
+      lastQty: lastTapeQty(
+        tapePrints.map((row) => ({
+          price: row.price,
+          quantity: row.quantity,
+          buyUserId: row.buy_user_id,
+          sellUserId: row.sell_user_id,
+        }))
+      ),
       windowOpen: prints.length ? prints[prints.length - 1].price : null,
       volume: stats.volume ?? 0,
       tradesToday: tradesToday[itemId] ?? 0,
@@ -3157,7 +3197,7 @@ export function getGameState(
     }[]
   ).map(mapOrder);
 
-  const recentTrades = loadRecentTrades(18);
+  const recentTrades = coalesceTrades(loadRecentTrades(40)).slice(0, 18);
 
   const prices = priceSheet(timeZone);
   const leaders = netWorthLeaders(prices);

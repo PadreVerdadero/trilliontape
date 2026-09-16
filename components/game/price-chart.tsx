@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { formatCoins, formatCompact, formatNumber } from "@/lib/game/format";
-import { MV_PRINTS } from "@/lib/game/market";
+import { formatCoins, formatCompact, formatMilitaryTime, formatNumber } from "@/lib/game/format";
+import { CHART_MINUTES, MINUTE_MS } from "@/lib/game/market";
 import { cn } from "@/lib/utils";
 import type { TradeRow } from "@/lib/game/types";
 
@@ -14,24 +14,64 @@ type Candle = {
   volume: number;
   last: TradeRow | null;
   count: number;
+  at: number;
 };
 
-function toCandles(prints: TradeRow[]): Candle[] {
+function minuteKey(at: number) {
+  return Math.floor(at / MINUTE_MS) * MINUTE_MS;
+}
+
+function toMinuteCandles(prints: TradeRow[], now: number, basePrice: number): Candle[] {
   if (prints.length === 0) return [];
-  const per = prints.length >= 16 ? 3 : prints.length >= 8 ? 2 : 1;
+  const sorted = [...prints].sort((a, b) => a.id - b.id || a.createdAt - b.createdAt);
+  const windowEnd = minuteKey(now);
+  const windowStart = windowEnd - (CHART_MINUTES - 1) * MINUTE_MS;
+  let prevClose = basePrice;
+  const prior = sorted.filter((print) => print.createdAt < windowStart);
+  if (prior.length > 0) prevClose = prior[prior.length - 1].price;
+  else prevClose = sorted[0].price;
+
+  const byMinute = new Map<number, TradeRow[]>();
+  for (const print of sorted) {
+    if (print.createdAt < windowStart) continue;
+    const key = minuteKey(print.createdAt);
+    const list = byMinute.get(key);
+    if (list) list.push(print);
+    else byMinute.set(key, [print]);
+  }
+
+  const firstTrade = sorted.find((print) => print.createdAt >= windowStart) ?? sorted[0];
+  const firstMinute = Math.max(windowStart, minuteKey(firstTrade.createdAt));
   const candles: Candle[] = [];
-  for (let i = 0; i < prints.length; i += per) {
-    const slice = prints.slice(i, i + per);
-    const prices = slice.map((print) => print.price);
+  for (let at = firstMinute; at <= windowEnd; at += MINUTE_MS) {
+    const bucket = byMinute.get(at) ?? [];
+    if (bucket.length === 0) {
+      candles.push({
+        open: prevClose,
+        high: prevClose,
+        low: prevClose,
+        close: prevClose,
+        volume: 0,
+        last: null,
+        count: 0,
+        at,
+      });
+      continue;
+    }
+    const prices = bucket.map((print) => print.price);
+    const open = prevClose;
+    const close = prices[prices.length - 1];
     candles.push({
-      open: slice[0].price,
-      close: slice[slice.length - 1].price,
-      high: Math.max(...prices),
-      low: Math.min(...prices),
-      volume: slice.reduce((sum, print) => sum + print.quantity, 0),
-      last: slice[slice.length - 1],
-      count: slice.length,
+      open,
+      close,
+      high: Math.max(open, ...prices),
+      low: Math.min(open, ...prices),
+      volume: bucket.reduce((sum, print) => sum + print.quantity, 0),
+      last: bucket[bucket.length - 1],
+      count: bucket.length,
+      at,
     });
+    prevClose = close;
   }
   return candles;
 }
@@ -49,6 +89,7 @@ export function PriceChart({
   bestBid,
   bestAsk,
   compact = false,
+  now,
 }: {
   trades: TradeRow[];
   basePrice: number;
@@ -56,20 +97,30 @@ export function PriceChart({
   bestBid?: number | null;
   bestAsk?: number | null;
   compact?: boolean;
+  now?: number;
 }) {
+  const clock = now ?? Date.now();
   const prints = useMemo(
-    () =>
-      [...trades]
-        .slice(0, MV_PRINTS)
-        .sort((a, b) => a.id - b.id || a.createdAt - b.createdAt),
+    () => [...trades].sort((a, b) => a.id - b.id || a.createdAt - b.createdAt),
     [trades]
   );
-  const candles = useMemo(() => toCandles(prints), [prints]);
+  const candles = useMemo(() => toMinuteCandles(prints, clock, basePrice), [prints, clock, basePrice]);
   const [hover, setHover] = useState<number | null>(null);
   const traded = prints.length > 0;
   const shown = traded
     ? candles
-    : [{ open: basePrice, high: basePrice, low: basePrice, close: basePrice, volume: 0, last: null, count: 0 }];
+    : [
+        {
+          open: basePrice,
+          high: basePrice,
+          low: basePrice,
+          close: basePrice,
+          volume: 0,
+          last: null,
+          count: 0,
+          at: minuteKey(clock),
+        },
+      ];
   const extras = [bestBid, bestAsk, mv].filter((value): value is number => value != null);
   const min = Math.min(...shown.flatMap((candle) => [candle.low, candle.high]), ...extras);
   const max = Math.max(...shown.flatMap((candle) => [candle.low, candle.high]), ...extras);
@@ -87,9 +138,9 @@ export function PriceChart({
   const slot = innerW / count;
   const bodyW = Math.max(4, Math.min(22, slot * 0.62));
   const xMid = (index: number) => pad.left + (index + 0.5) * slot;
-  const lastPrice = prints[prints.length - 1]?.price ?? basePrice;
-  const firstPrice = prints[0]?.price ?? basePrice;
-  const delta = traded ? lastPrice - firstPrice : 0;
+  const lastClose = shown[shown.length - 1]?.close ?? basePrice;
+  const firstOpen = shown[0]?.open ?? basePrice;
+  const delta = traded ? lastClose - firstOpen : 0;
   const up = delta > 0;
   const down = delta < 0;
   const endX = pad.left + innerW;
@@ -122,7 +173,7 @@ export function PriceChart({
           <p className="font-heading text-lg">Price</p>
           <p className="text-xs text-muted-foreground">
             {traded
-              ? `Candles cover the last ${prints.length} print${prints.length === 1 ? "" : "s"} (oldest to newest), grouped so each bar is a few trades. Hover for open, high, low, close.`
+              ? `Each candle is one minute. Open is the previous close. Last ${CHART_MINUTES} minutes, oldest to newest. Hover for open, high, low, close.`
               : "No trades yet. The candle sits at the starting price."}{" "}
             Dashed marks on the right are MV, best bid, and best ask. Bars under the candles are volume.
           </p>
@@ -136,7 +187,7 @@ export function PriceChart({
           )}
           title={
             traded
-              ? `Change from the oldest of these ${prints.length} prints to the last print.`
+              ? `Change from the first candle’s open to the last close in this ${CHART_MINUTES}-minute window.`
               : "Starting price — no prints yet."
           }
         >
@@ -148,7 +199,7 @@ export function PriceChart({
           viewBox={`0 0 ${width} ${height}`}
           className={compact ? "h-36 w-full" : "h-48 w-full"}
           role="img"
-          aria-label="Candlestick chart of the last 25 prints"
+          aria-label="One-minute candlestick chart"
         >
           {shown.map((candle, index) => {
             const tone = candleTone(candle);
@@ -173,7 +224,7 @@ export function PriceChart({
                   ? "stroke-rose-300"
                   : "stroke-zinc-400";
             return (
-              <g key={candle.last?.id ?? `empty-${index}`}>
+              <g key={`${candle.at}-${index}`}>
                 <line
                   x1={mid}
                   x2={mid}
@@ -194,7 +245,7 @@ export function PriceChart({
                     x={mid - bodyW / 2}
                     y={volTop + (volH - vol)}
                     width={bodyW}
-                    height={Math.max(2, vol)}
+                    height={Math.max(candle.volume > 0 ? 2 : 0, vol)}
                     className={cn(fill, "opacity-55")}
                   />
                 ) : null}
@@ -283,7 +334,7 @@ export function PriceChart({
             {formatCoins(min)}
           </text>
         </svg>
-        {active?.last ? (
+        {active ? (
           <div
             className={cn(
               "pointer-events-none absolute z-10 -translate-y-full rounded-md bg-zinc-950/95 px-2 py-1 text-xs shadow-lg ring-1 ring-white/15",
@@ -294,19 +345,22 @@ export function PriceChart({
               top: `${(activeY / height) * 100}%`,
             }}
           >
+            <p className="tabular-nums text-muted-foreground">{formatMilitaryTime(active.at)}</p>
             <p className="tabular-nums font-medium">
               O {formatCompact(active.open)} · H {formatCompact(active.high)} · L {formatCompact(active.low)} · C{" "}
               {formatCompact(active.close)}
             </p>
             <p className="tabular-nums text-muted-foreground">
               vol {formatNumber(active.volume)}
-              {active.count > 1 ? ` · ${active.count} prints` : ""}
+              {active.count > 0 ? ` · ${active.count} print${active.count === 1 ? "" : "s"}` : " · no prints"}
             </p>
-            <p className="truncate">
-              <span className="text-emerald-200">{active.last.buyUsername}</span>
-              <span className="text-muted-foreground"> – </span>
-              <span className="text-rose-200">{active.last.sellUsername}</span>
-            </p>
+            {active.last ? (
+              <p className="truncate">
+                <span className="text-emerald-200">{active.last.buyUsername}</span>
+                <span className="text-muted-foreground"> – </span>
+                <span className="text-rose-200">{active.last.sellUsername}</span>
+              </p>
+            ) : null}
           </div>
         ) : null}
       </div>

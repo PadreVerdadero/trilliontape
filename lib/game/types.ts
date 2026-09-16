@@ -324,4 +324,5 @@ export type OrderBook = {
   asks: OrderRow[];
   history: PricePoint[];
   trades: TradeRow[];
+  chartTrades: TradeRow[];
 };

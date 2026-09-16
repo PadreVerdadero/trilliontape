@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ItemIcon } from "@/components/game/item-icon";
 import { formatCompact, formatCompactNetWorth, formatNetWorth, formatPctChange } from "@/lib/game/format";
@@ -7,6 +8,47 @@ import { cn } from "@/lib/utils";
 import type { Item, LeaderRow, MarketPrice } from "@/lib/game/types";
 
 export const TICKER_PLACES = 10;
+
+type QuoteChip = {
+  itemId: string;
+  item: Pick<Item, "id" | "name" | "emoji" | "image">;
+  last: number;
+  lastQty: number;
+  delta: number;
+  pct: string;
+  up: boolean;
+  down: boolean;
+  title: string;
+};
+
+function buildQuotes(items: Item[], prices: MarketPrice[]): QuoteChip[] {
+  const byId = new Map(prices.map((row) => [row.itemId, row]));
+  return items.map((item) => {
+    const quote = byId.get(item.id);
+    const last = quote?.last ?? item.basePrice;
+    const open = quote?.windowOpen ?? last;
+    const delta = last - open;
+    const up = delta > 0;
+    const down = delta < 0;
+    const lastQty = quote?.lastQty ?? 0;
+    const traded = quote?.last != null;
+    const pct = up || down ? formatPctChange(delta, open) : "--";
+    const title = traded
+      ? `${item.name} · last ${formatCompact(last)} · ${up ? "up" : down ? "down" : "unchanged"} ${formatCompact(Math.abs(delta))} (${pct}) from the oldest of the last 25 prints`
+      : `${item.name} · no prints yet · ${formatCompact(item.basePrice)}`;
+    return {
+      itemId: item.id,
+      item: { id: item.id, name: item.name, emoji: item.emoji, image: item.image },
+      last,
+      lastQty,
+      delta,
+      pct,
+      up,
+      down,
+      title,
+    };
+  });
+}
 
 function leadersTape(leaders: LeaderRow[], you: string, copy: number) {
   return leaders.map((row, index) => {
@@ -31,60 +73,45 @@ function leadersTape(leaders: LeaderRow[], you: string, copy: number) {
   });
 }
 
-function quotesTape(
-  items: Item[],
-  prices: MarketPrice[],
-  copy: number,
-  onSelectItem?: (itemId: string) => void
-) {
-  const byId = new Map(prices.map((row) => [row.itemId, row]));
-  return items.map((item) => {
-    const quote = byId.get(item.id);
-    const last = quote?.last ?? item.basePrice;
-    const open = quote?.windowOpen ?? last;
-    const delta = last - open;
-    const up = delta > 0;
-    const down = delta < 0;
-    const lastQty = quote?.lastQty ?? 0;
-    const traded = quote?.last != null;
-    const title = traded
-      ? `${item.name} · last ${formatCompact(last)} · ${up ? "up" : down ? "down" : "unchanged"} ${formatCompact(Math.abs(delta))} (${formatPctChange(delta, open)}) from the oldest of the last 25 prints`
-      : `${item.name} · no prints yet · ${formatCompact(item.basePrice)}`;
+function quotesTape(quotes: QuoteChip[], copy: number, onSelectItem?: (itemId: string) => void) {
+  return quotes.map((quote) => {
     const className = cn(
       "inline-flex shrink-0 items-baseline gap-1 border-r border-border/40 px-3 tracking-wide",
-      up && "text-emerald-300",
-      down && "text-rose-300",
-      !up && !down && "text-sky-300"
+      quote.up && "text-emerald-300",
+      quote.down && "text-rose-300",
+      !quote.up && !quote.down && "text-sky-300"
     );
     const body = (
       <>
-        <ItemIcon item={item} className="self-center text-[13px]" />
-        <span className="font-medium">{item.name}</span>
-        {lastQty > 1 ? (
-          <span className="text-[10px] leading-none text-muted-foreground tabular-nums">{formatCompact(lastQty)}</span>
+        <ItemIcon item={quote.item} className="self-center text-[13px]" />
+        <span className="font-medium">{quote.item.name}</span>
+        {quote.lastQty > 1 ? (
+          <span className="text-[10px] leading-none text-muted-foreground tabular-nums">
+            {formatCompact(quote.lastQty)}
+          </span>
         ) : null}
         <span className="text-muted-foreground">@</span>
-        <span className="tabular-nums">{formatCompact(last)}</span>
-        {up ? <span aria-hidden>▲</span> : down ? <span aria-hidden>▼</span> : null}
-        <span className="tabular-nums">{formatCompact(Math.abs(delta))}</span>
-        <span className="tabular-nums">{formatPctChange(delta, open)}</span>
+        <span className="tabular-nums">{formatCompact(quote.last)}</span>
+        {quote.up ? <span aria-hidden>▲</span> : quote.down ? <span aria-hidden>▼</span> : null}
+        <span className="tabular-nums">{formatCompact(Math.abs(quote.delta))}</span>
+        <span className="tabular-nums">{quote.pct}</span>
       </>
     );
     if (onSelectItem) {
       return (
         <button
-          key={`${copy}-quote-${item.id}`}
+          key={`${copy}-quote-${quote.itemId}`}
           type="button"
-          title={title}
+          title={quote.title}
           className={cn(className, "hover:bg-foreground/5")}
-          onClick={() => onSelectItem(item.id)}
+          onClick={() => onSelectItem(quote.itemId)}
         >
           {body}
         </button>
       );
     }
     return (
-      <span key={`${copy}-quote-${item.id}`} title={title} className={className}>
+      <span key={`${copy}-quote-${quote.itemId}`} title={quote.title} className={className}>
         {body}
       </span>
     );
@@ -92,8 +119,7 @@ function quotesTape(
 }
 
 function tapeCopy(
-  items: Item[],
-  prices: MarketPrice[],
+  quotes: QuoteChip[],
   leaders: LeaderRow[],
   you: string,
   copy: number,
@@ -101,7 +127,7 @@ function tapeCopy(
 ) {
   return (
     <>
-      {quotesTape(items, prices, copy, onSelectItem)}
+      {quotesTape(quotes, copy, onSelectItem)}
       {leaders.length > 0 ? (
         <Link
           href="/leaders"
@@ -129,12 +155,44 @@ export function LeaderTicker({
   prices?: MarketPrice[];
   onSelectItem?: (itemId: string) => void;
 }) {
-  const top = leaders.filter((row) => row.place <= TICKER_PLACES).slice(0, TICKER_PLACES);
+  const quotes = useMemo(() => buildQuotes(items, prices), [items, prices]);
+  const top = useMemo(
+    () => leaders.filter((row) => row.place <= TICKER_PLACES).slice(0, TICKER_PLACES),
+    [leaders]
+  );
+  const paddedLeaders = useMemo(() => {
+    const next = [...top];
+    while (next.length > 0 && next.length < 8) next.push(...top);
+    return next;
+  }, [top]);
+
+  const live = useMemo(
+    () => ({ quotes, leaders: paddedLeaders, you }),
+    [quotes, paddedLeaders, you]
+  );
+  const liveRef = useRef(live);
+  liveRef.current = live;
+
+  const [frozen, setFrozen] = useState(live);
+  const [reduce, setReduce] = useState(false);
+  const catalogKey = items.map((item) => item.id).join(",");
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduce(mq.matches);
+    const onChange = () => setReduce(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    setFrozen(liveRef.current);
+  }, [catalogKey]);
+
   if (items.length === 0 && top.length === 0) return null;
 
-  const paddedLeaders = [...top];
-  while (paddedLeaders.length > 0 && paddedLeaders.length < 8) paddedLeaders.push(...top);
-  const seconds = Math.max(28, (items.length + Math.max(paddedLeaders.length, top.length) + 1) * 2.4);
+  const shown = reduce ? live : frozen;
+  const seconds = Math.max(28, (items.length + TICKER_PLACES + 1) * 2.4);
 
   return (
     <div className="flex items-stretch border-b border-border/70 bg-card/55">
@@ -148,10 +206,16 @@ export function LeaderTicker({
         <div
           className="leader-ticker-track flex w-max items-center py-1.5 text-[11px] sm:text-xs"
           style={{ animationDuration: `${seconds}s` }}
+          onAnimationIteration={() => {
+            if (reduce) return;
+            setFrozen(liveRef.current);
+          }}
         >
-          <div className="flex items-center">{tapeCopy(items, prices, paddedLeaders, you, 0, onSelectItem)}</div>
+          <div className="flex items-center">
+            {tapeCopy(shown.quotes, shown.leaders, shown.you, 0, onSelectItem)}
+          </div>
           <div className="flex items-center" aria-hidden="true">
-            {tapeCopy(items, prices, paddedLeaders, you, 1, onSelectItem)}
+            {tapeCopy(shown.quotes, shown.leaders, shown.you, 1, onSelectItem)}
           </div>
         </div>
       </div>
