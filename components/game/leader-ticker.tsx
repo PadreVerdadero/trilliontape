@@ -32,9 +32,9 @@ function buildQuotes(items: Item[], prices: MarketPrice[]): QuoteChip[] {
     const down = delta < 0;
     const lastQty = quote?.lastQty ?? 0;
     const traded = quote?.last != null;
-    const pct = up || down ? formatPctChange(delta, open) : "--";
+    const pct = up || down ? formatPctChange(delta, open) : "";
     const title = traded
-      ? `${item.name} · last ${formatCompact(last)} · ${up ? "up" : down ? "down" : "unchanged"} ${formatCompact(Math.abs(delta))} (${pct}) from the oldest of the last 25 prints`
+      ? `${item.name} · last ${formatCompact(last)}${up || down ? ` · ${up ? "up" : "down"} ${formatCompact(Math.abs(delta))} (${pct}) from the oldest of the last 25 prints` : " · unchanged from the oldest of the last 25 prints"}`
       : `${item.name} · no prints yet · ${formatCompact(item.basePrice)}`;
     return {
       itemId: item.id,
@@ -93,8 +93,12 @@ function quotesTape(quotes: QuoteChip[], copy: number, onSelectItem?: (itemId: s
         <span className="text-muted-foreground">@</span>
         <span className="tabular-nums">{formatCompact(quote.last)}</span>
         {quote.up ? <span aria-hidden>▲</span> : quote.down ? <span aria-hidden>▼</span> : null}
-        <span className="tabular-nums">{formatCompact(Math.abs(quote.delta))}</span>
-        <span className="tabular-nums">{quote.pct}</span>
+        {quote.up || quote.down ? (
+          <>
+            <span className="tabular-nums">{formatCompact(Math.abs(quote.delta))}</span>
+            <span className="tabular-nums">{quote.pct}</span>
+          </>
+        ) : null}
       </>
     );
     if (onSelectItem) {
