@@ -1,26 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Volume2, VolumeX } from "lucide-react";
 import {
   deskSoundsMuted,
-  deskSoundsUnlocked,
   playDeskSound,
   setDeskSoundsMuted,
   subscribeDeskSoundPref,
-  unlockDeskSounds,
 } from "@/lib/game/sounds";
 import { cn } from "@/lib/utils";
 
 export function SoundToggle({ className }: { className?: string }) {
   const [on, setOn] = useState(true);
-  const [armed, setArmed] = useState(false);
+  const heard = useRef(false);
 
   useEffect(() => {
-    const sync = () => {
-      setOn(!deskSoundsMuted());
-      setArmed(deskSoundsUnlocked());
-    };
+    const sync = () => setOn(!deskSoundsMuted());
     sync();
     return subscribeDeskSoundPref(sync);
   }, []);
@@ -29,13 +24,12 @@ export function SoundToggle({ className }: { className?: string }) {
     if (!on) {
       setDeskSoundsMuted(false);
       setOn(true);
-      setArmed(true);
+      heard.current = true;
       await playDeskSound("buy");
       return;
     }
-    if (!armed) {
-      setArmed(true);
-      await unlockDeskSounds();
+    if (!heard.current) {
+      heard.current = true;
       await playDeskSound("buy");
       return;
     }
@@ -50,9 +44,9 @@ export function SoundToggle({ className }: { className?: string }) {
       title={
         !on
           ? "Sound is off. Tap to hear a test chime."
-          : armed
+          : heard.current
             ? "Sound is on. Tap to mute."
-            : "Tap to turn desk sounds on."
+            : "Tap to hear a test chime."
       }
       className={cn(
         "inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground",
