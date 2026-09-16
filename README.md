@@ -148,9 +148,13 @@ You should then see an A or AAAA record for `trilliontape.fly.dev`. The landing 
 
 ### 4. Point trilliontape.com at the desk (Cloudflare)
 
-Wait until the desk secrets are set and https://trilliontape.fly.dev still shows TrillionTape. Then in Cloudflare DNS, **CNAME** `@` and `www` to `trilliontape.fly.dev`, proxy **on**. SSL mode **Full (strict)**.
+The desk is already live at [https://trilliontape.fly.dev](https://trilliontape.fly.dev). The domain is a DNS pointer, not a second Launch.
 
-In Fly, add certificates for `trilliontape.com` and `www.trilliontape.com` ([Certificates](https://fly.io/apps/trilliontape/certificates) on the desk app). Shared IPv4 routes by hostname, so the certs are required even with Cloudflare in front.
+1. Cloudflare → **trilliontape.com** → **DNS**.
+2. **CNAME** `@` → `trilliontape.fly.dev`, proxy **DNS only** (grey cloud) until the certificate is issued.
+3. **CNAME** `www` → `trilliontape.fly.dev`, same grey cloud.
+4. Fly desk app → [Certificates](https://fly.io/apps/trilliontape/certificates) → add `trilliontape.com` and `www.trilliontape.com`.
+5. When both certs are ready, you can turn the Cloudflare proxy **on** and set SSL **Full (strict)**.
 
-After DNS is green, open https://trilliontape.com. Create **Jesse** on that hosted world. Cursor preview is a different database and will not follow the domain. Do not press **New game**.
+The data host can wait. Until those two desk secrets are set, restarts still wipe the table — so create **Jesse** on https://trilliontape.com only after you are ready to keep that world. Do not press **New game**.
 

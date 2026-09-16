@@ -2,6 +2,15 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["@libsql/client"],
+  experimental: {
+    serverActions: {
+      allowedOrigins: [
+        "trilliontape.com",
+        "www.trilliontape.com",
+        "trilliontape.fly.dev",
+      ],
+    },
+  },
   allowedDevOrigins: [
     "127.0.0.1",
     "localhost",
