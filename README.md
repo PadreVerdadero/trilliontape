@@ -125,7 +125,21 @@ fly secrets set TRILLIONTAPE_DATABASE_URL=https://trilliontape-data.fly.dev \
 
 If you Launch the desk from GitHub again, leave the working directory **blank** so it uses the repo-root `fly.toml`, not `data-host`. Do not paste `fly deploy --image registry.fly.io/trilliontape:deployment-…`.
 
-Push-to-deploy is optional. If you want GitHub Actions to deploy too, add repo secret `FLY_API_TOKEN` from `fly tokens create deploy`. Without that secret the Action skips; Launch UI deploys still count.
+### So this agent can deploy
+
+GitHub Actions is already in the repo. It skips until this secret exists.
+
+1. On Fly, open the desk app **Tokens** tab: [https://fly.io/apps/trilliontape](https://fly.io/apps/trilliontape) → **Tokens**, or in a terminal already logged into Fly:
+
+   ```bash
+   fly tokens create deploy -a trilliontape -x 999999h
+   ```
+
+   Copy the **entire** value, including `FlyV1` and the space after it.
+
+2. On GitHub: [New Actions secret](https://github.com/PadreVerdadero/trilliontape/settings/secrets/actions/new). Name **`FLY_API_TOKEN`**. Paste the token. Save.
+
+3. Say that it is in. A push to `main` (or **Actions → Deploy desk to Fly.io → Run workflow**) deploys the desk. Do not put that token in chat.
 
 ### If https://trilliontape.fly.dev does not open
 

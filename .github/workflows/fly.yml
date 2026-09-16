@@ -33,6 +33,6 @@ jobs:
       - if: steps.token.outputs.present == 'true'
         uses: superfly/flyctl-actions/setup-flyctl@master
       - if: steps.token.outputs.present == 'true'
-        run: flyctl deploy --remote-only --config fly.toml
+        run: flyctl deploy --remote-only --config fly.toml --app trilliontape --ha=false
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
