@@ -41,15 +41,11 @@ function envUrl() {
   try {
     host = new URL(raw.replace(/^libsql:/i, "https:")).hostname.toLowerCase();
   } catch {
-    throw new Error(
-      "TRILLIONTAPE_DATABASE_URL must be https://trilliontape-data.fly.dev — not the website hostname."
-    );
+    return LOCAL_FILE;
   }
-  if (DESK_HOSTS.has(host)) {
-    throw new Error(
-      "TRILLIONTAPE_DATABASE_URL is the website, not the book. Leave that secret empty to use the local file, or set https://trilliontape-data.fly.dev after the data host is up."
-    );
-  }
+  // Desk hostnames are the website. A pasted fly.dev with no https used to
+  // crash signup with URL_INVALID. Use the local book until data-host is set.
+  if (DESK_HOSTS.has(host) || host === "localhost") return LOCAL_FILE;
   return raw;
 }
 
