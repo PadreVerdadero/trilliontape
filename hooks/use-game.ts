@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { deskSoundForAction, isDeskTradeAction, playDeskSound, primeDeskSounds } from "@/lib/game/sounds";
 import type { GameState, OrderBook } from "@/lib/game/types";
 
 type ActionBody = Record<string, unknown> & { action: string };
@@ -67,6 +68,7 @@ export function useGame(initialState?: GameState | null) {
   }, [refresh, hurry]);
 
   const run = useCallback(async (body: ActionBody) => {
+    primeDeskSounds();
     setPending(true);
     setError(null);
     try {
@@ -78,13 +80,17 @@ export function useGame(initialState?: GameState | null) {
       const data = (await response.json()) as GameState & { error?: string };
       if (!response.ok) {
         setError(data.error ?? "That action failed.");
+        if (isDeskTradeAction(body.action)) playDeskSound("fail");
         return null;
       }
       setState(data);
       lastEvent.current = data.player.lastEvent;
+      const cue = deskSoundForAction(body.action, body.side);
+      if (cue) playDeskSound(cue);
       return data;
     } catch {
       setError("Network hiccup. Try again.");
+      if (isDeskTradeAction(body.action)) playDeskSound("fail");
       return null;
     } finally {
       setPending(false);

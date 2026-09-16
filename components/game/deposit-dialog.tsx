@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { stipendLabel } from "@/lib/game/catalog";
 import { formatCoins, formatNumber } from "@/lib/game/format";
+import { playDeskSound } from "@/lib/game/sounds";
 
 function depositKey(deposit: { amount: number; day: number }) {
   return `trillion_deposit_${deposit.day}_${deposit.amount}`;
@@ -52,6 +53,7 @@ export function DepositDialog({
     rememberShown(key);
     setShown(deposit);
     setOpen(true);
+    playDeskSound("deposit");
   }, [deposit]);
 
   if (!shown) return null;
