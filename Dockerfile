@@ -8,9 +8,11 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
+RUN npm run build \
+  && mkdir -p /app/data
 
 ENV NODE_ENV=production
-EXPOSE 43147
+ENV PORT=8080
+EXPOSE 8080
 VOLUME ["/app/data"]
 CMD ["npm", "start"]
