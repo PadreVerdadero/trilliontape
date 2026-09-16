@@ -4,7 +4,7 @@
 # Change `app` only if this name is already taken.
 
 app = 'trilliontape'
-primary_region = 'iad'
+primary_region = 'ord'
 
 [build]
 

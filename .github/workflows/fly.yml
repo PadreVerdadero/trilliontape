@@ -35,11 +35,26 @@ jobs:
       - if: steps.token.outputs.present == 'true'
         name: Ensure sqlite volume
         run: |
-          if flyctl volumes list --app trilliontape | grep -q trilliontape_sqlite; then
-            echo "Volume trilliontape_sqlite already exists."
-          else
-            flyctl volumes create trilliontape_sqlite --region iad --size 1 --yes --app trilliontape
+          set -euo pipefail
+          NAME=trilliontape_sqlite
+          REGIONS=$(flyctl machines list --app trilliontape --json | jq -r '.[].region // empty' | sort -u)
+          if [ -z "$REGIONS" ]; then
+            REGIONS=$(flyctl volumes list --app trilliontape --json | jq -r '.[].region // empty' | sort -u)
           fi
+          if [ -z "$REGIONS" ]; then
+            REGIONS=ord
+          fi
+          VOLS=$(flyctl volumes list --app trilliontape --json)
+          for region in $REGIONS; do
+            if echo "$VOLS" | jq -e --arg n "$NAME" --arg r "$region" \
+              '.[] | select(.name == $n and .region == $r)' >/dev/null; then
+              echo "Volume $NAME already exists in $region."
+            else
+              echo "Creating volume $NAME in $region."
+              flyctl volumes create trilliontape_sqlite --region "$region" --size 1 --yes --app trilliontape
+              VOLS=$(flyctl volumes list --app trilliontape --json)
+            fi
+          done
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       - if: steps.token.outputs.present == 'true'
