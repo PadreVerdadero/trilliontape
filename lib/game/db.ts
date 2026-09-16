@@ -25,12 +25,13 @@ export const DESK_USERNAME = "Government";
 
 export type GamePhase = "lobby" | "live";
 
-const BOOTSTRAP_REV = 17;
+const BOOTSTRAP_REV = 18;
 const INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: GameDb;
   bazaarBootstrapRev?: number;
+  bazaarBootstrapping?: number;
 };
 
 function rotateIds(ids: number[], salt: string) {
@@ -880,22 +881,29 @@ export async function setItemAuthorized(itemId: string, authorized: number, db: 
   ).run(itemId, authorized);
 }
 
+function bindBootstrap(db: GameDb) {
+  if (globalForDb.bazaarBootstrapping === BOOTSTRAP_REV) return;
+  globalForDb.bazaarBootstrapping = BOOTSTRAP_REV;
+  const ready = db
+    .runInit(() => bootstrap(db))
+    .then(() => {
+      globalForDb.bazaarBootstrapRev = BOOTSTRAP_REV;
+    })
+    .catch((error) => {
+      globalForDb.bazaarBootstrapping = undefined;
+      globalForDb.bazaarBootstrapRev = -1;
+      throw error;
+    });
+  db.bindReady(ready);
+}
+
 export function getDb() {
   if (!globalForDb.bazaarDb) {
     const db = createGameDb();
-    const ready = db.runInit(() => bootstrap(db)).then(() => {
-      globalForDb.bazaarBootstrapRev = BOOTSTRAP_REV;
-    });
-    db.bindReady(ready);
     globalForDb.bazaarDb = db;
-    globalForDb.bazaarBootstrapRev = BOOTSTRAP_REV;
+    bindBootstrap(db);
   } else if (globalForDb.bazaarBootstrapRev !== BOOTSTRAP_REV) {
-    const db = globalForDb.bazaarDb;
-    const ready = db.runInit(() => bootstrap(db)).then(() => {
-      globalForDb.bazaarBootstrapRev = BOOTSTRAP_REV;
-    });
-    db.bindReady(ready);
-    globalForDb.bazaarBootstrapRev = BOOTSTRAP_REV;
+    bindBootstrap(globalForDb.bazaarDb);
   }
   return globalForDb.bazaarDb;
 }
