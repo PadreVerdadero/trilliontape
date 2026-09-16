@@ -5,7 +5,7 @@
     {
       "name": "TrillionTape",
       "command": "npm run dev",
-      "description": "Next.js desk on port 43147. Do not restart unless asked; the SQLite world lives in data/bazaar.db."
+      "description": "Next.js desk on port 43147. Do not restart unless asked. Local file data/bazaar.db unless TRILLIONTAPE_DATABASE_URL is set."
     }
   ],
   "ports": [

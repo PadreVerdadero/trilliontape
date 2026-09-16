@@ -10,11 +10,11 @@ export default async function PlayPage() {
   if (!userId) {
     redirect("/");
   }
-  enterDesk(userId);
+  await enterDesk(userId);
   const jar = await cookies();
   return (
     <PlayScreen
-      initialState={getGameState(userId)}
+      initialState={await getGameState(userId)}
       initialItemId={selectedItemFromCookie(jar.get(SELECTED_ITEM_COOKIE)?.value)}
     />
   );

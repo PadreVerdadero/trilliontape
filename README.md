@@ -28,7 +28,7 @@ npm install
 npm run dev
 ```
 
-Open [http://127.0.0.1:43147](http://127.0.0.1:43147) on the same machine that is running `npm run dev`. Data lives in `data/bazaar.db` (created on first boot).
+Open [http://127.0.0.1:43147](http://127.0.0.1:43147) on the same machine that is running `npm run dev`. With no extra env, data lives in `data/bazaar.db` (created on first boot). This repo never reads `TURSO_*` or any other project's database variables.
 
 Check **Phone layout** on the gate or the desk to switch to a one-column phone screen (Pack / Book / Orders). The choice sticks in this browser. Phones default to that layout.
 
@@ -42,31 +42,54 @@ Each friend creates their own traveler name on the same landing page. Quick `try
 
 If you are in a Cursor Cloud Agent, **Preview** is a tunnel from your laptop to that remote machine — `127.0.0.1` in your browser is your laptop, not the game. This repo lists port `43147` in `.cursor/environment.json` so new agents can forward it. When that tunnel fails, the agent can open a temporary `trycloudflare.com` URL to the same server.
 
-No extra services or API keys. Accounts are stored on this machine; do not reuse a real password.
+No extra services or API keys for local play. Accounts sit in the local file; do not reuse a real password.
 
 ## Go live on trilliontape.com
 
-The domain on Cloudflare is only DNS. This game keeps the book in a SQLite file (`data/bazaar.db`), so it has to run on **one computer that stays on**. Do not use Cloudflare Pages, Workers, or Vercel for this — they cannot hold that file.
+The domain on Cloudflare is only DNS. The book now talks to **libSQL**. On this machine that is still `data/bazaar.db`. On the public site, point the app at a **new** hosted database named `trilliontape` (Turso is the usual host). Use only these two names — they belong to this game, not to anything else you run:
 
-### 1. Rent a small always-on box
+- `TRILLIONTAPE_DATABASE_URL`
+- `TRILLIONTAPE_AUTH_TOKEN`
 
-A $4–6/month Ubuntu VPS is enough (Hetzner, DigitalOcean, Linode). A home PC works if it never sleeps. Note the public IP if you will use a DNS A record.
+Do not copy another project's `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN`. Do not delete or reuse those other databases.
 
-### 2. Put the app on that box
+### 1. Create a new Turso database named trilliontape
+
+Install the [Turso CLI](https://docs.turso.tech/cli), then:
 
 ```bash
-sudo apt update
-sudo apt install -y git nodejs npm python3 make g++
+turso db create trilliontape
+turso db show trilliontape --url
+turso db tokens create trilliontape
+```
+
+That URL and token go only into TrillionTape env. Leave every other Turso database alone.
+
+### 2. Host the Next.js app (Vercel is fine)
+
+This app no longer needs a local SQLite file on the server. Vercel, a VPS, or Docker all work if those two env vars are set.
+
+**Vercel**
+
+1. Import this repo.
+2. Set `TRILLIONTAPE_DATABASE_URL` and `TRILLIONTAPE_AUTH_TOKEN` on the project. Nothing else.
+3. Deploy. Point Cloudflare DNS at Vercel: CNAME `@` and `www` to `cname.vercel-dns.com` (or the names Vercel shows), proxy on.
+
+**VPS or Docker, still using the hosted database**
+
+```bash
 git clone <your-repo-url> trilliontape
 cd trilliontape
 npm ci
+export TRILLIONTAPE_DATABASE_URL=libsql://trilliontape-YOURORG.turso.io
+export TRILLIONTAPE_AUTH_TOKEN=...
 npm run build
 npm start
 ```
 
-`npm start` listens on all interfaces, port `43147`. Leave it running (systemd, `tmux`, or Docker). The first boot creates `data/bazaar.db`. Copy that file in if you want to keep an existing world.
+`npm start` listens on all interfaces, port `43147`. Put a Cloudflare Tunnel or nginx in front of that port, same as before.
 
-Docker instead of Node on the host:
+Local file fallback (no hosted URL): Docker still works with a volume on `data/`:
 
 ```bash
 docker build -t trilliontape .
@@ -75,19 +98,15 @@ docker run -d --name trilliontape --restart unless-stopped -p 43147:43147 -v tri
 
 ### 3. Point trilliontape.com at it (Cloudflare)
 
-**Easier, no open ports — Cloudflare Tunnel**
+**If the app is on Vercel:** DNS → CNAME `trilliontape.com` and `www` to Vercel's target, proxy **on**. SSL is automatic.
+
+**If the app is on a box — Cloudflare Tunnel**
 
 1. In Cloudflare: **Zero Trust** → **Networks** → **Tunnels** → create a tunnel.
 2. Install `cloudflared` on the VPS with the token Cloudflare shows.
 3. Add a public hostname: `trilliontape.com` → `http://localhost:43147`. Add `www` the same way if you want it.
-4. SSL is automatic. You do not open port 80/443 on the VPS.
 
-**Or a normal DNS record**
+**Or a normal DNS A record** to a VPS IP, proxy on, **SSL/TLS** → **Full (strict)**.
 
-1. Cloudflare **DNS** → add an **A** record: name `@`, content = the VPS IP, proxy **on** (orange cloud).
-2. Add **CNAME** `www` → `trilliontape.com`, proxy on.
-3. **SSL/TLS** → Overview → **Full (strict)**. Install a certificate on the origin (Cloudflare Origin CA, or Let’s Encrypt behind nginx).
-4. Put nginx or Caddy in front of `127.0.0.1:43147` on the VPS so HTTPS terminates there.
-
-After DNS is green (often a few minutes), open https://trilliontape.com. Create Jesse on that new world; the Cursor preview world is a different machine and will not follow the domain.
+After DNS is green, open https://trilliontape.com. Create Jesse on that hosted world; the Cursor preview world is a different database and will not follow the domain.
 

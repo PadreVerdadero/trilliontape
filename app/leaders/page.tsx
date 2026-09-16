@@ -8,5 +8,5 @@ export default async function LeadersPage() {
   if (!userId) {
     redirect("/");
   }
-  return <LeaderboardScreen initialState={getGameState(userId)} />;
+  return <LeaderboardScreen initialState={await getGameState(userId)} />;
 }

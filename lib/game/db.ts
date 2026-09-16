@@ -1,7 +1,5 @@
-import fs from "fs";
-import path from "path";
-import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
+import { createGameDb, databaseTarget, type GameDb } from "@/lib/game/sql";
 import {
   ENERGY_MAX,
   RETIRED_ITEM_IDS,
@@ -28,7 +26,7 @@ export const DESK_USERNAME = "Government";
 const BOOTSTRAP_REV = 16;
 
 const globalForDb = globalThis as unknown as {
-  bazaarDb?: Database.Database;
+  bazaarDb?: GameDb;
   bazaarBootstrapRev?: number;
 };
 
@@ -40,8 +38,8 @@ function rotateIds(ids: number[], salt: string) {
   return [...ids.slice(start), ...ids.slice(0, start)];
 }
 
-function migrate(db: Database.Database) {
-  db.exec(`
+async function migrate(db: GameDb) {
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -206,46 +204,46 @@ function migrate(db: Database.Database) {
       authorized INTEGER NOT NULL
     );
   `);
-  ensureColumn(db, "users", "is_bot", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "users", "is_gov", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "users", "is_admin", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "orders", "treasury", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "players", "energy", `INTEGER NOT NULL DEFAULT ${ENERGY_MAX}`);
-  ensureColumn(db, "players", "energy_max", `INTEGER NOT NULL DEFAULT ${ENERGY_MAX}`);
-  ensureColumn(db, "players", "vp", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "players", "gold_from_stalls", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "players", "food_delivered", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "players", "legendary_turnins", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "players", "board_fills", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "players", "gold_donated", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "players", "donate_count", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "players", "wardrobe_vp", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "inventory", "cost_basis", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "player_daily", "login_paid", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "players", "login_days", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "players", "at_table", "INTEGER NOT NULL DEFAULT 1");
-  ensureColumn(db, "trades", "buy_treasury", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "trades", "sell_treasury", "INTEGER NOT NULL DEFAULT 0");
-  seedInventoryCostBasis(db);
+  await ensureColumn(db, "users", "is_bot", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "users", "is_gov", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "users", "is_admin", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "orders", "treasury", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "players", "energy", `INTEGER NOT NULL DEFAULT ${ENERGY_MAX}`);
+  await ensureColumn(db, "players", "energy_max", `INTEGER NOT NULL DEFAULT ${ENERGY_MAX}`);
+  await ensureColumn(db, "players", "vp", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "players", "gold_from_stalls", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "players", "food_delivered", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "players", "legendary_turnins", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "players", "board_fills", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "players", "gold_donated", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "players", "donate_count", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "players", "wardrobe_vp", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "inventory", "cost_basis", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "player_daily", "login_paid", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "players", "login_days", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "players", "at_table", "INTEGER NOT NULL DEFAULT 1");
+  await ensureColumn(db, "trades", "buy_treasury", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "trades", "sell_treasury", "INTEGER NOT NULL DEFAULT 0");
+  await seedInventoryCostBasis(db);
 }
 
-function ensureColumn(db: Database.Database, table: string, column: string, sql: string) {
-  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+async function ensureColumn(db: GameDb, table: string, column: string, sql: string) {
+  const cols = await db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
   if (!cols.some((col) => col.name === column)) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${sql}`);
+    await db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${sql}`);
     return true;
   }
   return false;
 }
 
-function seedInventoryCostBasis(db: Database.Database) {
-  const stacks = db
+async function seedInventoryCostBasis(db: GameDb) {
+  const stacks = await db
     .prepare(
       "SELECT user_id, item_id, quantity FROM inventory WHERE quantity > 0 AND COALESCE(cost_basis, 0) = 0"
     )
     .all() as { user_id: number; item_id: string; quantity: number }[];
   if (stacks.length === 0) return;
-  const avgs = db
+  const avgs = await db
     .prepare(
       `SELECT buy_user_id, item_id, SUM(price * quantity) AS paid, SUM(quantity) AS qty
        FROM trades GROUP BY buy_user_id, item_id`
@@ -262,19 +260,19 @@ function seedInventoryCostBasis(db: Database.Database) {
   for (const row of stacks) {
     const avg =
       avgPaid.get(`${row.user_id}:${row.item_id}`) ?? itemById[row.item_id]?.basePrice ?? 1;
-    upd.run(Math.max(0, Math.round(avg * row.quantity)), row.user_id, row.item_id);
+    await upd.run(Math.max(0, Math.round(avg * row.quantity)), row.user_id, row.item_id);
   }
 }
 
-function clearBankerBook(db: Database.Database) {
-  db.prepare(
+async function clearBankerBook(db: GameDb) {
+  await db.prepare(
     "DELETE FROM orders WHERE user_id IN (SELECT id FROM users WHERE username = ?)"
   ).run("Banker");
 }
 
-function takeFromPack(db: Database.Database, userId: number, itemId: string, qty: number) {
+async function takeFromPack(db: GameDb, userId: number, itemId: string, qty: number) {
   if (qty <= 0) return 0;
-  const row = db
+  const row = await db
     .prepare(
       "SELECT quantity, COALESCE(cost_basis, 0) AS cost_basis FROM inventory WHERE user_id = ? AND item_id = ?"
     )
@@ -283,28 +281,28 @@ function takeFromPack(db: Database.Database, userId: number, itemId: string, qty
   const take = Math.min(have, qty);
   if (take <= 0) return 0;
   const left = have - take;
-  if (left <= 0) db.prepare("DELETE FROM inventory WHERE user_id = ? AND item_id = ?").run(userId, itemId);
+  if (left <= 0) await db.prepare("DELETE FROM inventory WHERE user_id = ? AND item_id = ?").run(userId, itemId);
   else {
     const nextBasis = Math.round((row?.cost_basis ?? 0) * (left / have));
-    db.prepare(
+    await db.prepare(
       "UPDATE inventory SET quantity = ?, cost_basis = ? WHERE user_id = ? AND item_id = ?"
     ).run(left, nextBasis, userId, itemId);
   }
   return take;
 }
 
-function bankerRecipients(db: Database.Database) {
-  const guest = db.prepare("SELECT id FROM users WHERE username = ?").get("Guest") as
+async function bankerRecipients(db: GameDb) {
+  const guest = await db.prepare("SELECT id FROM users WHERE username = ?").get("Guest") as
     | { id: number }
     | undefined;
-  const bots = db
+  const bots = await db
     .prepare("SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1 ORDER BY username COLLATE NOCASE")
     .all() as { id: number }[];
   return [...(guest ? [guest.id] : []), ...bots.map((row) => row.id)];
 }
 
-function dealStacksEvenly(
-  db: Database.Database,
+async function dealStacksEvenly(
+  db: GameDb,
   recipients: number[],
   stacks: { item_id: string; quantity: number }[]
 ) {
@@ -318,7 +316,7 @@ function dealStacksEvenly(
     for (let n = 0; n < stack.quantity; n += 1) units.push(stack.item_id);
   }
   for (let i = 0; i < units.length; i += 1) {
-    grant.run(recipients[i % recipients.length], units[i], 1);
+    await grant.run(recipients[i % recipients.length], units[i], 1);
   }
 }
 
@@ -340,28 +338,28 @@ const BANKER_V1_STACKS: { item_id: string; quantity: number }[] = [
 const BANKER_SPLIT_DONE = "The bank closed. Remaining stock was split evenly by count.";
 const BANKER_SPLIT_V1 = "The bank closed. Remaining stock was split across the desk.";
 
-function shareBankerHoldings(db: Database.Database) {
-  const banker = db.prepare("SELECT id FROM users WHERE username = ?").get("Banker") as
+async function shareBankerHoldings(db: GameDb) {
+  const banker = await db.prepare("SELECT id FROM users WHERE username = ?").get("Banker") as
     | { id: number }
     | undefined;
   if (!banker) return;
-  const note = db.prepare("SELECT last_event FROM players WHERE user_id = ?").get(banker.id) as
+  const note = await db.prepare("SELECT last_event FROM players WHERE user_id = ?").get(banker.id) as
     | { last_event: string | null }
     | undefined;
   if (note?.last_event === BANKER_SPLIT_DONE) return;
 
-  const recipients = bankerRecipients(db);
+  const recipients = await bankerRecipients(db);
   if (recipients.length === 0) return;
 
-  const live = db
+  const live = await db
     .prepare("SELECT item_id, quantity FROM inventory WHERE user_id = ? AND quantity > 0")
     .all(banker.id) as { item_id: string; quantity: number }[];
 
-  db.transaction(() => {
+  await db.transaction(async () => {
     let stacks = live;
     if (stacks.length === 0 && note?.last_event === BANKER_SPLIT_V1) {
       const recovered: Record<string, number> = {};
-      const v1Order = bankerRecipients(db);
+      const v1Order = await bankerRecipients(db);
       const guest = v1Order[0];
       const botsOnly = v1Order.filter((id) => id !== guest);
       const oldRecipients = [...botsOnly, ...(guest ? [guest] : [])];
@@ -372,55 +370,55 @@ function shareBankerHoldings(db: Database.Database) {
         for (let i = 0; i < order.length; i += 1) {
           const qty = each + (leftover > 0 ? 1 : 0);
           if (leftover > 0) leftover -= 1;
-          const got = takeFromPack(db, order[i], stack.item_id, qty);
+          const got = await takeFromPack(db, order[i], stack.item_id, qty);
           if (got > 0) recovered[stack.item_id] = (recovered[stack.item_id] ?? 0) + got;
         }
       }
       stacks = Object.entries(recovered).map(([item_id, quantity]) => ({ item_id, quantity }));
     }
     if (stacks.length === 0) return;
-    dealStacksEvenly(db, recipients, stacks);
-    db.prepare("DELETE FROM inventory WHERE user_id = ?").run(banker.id);
-    db.prepare("UPDATE players SET last_event = ? WHERE user_id = ?").run(BANKER_SPLIT_DONE, banker.id);
-  })();
-  clearBankerBook(db);
+    await dealStacksEvenly(db, recipients, stacks);
+    await db.prepare("DELETE FROM inventory WHERE user_id = ?").run(banker.id);
+    await db.prepare("UPDATE players SET last_event = ? WHERE user_id = ?").run(BANKER_SPLIT_DONE, banker.id);
+  });
+  await clearBankerBook(db);
 }
 
-function seedDesk(db: Database.Database) {
-  const existing = db
+async function seedDesk(db: GameDb) {
+  const existing = await db
     .prepare("SELECT id FROM users WHERE username = ?").get(DESK_USERNAME) as { id: number } | undefined;
   if (existing) {
-    db.prepare("UPDATE users SET is_gov = 1 WHERE id = ?").run(existing.id);
+    await db.prepare("UPDATE users SET is_gov = 1 WHERE id = ?").run(existing.id);
     return;
   }
   const now = Date.now();
-  const info = db
+  const info = await db
     .prepare(
       "INSERT INTO users (username, password_hash, created_at, is_gov) VALUES (?, ?, ?, 1)"
     )
     .run(DESK_USERNAME, bcrypt.hashSync(`desk-${now}`, 10), now);
   const userId = Number(info.lastInsertRowid);
-  db.prepare(
+  await db.prepare(
     "INSERT INTO players (user_id, gold, location_id, energy, energy_max, last_event) VALUES (?, 0, 'town', ?, ?, ?)"
   ).run(userId, STARTING_ENERGY, ENERGY_MAX, "The treasury desk is open.");
 }
 
-function seedGuest(db: Database.Database) {
-  const existing = db
+async function seedGuest(db: GameDb) {
+  const existing = await db
     .prepare("SELECT id FROM users WHERE username = ?")
     .get("Guest") as { id: number } | undefined;
   if (existing) return;
   const now = Date.now();
-  const info = db
+  const info = await db
     .prepare("INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)")
     .run("Guest", bcrypt.hashSync("play", 10), now);
-  createPlayerWithDb(db, Number(info.lastInsertRowid));
+  await createPlayerWithDb(db, Number(info.lastInsertRowid));
 }
 
-function createPlayerWithDb(db: Database.Database, userId: number) {
-  const start = startingGold(db);
-  const tablePaid = tablePaidDrops(db, userId);
-  const extra = stipendCatchUp(readStipendLadder(db), 0, tablePaid);
+async function createPlayerWithDb(db: GameDb, userId: number) {
+  const start = await startingGold(db);
+  const tablePaid = await tablePaidDrops(db, userId);
+  const extra = stipendCatchUp(await readStipendLadder(db), 0, tablePaid);
   const gold = start + extra;
   const note =
     tablePaid > 0
@@ -428,39 +426,39 @@ function createPlayerWithDb(db: Database.Database, userId: number) {
           tablePaid === 1 ? "" : "s"
         } the table already had (${extra.toLocaleString("en-US")}).`
       : `You arrive with ${start.toLocaleString("en-US")} coins and a place at the desk.`;
-  db.prepare(
+  await db.prepare(
     "INSERT INTO players (user_id, gold, location_id, energy, energy_max, login_days, last_event) VALUES (?, ?, 'town', ?, ?, ?, ?)"
   ).run(userId, gold, STARTING_ENERGY, ENERGY_MAX, tablePaid, note);
-  markStipendSlotPaid(userId, db);
+  await markStipendSlotPaid(userId, db);
 }
 
-function purgeItemIds(db: Database.Database, ids: string[]) {
+async function purgeItemIds(db: GameDb, ids: string[]) {
   if (ids.length === 0) return;
   const slots = ids.map(() => "?").join(", ");
-  db.transaction(() => {
-    const offerIds = db
+  await db.transaction(async () => {
+    const offerIds = await db
       .prepare(`SELECT DISTINCT offer_id FROM swap_legs WHERE item_id IN (${slots})`)
       .all(...ids) as { offer_id: number }[];
     for (const row of offerIds) {
-      db.prepare("DELETE FROM swap_legs WHERE offer_id = ?").run(row.offer_id);
-      db.prepare("DELETE FROM swap_offers WHERE id = ?").run(row.offer_id);
+      await db.prepare("DELETE FROM swap_legs WHERE offer_id = ?").run(row.offer_id);
+      await db.prepare("DELETE FROM swap_offers WHERE id = ?").run(row.offer_id);
     }
-    db.prepare(`DELETE FROM inventory WHERE item_id IN (${slots})`).run(...ids);
-    db.prepare(`DELETE FROM orders WHERE item_id IN (${slots})`).run(...ids);
-    db.prepare(`DELETE FROM trades WHERE item_id IN (${slots})`).run(...ids);
-    db.prepare(`DELETE FROM festival_contracts WHERE item_id IN (${slots})`).run(...ids);
-    db.prepare(`DELETE FROM item_caps WHERE item_id IN (${slots})`).run(...ids);
-    db.prepare(`DELETE FROM item_float WHERE item_id IN (${slots})`).run(...ids);
-    db.prepare(`DELETE FROM bank_intake WHERE item_id IN (${slots})`).run(...ids);
-  })();
+    await db.prepare(`DELETE FROM inventory WHERE item_id IN (${slots})`).run(...ids);
+    await db.prepare(`DELETE FROM orders WHERE item_id IN (${slots})`).run(...ids);
+    await db.prepare(`DELETE FROM trades WHERE item_id IN (${slots})`).run(...ids);
+    await db.prepare(`DELETE FROM festival_contracts WHERE item_id IN (${slots})`).run(...ids);
+    await db.prepare(`DELETE FROM item_caps WHERE item_id IN (${slots})`).run(...ids);
+    await db.prepare(`DELETE FROM item_float WHERE item_id IN (${slots})`).run(...ids);
+    await db.prepare(`DELETE FROM bank_intake WHERE item_id IN (${slots})`).run(...ids);
+  });
 }
 
-function purgeRetiredItems(db: Database.Database) {
-  purgeItemIds(db, [...RETIRED_ITEM_IDS]);
+async function purgeRetiredItems(db: GameDb) {
+  await purgeItemIds(db, [...RETIRED_ITEM_IDS]);
 }
 
-function ensureShareTypesTable(db: Database.Database) {
-  db.exec(`
+async function ensureShareTypesTable(db: GameDb) {
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS share_types (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -473,10 +471,10 @@ function ensureShareTypesTable(db: Database.Database) {
   `);
 }
 
-export function readShareTypes(db: Database.Database = getDb()) {
-  ensureShareTypesTable(db);
-  ensureItemCaps(db);
-  const rows = db
+export async function readShareTypes(db: GameDb = getDb()) {
+  await ensureShareTypesTable(db);
+  await ensureItemCaps(db);
+  const rows = await db
     .prepare(
       "SELECT id, name, emoji, image, base_price, authorized, sort_order FROM share_types ORDER BY sort_order ASC, name COLLATE NOCASE ASC"
     )
@@ -489,13 +487,14 @@ export function readShareTypes(db: Database.Database = getDb()) {
     authorized: number;
     sort_order: number;
   }[];
-  return rows.map((row) => {
-    const cap = db
+  const out = [];
+  for (const row of rows) {
+    const cap = (await db
       .prepare("SELECT authorized FROM item_caps WHERE item_id = ?")
-      .get(row.id) as { authorized: number } | undefined;
+      .get(row.id)) as { authorized: number } | undefined;
     const authorized =
       cap && Number.isInteger(cap.authorized) && cap.authorized > 0 ? cap.authorized : row.authorized;
-    return {
+    out.push({
       id: row.id,
       name: row.name,
       emoji: row.emoji,
@@ -505,34 +504,35 @@ export function readShareTypes(db: Database.Database = getDb()) {
       description: row.name,
       basePrice: row.base_price,
       authorized,
-    };
-  });
+    });
+  }
+  return out;
 }
 
-export function hydrateShareCatalog(db: Database.Database = getDb()) {
-  ensureShareTypesTable(db);
-  const count = db.prepare("SELECT COUNT(*) AS n FROM share_types").get() as { n: number };
+export async function hydrateShareCatalog(db: GameDb = getDb()) {
+  await ensureShareTypesTable(db);
+  const count = await db.prepare("SELECT COUNT(*) AS n FROM share_types").get() as { n: number };
   if (count.n === 0) {
     const insert = db.prepare(
       `INSERT INTO share_types (id, name, emoji, image, base_price, authorized, sort_order)
        VALUES (?, ?, ?, ?, ?, ?, ?)`
     );
-    defaultShareItems().forEach((item, index) => {
-      insert.run(
+    for (const [index, item] of defaultShareItems().entries()) {
+      await insert.run(
         item.id,
         item.name,
         item.emoji,
         item.image ?? null,
         item.basePrice,
-        getItemAuthorized(item.id, db) || item.authorized || 15,
+        (await getItemAuthorized(item.id, db)) || item.authorized || 15,
         index
       );
-    });
+    }
   }
-  setLiveItems(readShareTypes(db));
+  setLiveItems(await readShareTypes(db));
 }
 
-export function insertShareType(
+export async function insertShareType(
   item: {
     id: string;
     name: string;
@@ -541,26 +541,26 @@ export function insertShareType(
     basePrice: number;
     authorized: number;
   },
-  db: Database.Database = getDb()
+  db: GameDb = getDb()
 ) {
-  hydrateShareCatalog(db);
-  const max = db.prepare("SELECT COALESCE(MAX(sort_order), -1) AS n FROM share_types").get() as { n: number };
-  db.prepare(
+  await hydrateShareCatalog(db);
+  const max = await db.prepare("SELECT COALESCE(MAX(sort_order), -1) AS n FROM share_types").get() as { n: number };
+  await db.prepare(
     `INSERT INTO share_types (id, name, emoji, image, base_price, authorized, sort_order)
      VALUES (?, ?, ?, ?, ?, ?, ?)`
   ).run(item.id, item.name, item.emoji, item.image, item.basePrice, item.authorized, max.n + 1);
-  setItemAuthorized(item.id, item.authorized, db);
-  hydrateShareCatalog(db);
+  await setItemAuthorized(item.id, item.authorized, db);
+  await hydrateShareCatalog(db);
 }
 
-export function removeShareType(itemId: string, db: Database.Database = getDb()) {
-  ensureShareTypesTable(db);
-  purgeItemIds(db, [itemId]);
-  db.prepare("DELETE FROM share_types WHERE id = ?").run(itemId);
-  hydrateShareCatalog(db);
+export async function removeShareType(itemId: string, db: GameDb = getDb()) {
+  await ensureShareTypesTable(db);
+  await purgeItemIds(db, [itemId]);
+  await db.prepare("DELETE FROM share_types WHERE id = ?").run(itemId);
+  await hydrateShareCatalog(db);
 }
 
-export function seedBots(db: Database.Database = getDb()) {
+export async function seedBots(db: GameDb = getDb()) {
   const hash = bcrypt.hashSync("bot-not-for-login", 6);
   const now = Date.now();
   const insertUser = db.prepare(
@@ -571,108 +571,108 @@ export function seedBots(db: Database.Database = getDb()) {
   );
   const markBot = db.prepare("UPDATE users SET is_bot = 1 WHERE id = ?");
   for (const bot of BOT_PROFILES) {
-    const existing = db
+    const existing = await db
       .prepare("SELECT id FROM users WHERE username = ?")
       .get(bot.username) as { id: number } | undefined;
     if (!existing) {
-      const info = insertUser.run(bot.username, hash, now);
-      insertPlayer.run(
+      const info = await insertUser.run(bot.username, hash, now);
+      await insertPlayer.run(
         Number(info.lastInsertRowid),
         ENERGY_MAX,
         ENERGY_MAX,
         "Sitting this table out."
       );
     } else {
-      markBot.run(existing.id);
+      await markBot.run(existing.id);
     }
   }
 }
 
-function lockOffice(db: Database.Database) {
-  db.prepare("UPDATE users SET is_admin = 0 WHERE username != ?").run(OFFICE_USERNAME);
-  db.prepare("UPDATE users SET is_admin = 1 WHERE username = ?").run(OFFICE_USERNAME);
-  db.prepare(
+async function lockOffice(db: GameDb) {
+  await db.prepare("UPDATE users SET is_admin = 0 WHERE username != ?").run(OFFICE_USERNAME);
+  await db.prepare("UPDATE users SET is_admin = 1 WHERE username = ?").run(OFFICE_USERNAME);
+  await db.prepare(
     "UPDATE users SET is_gov = 0 WHERE username NOT IN (?, ?) AND COALESCE(is_gov, 0) = 1"
   ).run(OFFICE_USERNAME, DESK_USERNAME);
 }
 
-function bootstrap(db: Database.Database) {
-  migrate(db);
-  clearBankerBook(db);
-  seedGuest(db);
-  seedDesk(db);
-  seedBots(db);
-  purgeRetiredItems(db);
-  shareBankerHoldings(db);
-  lockOffice(db);
-  hydrateShareCatalog(db);
+async function bootstrap(db: GameDb) {
+  await migrate(db);
+  await clearBankerBook(db);
+  await seedGuest(db);
+  await seedDesk(db);
+  await seedBots(db);
+  await purgeRetiredItems(db);
+  await shareBankerHoldings(db);
+  await lockOffice(db);
+  await hydrateShareCatalog(db);
 }
 
-function writeComputerMeta(count: number, db: Database.Database) {
+async function writeComputerMeta(count: number, db: GameDb) {
   const n = Math.max(0, Math.min(MAX_COMPUTERS, Math.floor(count)));
-  db.prepare(
+  await db.prepare(
     `INSERT INTO game_meta (key, value) VALUES ('computer_count', ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`
   ).run(String(n));
-  db.prepare(
+  await db.prepare(
     `INSERT INTO game_meta (key, value) VALUES ('computers', ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`
   ).run(n > 0 ? "1" : "0");
   return n;
 }
 
-export function computerCount(db: Database.Database = getDb()) {
-  const row = db.prepare("SELECT value FROM game_meta WHERE key = 'computer_count'").get() as
+export async function computerCount(db: GameDb = getDb()) {
+  const row = await db.prepare("SELECT value FROM game_meta WHERE key = 'computer_count'").get() as
     | { value: string }
     | undefined;
   if (row != null) {
     const n = Number(row.value);
     if (Number.isFinite(n)) return Math.max(0, Math.min(MAX_COMPUTERS, Math.floor(n)));
   }
-  const flag = db.prepare("SELECT value FROM game_meta WHERE key = 'computers'").get() as
+  const flag = await db.prepare("SELECT value FROM game_meta WHERE key = 'computers'").get() as
     | { value: string }
     | undefined;
   const fallback = flag?.value === "0" ? 0 : MAX_COMPUTERS;
-  writeComputerMeta(fallback, db);
+  await writeComputerMeta(fallback, db);
   return fallback;
 }
 
-export function computersEnabled(db: Database.Database = getDb()) {
-  return computerCount(db) > 0;
+export async function computersEnabled(db: GameDb = getDb()) {
+  return await computerCount(db) > 0;
 }
 
-export function setComputerCount(count: number, db: Database.Database = getDb()) {
-  return writeComputerMeta(count, db);
+export async function setComputerCount(count: number, db: GameDb = getDb()) {
+  return await writeComputerMeta(count, db);
 }
 
-export function setComputersEnabled(on: boolean, db: Database.Database = getDb()) {
+export async function setComputersEnabled(on: boolean, db: GameDb = getDb()) {
   if (!on) {
-    writeComputerMeta(0, db);
+    await writeComputerMeta(0, db);
     return;
   }
-  const current = computerCount(db);
-  writeComputerMeta(current > 0 ? current : MAX_COMPUTERS, db);
+  const current = await computerCount(db);
+  await writeComputerMeta(current > 0 ? current : MAX_COMPUTERS, db);
 }
 
-export function startingGold(db: Database.Database = getDb()) {
-  const row = db.prepare("SELECT value FROM game_meta WHERE key = 'starting_gold'").get() as
+export async function startingGold(db: GameDb = getDb()) {
+  const row = await db.prepare("SELECT value FROM game_meta WHERE key = 'starting_gold'").get() as
     | { value: string }
     | undefined;
   const n = Number(row?.value);
   return Number.isInteger(n) && n >= 0 && n <= MAX_STARTING_GOLD ? n : STARTING_GOLD;
 }
 
-export function setStartingGold(gold: number, db: Database.Database = getDb()) {
-  db.prepare(
+export async function setStartingGold(gold: number, db: GameDb = getDb()) {
+  await db.prepare(
     `INSERT INTO game_meta (key, value) VALUES ('starting_gold', ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`
   ).run(String(gold));
 }
 
-export function tablePaidDrops(db: Database.Database = getDb(), excludeUserId = 0) {
-  const bots = BOT_PROFILES.slice(0, computerCount(db)).map((bot) => bot.username);
+export async function tablePaidDrops(db: GameDb = getDb(), excludeUserId = 0) {
+  const bots = BOT_PROFILES.slice(0, await computerCount(db)).map((bot) => bot.username);
   const botSql = bots.length > 0 ? `OR (COALESCE(u.is_bot, 0) = 1 AND u.username IN (${bots.map(() => "?").join(", ")}))` : "";
-  const row = db
+  const row = await db
     .prepare(
       `SELECT COALESCE(MAX(p.login_days), 0) AS n
        FROM players p JOIN users u ON u.id = p.user_id
@@ -690,25 +690,25 @@ export function tablePaidDrops(db: Database.Database = getDb(), excludeUserId = 
   return Math.max(0, Math.floor(row?.n ?? 0));
 }
 
-export function markStipendSlotPaid(userId: number, db: Database.Database = getDb()) {
-  const slot = stipendSlotKey(Date.now(), stipendMs(db));
-  db.prepare(
+export async function markStipendSlotPaid(userId: number, db: GameDb = getDb()) {
+  const slot = stipendSlotKey(Date.now(), await stipendMs(db));
+  await db.prepare(
     `INSERT INTO player_daily (user_id, day_key, first_trade, special_sold, login_paid)
      VALUES (?, ?, 0, '', 1)
      ON CONFLICT(user_id, day_key) DO UPDATE SET login_paid = 1`
   ).run(userId, slot);
 }
 
-export function stipendMs(db: Database.Database = getDb()) {
-  const row = db.prepare("SELECT value FROM game_meta WHERE key = 'stipend_ms'").get() as
+export async function stipendMs(db: GameDb = getDb()) {
+  const row = await db.prepare("SELECT value FROM game_meta WHERE key = 'stipend_ms'").get() as
     | { value: string }
     | undefined;
   const ms = Number(row?.value);
   return Number.isFinite(ms) && ms >= 1_000 ? ms : 5 * 60 * 1000;
 }
 
-export function readStipendLadder(db: Database.Database = getDb()) {
-  const row = db.prepare("SELECT value FROM game_meta WHERE key = 'stipend_ladder'").get() as
+export async function readStipendLadder(db: GameDb = getDb()) {
+  const row = await db.prepare("SELECT value FROM game_meta WHERE key = 'stipend_ladder'").get() as
     | { value: string }
     | undefined;
   if (!row) return defaultStipendLadder();
@@ -719,15 +719,15 @@ export function readStipendLadder(db: Database.Database = getDb()) {
   }
 }
 
-export function writeStipendLadder(ladder: number[], db: Database.Database = getDb()) {
-  db.prepare(
+export async function writeStipendLadder(ladder: number[], db: GameDb = getDb()) {
+  await db.prepare(
     `INSERT INTO game_meta (key, value) VALUES ('stipend_ladder', ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`
   ).run(JSON.stringify(normalizeStipendLadder(ladder)));
 }
 
-export function readGoal(db: Database.Database = getDb()): GoalConfig {
-  const row = db.prepare("SELECT value FROM game_meta WHERE key = 'goal'").get() as
+export async function readGoal(db: GameDb = getDb()): Promise<GoalConfig> {
+  const row = await db.prepare("SELECT value FROM game_meta WHERE key = 'goal'").get() as
     | { value: string }
     | undefined;
   if (!row) return defaultGoal();
@@ -738,15 +738,15 @@ export function readGoal(db: Database.Database = getDb()): GoalConfig {
   }
 }
 
-export function writeGoal(goal: GoalConfig, db: Database.Database = getDb()) {
-  db.prepare(
+export async function writeGoal(goal: GoalConfig, db: GameDb = getDb()) {
+  await db.prepare(
     `INSERT INTO game_meta (key, value) VALUES ('goal', ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`
   ).run(JSON.stringify(goal));
 }
 
-export function readGameOver(db: Database.Database = getDb()): GameOverState {
-  const row = db.prepare("SELECT value FROM game_meta WHERE key = 'game_over'").get() as
+export async function readGameOver(db: GameDb = getDb()): Promise<GameOverState> {
+  const row = await db.prepare("SELECT value FROM game_meta WHERE key = 'game_over'").get() as
     | { value: string }
     | undefined;
   if (!row) return { over: false, winner: null, endedAt: null, reason: null };
@@ -763,26 +763,26 @@ export function readGameOver(db: Database.Database = getDb()): GameOverState {
   }
 }
 
-export function writeGameOver(state: GameOverState, db: Database.Database = getDb()) {
-  db.prepare(
+export async function writeGameOver(state: GameOverState, db: GameDb = getDb()) {
+  await db.prepare(
     `INSERT INTO game_meta (key, value) VALUES ('game_over', ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`
   ).run(JSON.stringify(state));
 }
 
-export function clearGameOver(db: Database.Database = getDb()) {
-  writeGameOver({ over: false, winner: null, endedAt: null, reason: null }, db);
+export async function clearGameOver(db: GameDb = getDb()) {
+  await writeGameOver({ over: false, winner: null, endedAt: null, reason: null }, db);
 }
 
-export function setStipendMs(ms: number, db: Database.Database = getDb()) {
-  db.prepare(
+export async function setStipendMs(ms: number, db: GameDb = getDb()) {
+  await db.prepare(
     `INSERT INTO game_meta (key, value) VALUES ('stipend_ms', ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`
   ).run(String(ms));
 }
 
-function ensureItemCaps(db: Database.Database) {
-  db.exec(`
+async function ensureItemCaps(db: GameDb) {
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS item_caps (
       item_id TEXT PRIMARY KEY,
       authorized INTEGER NOT NULL
@@ -790,18 +790,18 @@ function ensureItemCaps(db: Database.Database) {
   `);
 }
 
-export function getItemAuthorized(itemId: string, db: Database.Database = getDb()) {
-  ensureItemCaps(db);
-  const row = db
+export async function getItemAuthorized(itemId: string, db: GameDb = getDb()) {
+  await ensureItemCaps(db);
+  const row = await db
     .prepare("SELECT authorized FROM item_caps WHERE item_id = ?")
     .get(itemId) as { authorized: number } | undefined;
   if (row && Number.isInteger(row.authorized) && row.authorized > 0) return row.authorized;
   return itemById[itemId]?.authorized ?? 0;
 }
 
-export function setItemAuthorized(itemId: string, authorized: number, db: Database.Database = getDb()) {
-  ensureItemCaps(db);
-  db.prepare(
+export async function setItemAuthorized(itemId: string, authorized: number, db: GameDb = getDb()) {
+  await ensureItemCaps(db);
+  await db.prepare(
     `INSERT INTO item_caps (item_id, authorized) VALUES (?, ?)
      ON CONFLICT(item_id) DO UPDATE SET authorized = excluded.authorized`
   ).run(itemId, authorized);
@@ -809,22 +809,26 @@ export function setItemAuthorized(itemId: string, authorized: number, db: Databa
 
 export function getDb() {
   if (!globalForDb.bazaarDb) {
-    const dir = path.join(process.cwd(), "data");
-    fs.mkdirSync(dir, { recursive: true });
-    const db = new Database(path.join(dir, "bazaar.db"));
-    db.pragma("journal_mode = WAL");
-    db.pragma("foreign_keys = ON");
-    db.pragma("busy_timeout = 5000");
-    bootstrap(db);
+    const db = createGameDb();
+    const ready = db.runInit(() => bootstrap(db)).then(() => {
+      globalForDb.bazaarBootstrapRev = BOOTSTRAP_REV;
+    });
+    db.bindReady(ready);
     globalForDb.bazaarDb = db;
     globalForDb.bazaarBootstrapRev = BOOTSTRAP_REV;
   } else if (globalForDb.bazaarBootstrapRev !== BOOTSTRAP_REV) {
-    bootstrap(globalForDb.bazaarDb);
+    const db = globalForDb.bazaarDb;
+    const ready = db.runInit(() => bootstrap(db)).then(() => {
+      globalForDb.bazaarBootstrapRev = BOOTSTRAP_REV;
+    });
+    db.bindReady(ready);
     globalForDb.bazaarBootstrapRev = BOOTSTRAP_REV;
   }
   return globalForDb.bazaarDb;
 }
 
-export function createPlayer(userId: number) {
-  createPlayerWithDb(getDb(), userId);
+export { databaseTarget };
+
+export async function createPlayer(userId: number) {
+  await createPlayerWithDb(await getDb(), userId);
 }

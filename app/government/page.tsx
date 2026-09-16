@@ -10,14 +10,14 @@ export default async function GovernmentPage() {
   if (!userId) {
     redirect("/");
   }
-  if (!canHoldOffice(userId)) {
+  if (!(await canHoldOffice(userId))) {
     redirect("/play");
   }
-  enterGovernment(userId);
+  await enterGovernment(userId);
   const jar = await cookies();
   return (
     <GovernmentScreen
-      initialState={getGameState(userId)}
+      initialState={await getGameState(userId)}
       initialItemId={selectedItemFromCookie(jar.get(SELECTED_ITEM_COOKIE)?.value)}
     />
   );

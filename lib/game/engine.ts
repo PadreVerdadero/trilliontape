@@ -154,8 +154,8 @@ function nowMs() {
   return Date.now();
 }
 
-function loadPlayerRow(userId: number): PlayerRow {
-  const row = getDb()
+async function loadPlayerRow(userId: number): Promise<PlayerRow> {
+  const row = await getDb()
     .prepare(
       `SELECT p.*, u.username, COALESCE(u.is_gov, 0) AS is_gov, COALESCE(u.is_admin, 0) AS is_admin
        FROM players p
@@ -167,25 +167,25 @@ function loadPlayerRow(userId: number): PlayerRow {
   return row;
 }
 
-function inventoryMap(userId: number) {
-  const rows = getDb()
+async function inventoryMap(userId: number) {
+  const rows = await getDb()
     .prepare("SELECT item_id, quantity FROM inventory WHERE user_id = ?")
     .all(userId) as { item_id: string; quantity: number }[];
   return new Map(rows.map((row) => [row.item_id, row.quantity]));
 }
 
-function reservedItems(userId: number) {
+async function reservedItems(userId: number) {
   const map: Record<string, number> = {};
   const bump = (itemId: string, qty: number) => {
     map[itemId] = (map[itemId] ?? 0) + qty;
   };
-  const listed = getDb()
+  const listed = await getDb()
     .prepare(
       "SELECT item_id, COALESCE(SUM(remaining), 0) AS qty FROM orders WHERE user_id = ? AND side = 'sell' AND remaining > 0 AND COALESCE(treasury, 0) = 0 GROUP BY item_id"
     )
     .all(userId) as { item_id: string; qty: number }[];
   for (const row of listed) bump(row.item_id, row.qty);
-  const offered = getDb()
+  const offered = await getDb()
     .prepare(
       `SELECT l.item_id, COALESCE(SUM(l.quantity), 0) AS qty
        FROM swap_legs l
@@ -198,13 +198,13 @@ function reservedItems(userId: number) {
   return map;
 }
 
-function reservedGold(userId: number) {
-  const bids = getDb()
+async function reservedGold(userId: number) {
+  const bids = await getDb()
     .prepare(
       "SELECT COALESCE(SUM(price * remaining), 0) AS gold FROM orders WHERE user_id = ? AND side = 'buy' AND remaining > 0 AND COALESCE(treasury, 0) = 0"
     )
     .get(userId) as { gold: number };
-  const swaps = getDb()
+  const swaps = await getDb()
     .prepare(
       "SELECT COALESCE(SUM(give_gold), 0) AS gold FROM swap_offers WHERE from_user_id = ? AND status = 'open'"
     )
@@ -212,22 +212,22 @@ function reservedGold(userId: number) {
   return (bids.gold ?? 0) + (swaps.gold ?? 0);
 }
 
-function availableItem(userId: number, itemId: string) {
-  const have = inventoryMap(userId).get(itemId) ?? 0;
-  const held = reservedItems(userId)[itemId] ?? 0;
+async function availableItem(userId: number, itemId: string) {
+  const have = (await inventoryMap(userId)).get(itemId) ?? 0;
+  const held = (await reservedItems(userId))[itemId] ?? 0;
   return have - held;
 }
 
-function availableGold(userId: number) {
-  const gold = loadPlayerRow(userId).gold;
-  return gold - reservedGold(userId);
+async function availableGold(userId: number) {
+  const gold = (await loadPlayerRow(userId)).gold;
+  return gold - (await reservedGold(userId));
 }
 
-function addItem(userId: number, itemId: string, qty: number, unitCost?: number) {
+async function addItem(userId: number, itemId: string, qty: number, unitCost?: number) {
   if (qty <= 0) return;
-  const unit = Math.max(0, Math.round(unitCost ?? marketPrice(itemId)));
+  const unit = Math.max(0, Math.round(unitCost ?? await marketPrice(itemId)));
   const addedCost = unit * qty;
-  getDb()
+  await getDb()
     .prepare(
       `INSERT INTO inventory (user_id, item_id, quantity, cost_basis) VALUES (?, ?, ?, ?)
        ON CONFLICT(user_id, item_id) DO UPDATE SET
@@ -237,8 +237,8 @@ function addItem(userId: number, itemId: string, qty: number, unitCost?: number)
     .run(userId, itemId, qty, addedCost);
 }
 
-function removeItem(userId: number, itemId: string, qty: number) {
-  const row = getDb()
+async function removeItem(userId: number, itemId: string, qty: number) {
+  const row = await getDb()
     .prepare(
       "SELECT quantity, COALESCE(cost_basis, 0) AS cost_basis FROM inventory WHERE user_id = ? AND item_id = ?"
     )
@@ -248,29 +248,29 @@ function removeItem(userId: number, itemId: string, qty: number) {
   const next = have - qty;
   const db = getDb();
   if (next === 0) {
-    db.prepare("DELETE FROM inventory WHERE user_id = ? AND item_id = ?").run(userId, itemId);
+    await db.prepare("DELETE FROM inventory WHERE user_id = ? AND item_id = ?").run(userId, itemId);
   } else {
     const nextBasis = Math.round((row?.cost_basis ?? 0) * (next / have));
-    db.prepare(
+    await db.prepare(
       "UPDATE inventory SET quantity = ?, cost_basis = ? WHERE user_id = ? AND item_id = ?"
     ).run(next, nextBasis, userId, itemId);
   }
 }
 
-function setEvent(userId: number, message: string) {
-  getDb().prepare("UPDATE players SET last_event = ? WHERE user_id = ?").run(message, userId);
+async function setEvent(userId: number, message: string) {
+  await getDb().prepare("UPDATE players SET last_event = ? WHERE user_id = ?").run(message, userId);
 }
 
-function clearBusy(userId: number) {
-  getDb()
+async function clearBusy(userId: number) {
+  await getDb()
     .prepare(
       "UPDATE players SET busy_type = 'idle', busy_until = NULL, busy_payload = NULL WHERE user_id = ?"
     )
     .run(userId);
 }
 
-export function resolveBusy(userId: number) {
-  const player = loadPlayerRow(userId);
+export async function resolveBusy(userId: number) {
+  const player = await loadPlayerRow(userId);
   if (player.busy_type === "idle" || !player.busy_until) return;
   if (player.busy_until > nowMs()) return;
 
@@ -279,14 +279,14 @@ export function resolveBusy(userId: number) {
     const dest = String(payload.locationId ?? "");
     const location = locationById[dest];
     if (location) {
-      getDb()
+      await getDb()
         .prepare("UPDATE players SET location_id = ? WHERE user_id = ?")
         .run(dest, userId);
-      setEvent(userId, `You arrive at ${location.emoji} ${location.name}.`);
+      await setEvent(userId, `You arrive at ${location.emoji} ${location.name}.`);
     }
   }
   if (player.busy_type === "mine" || player.busy_type === "search") {
-    const bits = grantSearchLoot(userId, {
+    const bits = await grantSearchLoot(userId, {
       locationId: String(payload.locationId ?? player.location_id),
       luck: Number(payload.luck ?? 1),
       extraQty: Number(payload.extraQty ?? 0),
@@ -295,10 +295,10 @@ export function resolveBusy(userId: number) {
       qty: payload.qty != null ? Number(payload.qty) : undefined,
     });
     if (bits.length > 0) {
-      setEvent(userId, `You pull ${bits.join(" and ")} from the search.`);
+      await setEvent(userId, `You pull ${bits.join(" and ")} from the search.`);
     }
   }
-  clearBusy(userId);
+  await clearBusy(userId);
 }
 
 function busyState(player: PlayerRow): BusyState {
@@ -335,7 +335,7 @@ function busyState(player: PlayerRow): BusyState {
   };
 }
 
-function grantSearchLoot(
+async function grantSearchLoot(
   userId: number,
   payload: {
     locationId: string;
@@ -353,7 +353,7 @@ function grantSearchLoot(
     finds.push({ itemId: payload.itemId, qty: Number(payload.qty ?? 0) });
   } else {
     for (let i = 0; i < rolls; i += 1) {
-      const loot = rollSearchLoot(payload.locationId, payload.luck, payload.skipCommon);
+      const loot = await rollSearchLoot(payload.locationId, payload.luck, payload.skipCommon);
       if (loot.itemId) {
         finds.push({ itemId: loot.itemId, qty: loot.qty + payload.extraQty });
       }
@@ -363,15 +363,15 @@ function grantSearchLoot(
   for (const find of finds) {
     const item = itemById[find.itemId];
     if (!item || find.qty <= 0) continue;
-    addItem(userId, item.id, find.qty);
+    await addItem(userId, item.id, find.qty);
     bits.push(`${item.emoji} ${item.name} ×${formatNumber(find.qty)}`);
   }
   return bits;
 }
 
-function rollSearchLoot(locationId: string, luck = 1, skipCommon = false) {
+async function rollSearchLoot(locationId: string, luck = 1, skipCommon = false) {
   let pool = materialsAt(locationId);
-  const rarityMap = rarityFromHeld(Object.keys(itemById), packTotals());
+  const rarityMap = rarityFromHeld(Object.keys(itemById), await packTotals());
   if (skipCommon) {
     const filtered = pool.filter((item) => rarityOf(item.id, rarityMap) !== "common");
     if (filtered.length > 0) pool = filtered;
@@ -402,18 +402,18 @@ function rollSearchLoot(locationId: string, luck = 1, skipCommon = false) {
   return { itemId: picked.id, qty };
 }
 
-function readStrain(locationId: string) {
-  const row = getDb()
+async function readStrain(locationId: string) {
+  const row = await getDb()
     .prepare("SELECT strain, cools_at FROM area_strain WHERE location_id = ?")
     .get(locationId) as { strain: number; cools_at: number } | undefined;
   if (!row || row.cools_at <= nowMs()) return 0;
   return row.strain;
 }
 
-function bumpStrain(locationId: string) {
-  const current = readStrain(locationId);
+async function bumpStrain(locationId: string) {
+  const current = await readStrain(locationId);
   const next = current + 1;
-  getDb()
+  await getDb()
     .prepare(
       `INSERT INTO area_strain (location_id, strain, cools_at) VALUES (?, ?, ?)
        ON CONFLICT(location_id) DO UPDATE SET strain = excluded.strain, cools_at = excluded.cools_at`
@@ -422,8 +422,8 @@ function bumpStrain(locationId: string) {
   return current;
 }
 
-function countSearchers(locationId: string) {
-  const row = getDb()
+async function countSearchers(locationId: string) {
+  const row = await getDb()
     .prepare(
       `SELECT COUNT(*) AS n FROM players
        WHERE location_id = ? AND busy_type IN ('search', 'mine') AND busy_until IS NOT NULL AND busy_until > ?`
@@ -432,16 +432,16 @@ function countSearchers(locationId: string) {
   return row.n;
 }
 
-function listForage(playerLocationId: string): AreaCrowd & { biasLocationId: string | null } {
-  const strain = readStrain(FORAGE_STRAIN_ID);
-  const row = getDb()
+async function listForage(playerLocationId: string): Promise<AreaCrowd & { biasLocationId: string | null }> {
+  const strain = await readStrain(FORAGE_STRAIN_ID);
+  const row = await getDb()
     .prepare("SELECT cools_at FROM area_strain WHERE location_id = ?")
     .get(FORAGE_STRAIN_ID) as { cools_at: number } | undefined;
   const cooldownMs = strain > 0 && row && row.cools_at > nowMs() ? row.cools_at - nowMs() : 0;
   const bias = locationById[playerLocationId]?.searchEnergy ? playerLocationId : null;
   return {
     locationId: FORAGE_STRAIN_ID,
-    searchers: countSearchers(FORAGE_STRAIN_ID),
+    searchers: await countSearchers(FORAGE_STRAIN_ID),
     strain,
     cooldownMs,
     nextSearchCost: searchEnergyCost(FORAGE_STRAIN_ID, strain),
@@ -449,33 +449,33 @@ function listForage(playerLocationId: string): AreaCrowd & { biasLocationId: str
   };
 }
 
-function listAreas(playerLocationId = "town"): AreaCrowd[] {
-  const forage = listForage(playerLocationId);
+async function listAreas(playerLocationId = "town"): Promise<AreaCrowd[]> {
+  const forage = await listForage(playerLocationId);
   return [forage];
 }
 
-function marketPrints(itemId: string, limit = MV_PRINTS) {
-  return getDb()
+async function marketPrints(itemId: string, limit = MV_PRINTS) {
+  return await getDb()
     .prepare(
       `SELECT price, quantity, buy_user_id, sell_user_id FROM trades WHERE item_id = ? ORDER BY id DESC LIMIT ?`
     )
     .all(itemId, limit) as { price: number; quantity: number; buy_user_id: number; sell_user_id: number }[];
 }
 
-function marketPrice(itemId: string): number {
+async function marketPrice(itemId: string) {
   const base = itemById[itemId]?.basePrice ?? 1;
-  return computeFairValue(base, [...marketPrints(itemId)].reverse());
+  return computeFairValue(base, [...(await marketPrints(itemId))].reverse());
 }
 
-function isGov(userId: number) {
-  const row = getDb()
+async function isGov(userId: number) {
+  const row = await getDb()
     .prepare("SELECT COALESCE(is_gov, 0) AS is_gov FROM users WHERE id = ?")
     .get(userId) as { is_gov: number } | undefined;
   return Boolean(row?.is_gov);
 }
 
-function isBot(userId: number) {
-  const row = getDb()
+async function isBot(userId: number) {
+  const row = await getDb()
     .prepare("SELECT COALESCE(is_bot, 0) AS is_bot FROM users WHERE id = ?")
     .get(userId) as { is_bot: number } | undefined;
   return Boolean(row?.is_bot);
@@ -486,7 +486,7 @@ function tradeDeskName(username: string, treasury: boolean) {
   return username;
 }
 
-function recordTrade(
+async function recordTrade(
   itemId: string,
   price: number,
   quantity: number,
@@ -495,8 +495,8 @@ function recordTrade(
   buyTreasury = false,
   sellTreasury = false
 ) {
-  const deskId = buyTreasury || sellTreasury ? ensureDeskUser() : 0;
-  getDb()
+  const deskId = buyTreasury || sellTreasury ? await ensureDeskUser() : 0;
+  await getDb()
     .prepare(
       `INSERT INTO trades (item_id, price, quantity, buy_user_id, sell_user_id, created_at, buy_treasury, sell_treasury)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
@@ -513,7 +513,7 @@ function recordTrade(
     );
 }
 
-function executeFill(
+async function executeFill(
   buy: { id: number; user_id: number; price: number; remaining: number; treasury?: number },
   sell: { id: number; user_id: number; price: number; remaining: number; treasury?: number },
   itemId: string,
@@ -524,42 +524,42 @@ function executeFill(
   const govSell = Boolean(sell.treasury);
   const db = getDb();
   if (!govBuy) {
-    db.prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(
+    await db.prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(
       price * quantity,
       buy.user_id
     );
   }
   if (!govSell) {
-    db.prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?").run(
+    await db.prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?").run(
       price * quantity,
       sell.user_id
     );
   }
-  if (!govSell) removeItem(sell.user_id, itemId, quantity);
-  if (!govBuy) addItem(buy.user_id, itemId, quantity, price);
+  if (!govSell) await removeItem(sell.user_id, itemId, quantity);
+  if (!govBuy) await addItem(buy.user_id, itemId, quantity, price);
   const buyLeft = buy.remaining - quantity;
   const sellLeft = sell.remaining - quantity;
-  if (buyLeft <= 0) db.prepare("DELETE FROM orders WHERE id = ?").run(buy.id);
-  else db.prepare("UPDATE orders SET remaining = ? WHERE id = ?").run(buyLeft, buy.id);
-  if (sellLeft <= 0) db.prepare("DELETE FROM orders WHERE id = ?").run(sell.id);
-  else db.prepare("UPDATE orders SET remaining = ? WHERE id = ?").run(sellLeft, sell.id);
-  recordTrade(itemId, price, quantity, buy.user_id, sell.user_id, govBuy, govSell);
+  if (buyLeft <= 0) await db.prepare("DELETE FROM orders WHERE id = ?").run(buy.id);
+  else await db.prepare("UPDATE orders SET remaining = ? WHERE id = ?").run(buyLeft, buy.id);
+  if (sellLeft <= 0) await db.prepare("DELETE FROM orders WHERE id = ?").run(sell.id);
+  else await db.prepare("UPDATE orders SET remaining = ? WHERE id = ?").run(sellLeft, sell.id);
+  await recordTrade(itemId, price, quantity, buy.user_id, sell.user_id, govBuy, govSell);
   if (buy.user_id !== sell.user_id) {
-    if (!isBot(buy.user_id)) awardFirstTradeVp(buy.user_id);
-    if (!isBot(sell.user_id)) awardFirstTradeVp(sell.user_id);
-    if (!isBot(sell.user_id)) {
-      getDb()
+    if (!await isBot(buy.user_id)) await awardFirstTradeVp(buy.user_id);
+    if (!await isBot(sell.user_id)) await awardFirstTradeVp(sell.user_id);
+    if (!await isBot(sell.user_id)) {
+      await getDb()
         .prepare("UPDATE players SET board_fills = COALESCE(board_fills, 0) + 1 WHERE user_id = ?")
         .run(sell.user_id);
     }
   }
-  noteIssuedCap(itemId);
+  await noteIssuedCap(itemId);
 }
 
-function matchItem(itemId: string) {
+async function matchItem(itemId: string) {
   const db = getDb();
   while (true) {
-    const buy = db
+    const buy = await db
       .prepare(
         `SELECT id, user_id, price, remaining, created_at, COALESCE(treasury, 0) AS treasury
          FROM orders
@@ -575,7 +575,7 @@ function matchItem(itemId: string) {
       created_at: number;
       treasury: number;
     }[];
-    const sell = db
+    const sell = await db
       .prepare(
         `SELECT id, user_id, price, remaining, created_at, COALESCE(treasury, 0) AS treasury
          FROM orders
@@ -610,20 +610,20 @@ function matchItem(itemId: string) {
     if (!pair) break;
     let qty = Math.min(pair.buy.remaining, pair.sell.remaining);
     if (pair.sell.treasury) {
-      const room = remainingToIssue(itemId);
+      const room = await remainingToIssue(itemId);
       if (room <= 0) {
-        db.prepare("DELETE FROM orders WHERE id = ?").run(pair.sell.id);
+        await db.prepare("DELETE FROM orders WHERE id = ?").run(pair.sell.id);
         continue;
       }
       qty = Math.min(qty, room);
     }
-    executeFill(pair.buy, pair.sell, itemId, qty, pair.sell.price);
+    await executeFill(pair.buy, pair.sell, itemId, qty, pair.sell.price);
   }
 }
 
-function requireIdle(userId: number) {
-  resolveBusy(userId);
-  const player = loadPlayerRow(userId);
+async function requireIdle(userId: number) {
+  await resolveBusy(userId);
+  const player = await loadPlayerRow(userId);
   if (player.busy_type !== "idle" && player.busy_until && player.busy_until > nowMs()) {
     throw new Error("You are already busy. Wait, or leave and come back later.");
   }
@@ -633,8 +633,8 @@ function utcDayKey(now = nowMs()) {
   return new Date(now).toISOString().slice(0, 10);
 }
 
-function touchDaily(userId: number, dayKey: string) {
-  getDb()
+async function touchDaily(userId: number, dayKey: string) {
+  await getDb()
     .prepare(
       `INSERT INTO player_daily (user_id, day_key, first_trade, special_sold, login_paid)
        VALUES (?, ?, 0, '', 0)
@@ -643,49 +643,45 @@ function touchDaily(userId: number, dayKey: string) {
     .run(userId, dayKey);
 }
 
-function grantDailyLogin(userId: number, _timeZone?: string): {
-  amount: number;
-  day: number;
-  justPaid: boolean;
-} | null {
-  const name = loadPlayerRow(userId).username;
+async function grantDailyLogin(userId: number, _timeZone?: string) {
+  const name = (await loadPlayerRow(userId)).username;
   if (name === "Banker" || name === DESK_USERNAME) return null;
-  const slot = stipendSlotKey(Date.now(), stipendMs());
-  touchDaily(userId, slot);
-  const row = getDb()
+  const slot = stipendSlotKey(Date.now(), await stipendMs());
+  await touchDaily(userId, slot);
+  const row = await getDb()
     .prepare(
       "SELECT COALESCE(login_paid, 0) AS login_paid FROM player_daily WHERE user_id = ? AND day_key = ?"
     )
     .get(userId, slot) as { login_paid: number } | undefined;
-  const paidDays = getDb()
+  const paidDays = await getDb()
     .prepare("SELECT COALESCE(login_days, 0) AS login_days FROM players WHERE user_id = ?")
     .get(userId) as { login_days: number } | undefined;
   if (row?.login_paid) return null;
-  const created = getDb()
+  const created = await getDb()
     .prepare("SELECT created_at FROM users WHERE id = ?")
     .get(userId) as { created_at: number } | undefined;
-  if (created && stipendSlotKey(created.created_at, stipendMs()) === slot) {
-    getDb()
+  if (created && stipendSlotKey(created.created_at, await stipendMs()) === slot) {
+    await getDb()
       .prepare("UPDATE player_daily SET login_paid = 1 WHERE user_id = ? AND day_key = ?")
       .run(userId, slot);
     return null;
   }
   const next = (paidDays?.login_days ?? 0) + 1;
-  const amount = dailyDeposit(next, readStipendLadder());
-  getDb()
+  const amount = dailyDeposit(next, await readStipendLadder());
+  await getDb()
     .prepare("UPDATE players SET gold = gold + ?, login_days = ? WHERE user_id = ?")
     .run(amount, next, userId);
-  getDb()
+  await getDb()
     .prepare("UPDATE player_daily SET login_paid = 1 WHERE user_id = ? AND day_key = ?")
     .run(userId, slot);
-  if (!isBot(userId)) {
-    setEvent(userId, `Coin drop: +${formatCoins(amount)} (drop ${formatNumber(next)}).`);
+  if (!await isBot(userId)) {
+    await setEvent(userId, `Coin drop: +${formatCoins(amount)} (drop ${formatNumber(next)}).`);
   }
-  return { amount, day: next, justPaid: !isBot(userId) };
+  return { amount, day: next, justPaid: !await isBot(userId) };
 }
 
-function seatedBotUsernames(db: ReturnType<typeof getDb> = getDb()) {
-  return BOT_PROFILES.slice(0, computerCount(db)).map((bot) => bot.username);
+async function seatedBotUsernames(db: ReturnType<typeof getDb> = getDb()) {
+  return BOT_PROFILES.slice(0, await computerCount(db)).map((bot) => bot.username);
 }
 
 function humanAtTableSql() {
@@ -693,8 +689,8 @@ function humanAtTableSql() {
     AND COALESCE((SELECT at_table FROM players WHERE user_id = id), 1) = 1`;
 }
 
-function tableSeatWhere(db: ReturnType<typeof getDb> = getDb()) {
-  const names = seatedBotUsernames(db);
+async function tableSeatWhere(db: ReturnType<typeof getDb> = getDb()) {
+  const names = await seatedBotUsernames(db);
   if (names.length === 0) {
     return {
       sql: humanAtTableSql(),
@@ -708,84 +704,84 @@ function tableSeatWhere(db: ReturnType<typeof getDb> = getDb()) {
   };
 }
 
-function travelerCount(db: ReturnType<typeof getDb> = getDb()) {
+async function travelerCount(db: ReturnType<typeof getDb> = getDb()) {
   return (
-    db
+    await db
       .prepare(`SELECT COUNT(*) AS n FROM users WHERE ${humanAtTableSql()}`)
       .get() as { n: number }
   ).n;
 }
 
-function tableSeatIds() {
-  const { sql, params } = tableSeatWhere();
-  return getDb()
+async function tableSeatIds() {
+  const { sql, params } = await tableSeatWhere();
+  return await getDb()
     .prepare(`SELECT id FROM users WHERE ${sql} ORDER BY username COLLATE NOCASE`)
     .all(...params) as { id: number }[];
 }
 
-function payTableStipends(viewerId: number, timeZone?: string) {
+async function payTableStipends(viewerId: number, timeZone?: string) {
   let mine: { amount: number; day: number; justPaid: boolean } | null = null;
-  for (const row of tableSeatIds()) {
-    const notice = grantDailyLogin(row.id, timeZone);
+  for (const row of await tableSeatIds()) {
+    const notice = await grantDailyLogin(row.id, timeZone);
     if (row.id === viewerId) mine = notice;
   }
   return mine;
 }
 
-function awardVp(userId: number, amount: number) {
-  if (amount <= 0 || isBot(userId)) return;
-  getDb().prepare("UPDATE players SET vp = COALESCE(vp, 0) + ? WHERE user_id = ?").run(amount, userId);
+async function awardVp(userId: number, amount: number) {
+  if (amount <= 0 || await isBot(userId)) return;
+  await getDb().prepare("UPDATE players SET vp = COALESCE(vp, 0) + ? WHERE user_id = ?").run(amount, userId);
 }
 
-function awardFirstTradeVp(userId: number) {
+async function awardFirstTradeVp(userId: number) {
   const day = utcDayKey();
-  touchDaily(userId, day);
-  const row = getDb()
+  await touchDaily(userId, day);
+  const row = await getDb()
     .prepare("SELECT first_trade FROM player_daily WHERE user_id = ? AND day_key = ?")
     .get(userId, day) as { first_trade: number } | undefined;
   if (!row || row.first_trade) return;
-  getDb()
+  await getDb()
     .prepare("UPDATE player_daily SET first_trade = 1 WHERE user_id = ? AND day_key = ?")
     .run(userId, day);
-  awardVp(userId, 1);
+  await awardVp(userId, 1);
 }
 
-function addBuff(userId: number, kind: BuffKind, charges: number, power: number) {
-  const row = getDb()
+async function addBuff(userId: number, kind: BuffKind, charges: number, power: number) {
+  const row = await getDb()
     .prepare("SELECT charges, power FROM player_buffs WHERE user_id = ? AND kind = ?")
     .get(userId, kind) as { charges: number; power: number } | undefined;
   if (!row) {
-    getDb()
+    await getDb()
       .prepare(
         "INSERT INTO player_buffs (user_id, kind, charges, power) VALUES (?, ?, ?, ?)"
       )
       .run(userId, kind, charges, power);
     return;
   }
-  getDb()
+  await getDb()
     .prepare(
       "UPDATE player_buffs SET charges = ?, power = ? WHERE user_id = ? AND kind = ?"
     )
     .run(row.charges + charges, Math.max(row.power, power), userId, kind);
 }
 
-function takeBuff(userId: number, kind: BuffKind) {
-  const row = getDb()
+async function takeBuff(userId: number, kind: BuffKind) {
+  const row = await getDb()
     .prepare("SELECT charges, power FROM player_buffs WHERE user_id = ? AND kind = ?")
     .get(userId, kind) as { charges: number; power: number } | undefined;
   if (!row || row.charges <= 0) return null;
   if (row.charges <= 1) {
-    getDb().prepare("DELETE FROM player_buffs WHERE user_id = ? AND kind = ?").run(userId, kind);
+    await getDb().prepare("DELETE FROM player_buffs WHERE user_id = ? AND kind = ?").run(userId, kind);
   } else {
-    getDb()
+    await getDb()
       .prepare("UPDATE player_buffs SET charges = charges - 1 WHERE user_id = ? AND kind = ?")
       .run(userId, kind);
   }
   return { power: row.power };
 }
 
-function listBuffs(userId: number) {
-  const rows = getDb()
+async function listBuffs(userId: number) {
+  const rows = await getDb()
     .prepare("SELECT kind, charges, power FROM player_buffs WHERE user_id = ? AND charges > 0")
     .all(userId) as { kind: BuffKind; charges: number; power: number }[];
   return rows.map((row) => ({
@@ -796,23 +792,23 @@ function listBuffs(userId: number) {
   }));
 }
 
-export function consumeItem(userId: number, itemId: string) {
-  resolveBusy(userId);
+export async function consumeItem(userId: number, itemId: string) {
+  await resolveBusy(userId);
   const food = foodById[itemId];
   if (food) {
-    if (availableItem(userId, itemId) < 1) {
+    if (await availableItem(userId, itemId) < 1) {
       throw new Error("You do not have a free one to eat.");
     }
-    const player = loadPlayerRow(userId);
+    const player = await loadPlayerRow(userId);
     const max = player.energy_max ?? ENERGY_MAX;
     if ((player.energy ?? 0) >= max) {
       throw new Error("You are already full.");
     }
-    removeItem(userId, itemId, 1);
+    await removeItem(userId, itemId, 1);
     const next = Math.min(max, (player.energy ?? 0) + food.energy);
-    getDb().prepare("UPDATE players SET energy = ? WHERE user_id = ?").run(next, userId);
+    await getDb().prepare("UPDATE players SET energy = ? WHERE user_id = ?").run(next, userId);
     const item = itemById[itemId];
-    setEvent(
+    await setEvent(
       userId,
       `You eat ${item.emoji} ${item.name}. +${food.energy} energy (${next}/${max}).`
     );
@@ -820,39 +816,39 @@ export function consumeItem(userId: number, itemId: string) {
   }
   const consumable = consumableById[itemId];
   if (!consumable) throw new Error("That cannot be used.");
-  if (availableItem(userId, itemId) < 1) {
+  if (await availableItem(userId, itemId) < 1) {
     throw new Error("You do not have a free one to use.");
   }
-  removeItem(userId, itemId, 1);
-  const player = loadPlayerRow(userId);
+  await removeItem(userId, itemId, 1);
+  const player = await loadPlayerRow(userId);
   const max = player.energy_max ?? ENERGY_MAX;
   let healed = 0;
   if (consumable.energy) {
     const next = Math.min(max, (player.energy ?? 0) + consumable.energy);
     healed = next - (player.energy ?? 0);
-    getDb().prepare("UPDATE players SET energy = ? WHERE user_id = ?").run(next, userId);
+    await getDb().prepare("UPDATE players SET energy = ? WHERE user_id = ?").run(next, userId);
   }
-  addBuff(userId, consumable.kind, consumable.charges, consumable.power);
+  await addBuff(userId, consumable.kind, consumable.charges, consumable.power);
   const item = itemById[itemId];
   const healNote = healed > 0 ? ` +${healed} energy.` : "";
-  setEvent(
+  await setEvent(
     userId,
     `${consumable.verb} ${item.emoji} ${item.name}.${healNote} ${buffLabel[consumable.kind]} is ready.`
   );
 }
 
-export function arriveAt(userId: number, locationId: string) {
-  resolveBusy(userId);
+export async function arriveAt(userId: number, locationId: string) {
+  await resolveBusy(userId);
   const dest = locationById[locationId];
   if (!dest) throw new Error("Unknown place. That check-in code is not on the map.");
-  const player = loadPlayerRow(userId);
+  const player = await loadPlayerRow(userId);
   if (player.location_id === locationId) {
-    setEvent(userId, `You are already at ${dest.emoji} ${dest.name}.`);
+    await setEvent(userId, `You are already at ${dest.emoji} ${dest.name}.`);
     return;
   }
   const interrupted =
     player.busy_type !== "idle" && Boolean(player.busy_until && player.busy_until > nowMs());
-  getDb()
+  await getDb()
     .prepare(
       "UPDATE players SET location_id = ?, busy_type = 'idle', busy_until = NULL, busy_payload = NULL, last_event = ? WHERE user_id = ?"
     )
@@ -865,19 +861,19 @@ export function arriveAt(userId: number, locationId: string) {
     );
 }
 
-export function startTravel(userId: number, locationId: string) {
-  requireIdle(userId);
+export async function startTravel(userId: number, locationId: string) {
+  await requireIdle(userId);
   const dest = locationById[locationId];
   if (!dest) throw new Error("Unknown place on the map.");
-  const player = loadPlayerRow(userId);
+  const player = await loadPlayerRow(userId);
   if (player.location_id === locationId) throw new Error("You are already there.");
   let seconds = travelSeconds(player.location_id, locationId);
-  const haste = takeBuff(userId, "travel_haste");
+  const haste = await takeBuff(userId, "travel_haste");
   if (haste) {
     seconds = Math.max(6, Math.round((seconds * haste.power) / 100));
   }
   const ends = nowMs() + seconds * 1000;
-  getDb()
+  await getDb()
     .prepare(
       "UPDATE players SET busy_type = 'travel', busy_until = ?, busy_payload = ?, last_event = ? WHERE user_id = ?"
     )
@@ -900,16 +896,16 @@ function pickForageBiome(biasLocationId: string | null) {
   return FORAGE_BIOMES[Math.floor(Math.random() * FORAGE_BIOMES.length)];
 }
 
-export function startSearch(userId: number) {
-  requireIdle(userId);
-  const player = loadPlayerRow(userId);
-  const strain = bumpStrain(FORAGE_STRAIN_ID);
-  const calm = takeBuff(userId, "search_calm");
-  const cheap = takeBuff(userId, "search_cheap");
-  const yieldBuff = takeBuff(userId, "search_yield");
-  const luck = takeBuff(userId, "search_luck");
-  const double = takeBuff(userId, "search_double");
-  const skipCommon = takeBuff(userId, "search_skip_common");
+export async function startSearch(userId: number) {
+  await requireIdle(userId);
+  const player = await loadPlayerRow(userId);
+  const strain = await bumpStrain(FORAGE_STRAIN_ID);
+  const calm = await takeBuff(userId, "search_calm");
+  const cheap = await takeBuff(userId, "search_cheap");
+  const yieldBuff = await takeBuff(userId, "search_yield");
+  const luck = await takeBuff(userId, "search_luck");
+  const double = await takeBuff(userId, "search_double");
+  const skipCommon = await takeBuff(userId, "search_skip_common");
   const cost = cheap ? 1 : searchEnergyCost(FORAGE_STRAIN_ID, calm ? 0 : strain);
   const energy = player.energy ?? 0;
   const max = player.energy_max ?? ENERGY_MAX;
@@ -919,13 +915,13 @@ export function startSearch(userId: number) {
     );
   }
   const nextEnergy = energy - cost;
-  getDb()
+  await getDb()
     .prepare("UPDATE players SET energy = ? WHERE user_id = ?")
     .run(nextEnergy, userId);
   const bias = locationById[player.location_id]?.searchEnergy ? player.location_id : null;
   const biome = pickForageBiome(bias);
   const place = locationById[biome];
-  const bits = grantSearchLoot(userId, {
+  const bits = await grantSearchLoot(userId, {
     locationId: biome,
     extraQty: yieldBuff ? 1 : 0,
     luck: luck?.power ?? 1,
@@ -943,7 +939,7 @@ export function startSearch(userId: number) {
   ].filter(Boolean);
   const crowdNote = !calm && strain > 0 ? ` Crowded — ${cost} energy.` : ` −${cost} energy.`;
   const findNote = bits.length > 0 ? ` You pull ${bits.join(" and ")}.` : " Nothing this time.";
-  setEvent(
+  await setEvent(
     userId,
     `Searched the grounds (${place?.emoji ?? ""} ${place?.name ?? "wilds"}).${crowdNote}${findNote} ${nextEnergy}/${max} left.${
       extras.length ? ` (${extras.join(", ")})` : ""
@@ -951,11 +947,11 @@ export function startSearch(userId: number) {
   );
 }
 
-export function startMine(userId: number) {
-  startSearch(userId);
+export async function startMine(userId: number) {
+  await startSearch(userId);
 }
 
-function insertLiveOrder(
+async function insertLiveOrder(
   userId: number,
   itemId: string,
   side: "buy" | "sell",
@@ -963,7 +959,7 @@ function insertLiveOrder(
   quantity: number,
   treasury: boolean
 ) {
-  const info = getDb()
+  const info = await getDb()
     .prepare(
       "INSERT INTO orders (user_id, item_id, side, price, remaining, created_at, treasury) VALUES (?, ?, ?, ?, ?, ?, ?)"
     )
@@ -971,23 +967,23 @@ function insertLiveOrder(
   return Number(info.lastInsertRowid);
 }
 
-function requireOpenGame() {
-  if (readGameOver().over) throw new Error("The game is over. Jesse can start a new game from Admin.");
+async function requireOpenGame() {
+  if ((await readGameOver()).over) throw new Error("The game is over. Jesse can start a new game from Admin.");
 }
 
-export function placeOrder(
+export async function placeOrder(
   userId: number,
   itemId: string,
   side: "buy" | "sell",
   price: number,
   quantity: number
 ) {
-  resolveBusy(userId);
-  requireOpenGame();
+  await resolveBusy(userId);
+  await requireOpenGame();
   const item = itemById[itemId];
   if (!item) throw new Error("Unknown item.");
-  const treasury = isGov(userId);
-  const px = treasury ? Math.max(1, Math.round(marketPrice(itemId))) : price;
+  const treasury = await isGov(userId);
+  const px = treasury ? Math.max(1, Math.round(await marketPrice(itemId))) : price;
   if (!treasury && (!Number.isInteger(price) || price < 1)) {
     throw new Error("Price must be a whole number of at least 1.");
   }
@@ -999,27 +995,27 @@ export function placeOrder(
         : "Quantity must be a whole number from 1 to 99."
     );
   }
-  if (side === "buy" && !treasury && availableGold(userId) < px * quantity) {
+  if (side === "buy" && !treasury && await availableGold(userId) < px * quantity) {
     throw new Error("Not enough free coin. Cancel a bid or sell something.");
   }
-  if (side === "sell" && !treasury && availableItem(userId, itemId) < quantity) {
+  if (side === "sell" && !treasury && await availableItem(userId, itemId) < quantity) {
     throw new Error("Not enough unbound stock. Cancel a sell order first.");
   }
   if (treasury && side === "sell") {
-    const room = Math.max(0, remainingToIssue(itemId) - listedTreasuryAsks(itemId));
+    const room = Math.max(0, await remainingToIssue(itemId) - await listedTreasuryAsks(itemId));
     if (quantity > room) {
       throw new Error(
         room <= 0
-          ? `Nothing left to issue. Outstanding already meets Authorized (${formatNumber(authorizedOf(itemId))}).`
-          : `Only ${formatNumber(room)} left to issue under Authorized (${formatNumber(authorizedOf(itemId))}).`
+          ? `Nothing left to issue. Outstanding already meets Authorized (${formatNumber(await authorizedOf(itemId))}).`
+          : `Only ${formatNumber(room)} left to issue under Authorized (${formatNumber(await authorizedOf(itemId))}).`
       );
     }
   }
   for (let n = 0; n < quantity; n += 1) {
-    insertLiveOrder(userId, itemId, side, px, 1, treasury);
+    await insertLiveOrder(userId, itemId, side, px, 1, treasury);
   }
-  matchItem(itemId);
-  setEvent(
+  await matchItem(itemId);
+  await setEvent(
     userId,
     treasury
       ? side === "buy"
@@ -1031,11 +1027,11 @@ export function placeOrder(
   );
 }
 
-export function takeOrder(userId: number, orderId: number, quantity = 1) {
-  resolveBusy(userId);
-  requireOpenGame();
+export async function takeOrder(userId: number, orderId: number, quantity = 1) {
+  await resolveBusy(userId);
+  await requireOpenGame();
   const db = getDb();
-  const order = db
+  const order = await db
     .prepare(
       "SELECT id, user_id, item_id, side, price, remaining, COALESCE(treasury, 0) AS treasury FROM orders WHERE id = ? AND remaining > 0"
     )
@@ -1058,17 +1054,17 @@ export function takeOrder(userId: number, orderId: number, quantity = 1) {
   }
   let fillQty = Math.min(quantity, order.remaining);
   if (order.side === "sell" && treasuryQuote) {
-    const room = remainingToIssue(order.item_id);
+    const room = await remainingToIssue(order.item_id);
     if (room <= 0) throw new Error("Nothing left to issue under Authorized.");
     fillQty = Math.min(fillQty, room);
   }
 
   if (order.side === "sell") {
-    if (availableGold(userId) < order.price * fillQty) {
+    if (await availableGold(userId) < order.price * fillQty) {
       throw new Error("Not enough coin to take that ask.");
     }
-    const buyId = insertLiveOrder(userId, order.item_id, "buy", order.price, fillQty, false);
-    executeFill(
+    const buyId = await insertLiveOrder(userId, order.item_id, "buy", order.price, fillQty, false);
+    await executeFill(
       { id: buyId, user_id: userId, price: order.price, remaining: fillQty, treasury: 0 },
       {
         id: order.id,
@@ -1082,11 +1078,11 @@ export function takeOrder(userId: number, orderId: number, quantity = 1) {
       order.price
     );
   } else {
-    if (availableItem(userId, order.item_id) < fillQty) {
+    if (await availableItem(userId, order.item_id) < fillQty) {
       throw new Error("Not enough stock to fill that bid.");
     }
-    const sellId = insertLiveOrder(userId, order.item_id, "sell", order.price, fillQty, false);
-    executeFill(
+    const sellId = await insertLiveOrder(userId, order.item_id, "sell", order.price, fillQty, false);
+    await executeFill(
       {
         id: order.id,
         user_id: order.user_id,
@@ -1101,7 +1097,7 @@ export function takeOrder(userId: number, orderId: number, quantity = 1) {
     );
   }
   const item = itemById[order.item_id];
-  setEvent(
+  await setEvent(
     userId,
     treasuryQuote && order.side === "sell"
       ? `Treasury minted ${item.emoji} ${item.name} ×${formatNumber(fillQty)} into your pack at ${formatCoins(order.price)}.`
@@ -1111,12 +1107,12 @@ export function takeOrder(userId: number, orderId: number, quantity = 1) {
   );
 }
 
-export function cancelOrder(userId: number, orderId: number, quantity = 1) {
-  cancelOrders(userId, [orderId], quantity);
+export async function cancelOrder(userId: number, orderId: number, quantity = 1) {
+  await cancelOrders(userId, [orderId], quantity);
 }
 
-export function cancelOrders(userId: number, orderIds: number[], quantity = Infinity) {
-  resolveBusy(userId);
+export async function cancelOrders(userId: number, orderIds: number[], quantity = Infinity) {
+  await resolveBusy(userId);
   const ids = [...new Set(orderIds.filter((id) => Number.isInteger(id) && id > 0))];
   if (!ids.length) throw new Error("Choose what to pull.");
   let left = Number.isFinite(quantity) ? quantity : Number.POSITIVE_INFINITY;
@@ -1126,16 +1122,16 @@ export function cancelOrders(userId: number, orderIds: number[], quantity = Infi
   let pulled = 0;
   for (const orderId of ids) {
     if (left < 1) break;
-    const order = getDb()
+    const order = await getDb()
       .prepare("SELECT id, user_id, remaining FROM orders WHERE id = ?")
       .get(orderId) as { id: number; user_id: number; remaining: number } | undefined;
     if (!order || order.user_id !== userId) continue;
     const pull = Math.min(order.remaining, left);
     if (pull < 1) continue;
     if (pull >= order.remaining) {
-      getDb().prepare("DELETE FROM orders WHERE id = ?").run(orderId);
+      await getDb().prepare("DELETE FROM orders WHERE id = ?").run(orderId);
     } else {
-      getDb()
+      await getDb()
         .prepare("UPDATE orders SET remaining = remaining - ? WHERE id = ?")
         .run(pull, orderId);
     }
@@ -1143,71 +1139,71 @@ export function cancelOrders(userId: number, orderIds: number[], quantity = Infi
     left -= pull;
   }
   if (pulled < 1) throw new Error("You cannot cancel that.");
-  setEvent(userId, pulled === 1 ? "Pulled 1 from the board." : `Pulled ${formatNumber(pulled)} from the board.`);
+  await setEvent(userId, pulled === 1 ? "Pulled 1 from the board." : `Pulled ${formatNumber(pulled)} from the board.`);
 }
 
-export function canHoldOffice(userId: number) {
-  const row = getDb()
+export async function canHoldOffice(userId: number) {
+  const row = await getDb()
     .prepare("SELECT username FROM users WHERE id = ?")
     .get(userId) as { username: string } | undefined;
   return Boolean(row && isOfficeUsername(row.username));
 }
 
-function requireOffice(userId: number) {
-  if (!canHoldOffice(userId)) throw new Error("That office is locked.");
+async function requireOffice(userId: number) {
+  if (!await canHoldOffice(userId)) throw new Error("That office is locked.");
 }
 
-export function setGovernment(userId: number, on: boolean) {
-  resolveBusy(userId);
-  requireOffice(userId);
-  if (isBot(userId)) throw new Error("Plaza regulars cannot hold office.");
-  getDb().prepare("UPDATE users SET is_gov = ? WHERE id = ?").run(on ? 1 : 0, userId);
+export async function setGovernment(userId: number, on: boolean) {
+  await resolveBusy(userId);
+  await requireOffice(userId);
+  if (await isBot(userId)) throw new Error("Plaza regulars cannot hold office.");
+  await getDb().prepare("UPDATE users SET is_gov = ? WHERE id = ?").run(on ? 1 : 0, userId);
   if (on) {
-    setEvent(
+    await setEvent(
       userId,
       "You hold the treasury. Quotes always sit at MV. Asks mint until Outstanding reaches Authorized. Bids pay sellers with new coin and burn the goods."
     );
   } else {
-    setEvent(
+    await setEvent(
       userId,
       "You left office. Treasury quotes stay on the book until they fill or you cancel them. Outstanding changes when they trade, not when you post."
     );
   }
 }
 
-function isAdmin(userId: number) {
-  const row = getDb()
+async function isAdmin(userId: number) {
+  const row = await getDb()
     .prepare("SELECT COALESCE(is_admin, 0) AS is_admin FROM users WHERE id = ?")
     .get(userId) as { is_admin: number } | undefined;
   return Boolean(row?.is_admin);
 }
 
-function requireAdmin(userId: number) {
-  if (!canHoldOffice(userId)) throw new Error("Admin mode is off.");
+async function requireAdmin(userId: number) {
+  if (!await canHoldOffice(userId)) throw new Error("Admin mode is off.");
 }
 
-export function setAdmin(userId: number, on: boolean) {
-  resolveBusy(userId);
-  requireOffice(userId);
-  if (isBot(userId)) throw new Error("Plaza regulars cannot open admin.");
-  getDb().prepare("UPDATE users SET is_admin = ? WHERE id = ?").run(on ? 1 : 0, userId);
-  setEvent(userId, on ? "Admin mode on. Set coins, pack qty, or start a new game." : "Admin mode off.");
+export async function setAdmin(userId: number, on: boolean) {
+  await resolveBusy(userId);
+  await requireOffice(userId);
+  if (await isBot(userId)) throw new Error("Plaza regulars cannot open admin.");
+  await getDb().prepare("UPDATE users SET is_admin = ? WHERE id = ?").run(on ? 1 : 0, userId);
+  await setEvent(userId, on ? "Admin mode on. Set coins, pack qty, or start a new game." : "Admin mode off.");
 }
 
-export function enterDesk(userId: number) {
+export async function enterDesk(userId: number) {
   const db = getDb();
-  if (isGov(userId)) db.prepare("UPDATE users SET is_gov = 0 WHERE id = ?").run(userId);
-  if (isAdmin(userId)) db.prepare("UPDATE users SET is_admin = 0 WHERE id = ?").run(userId);
-  if (isBot(userId)) return;
-  const row = db
+  if (await isGov(userId)) await db.prepare("UPDATE users SET is_gov = 0 WHERE id = ?").run(userId);
+  if (await isAdmin(userId)) await db.prepare("UPDATE users SET is_admin = 0 WHERE id = ?").run(userId);
+  if (await isBot(userId)) return;
+  const row = await db
     .prepare(
       "SELECT COALESCE(at_table, 1) AS at_table, gold, COALESCE(login_days, 0) AS login_days FROM players WHERE user_id = ?"
     )
     .get(userId) as { at_table: number; gold: number; login_days: number } | undefined;
   if (!row || row.at_table) return;
-  const start = startingGold(db);
-  const tablePaid = tablePaidDrops(db, userId);
-  const extra = stipendCatchUp(readStipendLadder(db), row.login_days, tablePaid);
+  const start = await startingGold(db);
+  const tablePaid = await tablePaidDrops(db, userId);
+  const extra = stipendCatchUp(await readStipendLadder(db), row.login_days, tablePaid);
   const gold = Math.max(row.gold, start) + extra;
   const loginDays = Math.max(row.login_days, tablePaid);
   const note =
@@ -1216,78 +1212,78 @@ export function enterDesk(userId: number) {
           tablePaid - row.login_days === 1 ? "" : "s"
         } the table already had (${formatCoins(extra)}). The opening split already went out.`
       : `You sat down with ${formatCoins(Math.max(row.gold, start))} and an empty pack. The opening split already went out.`;
-  db.prepare(
+  await db.prepare(
     "UPDATE players SET at_table = 1, gold = ?, login_days = ?, last_event = ? WHERE user_id = ?"
   ).run(gold, loginDays, note, userId);
-  markStipendSlotPaid(userId, db);
+  await markStipendSlotPaid(userId, db);
 }
 
-export function enterAdmin(userId: number) {
-  resolveBusy(userId);
-  requireOffice(userId);
-  if (isBot(userId)) throw new Error("Plaza regulars cannot open admin.");
+export async function enterAdmin(userId: number) {
+  await resolveBusy(userId);
+  await requireOffice(userId);
+  if (await isBot(userId)) throw new Error("Plaza regulars cannot open admin.");
   const db = getDb();
-  if (isGov(userId)) db.prepare("UPDATE users SET is_gov = 0 WHERE id = ?").run(userId);
-  if (!isAdmin(userId)) {
-    db.prepare("UPDATE users SET is_admin = 1 WHERE id = ?").run(userId);
-    setEvent(userId, "You are in the admin office.");
+  if (await isGov(userId)) await db.prepare("UPDATE users SET is_gov = 0 WHERE id = ?").run(userId);
+  if (!await isAdmin(userId)) {
+    await db.prepare("UPDATE users SET is_admin = 1 WHERE id = ?").run(userId);
+    await setEvent(userId, "You are in the admin office.");
   }
 }
 
-export function enterGovernment(userId: number) {
-  resolveBusy(userId);
-  requireOffice(userId);
-  if (isBot(userId)) throw new Error("Plaza regulars cannot hold office.");
+export async function enterGovernment(userId: number) {
+  await resolveBusy(userId);
+  await requireOffice(userId);
+  if (await isBot(userId)) throw new Error("Plaza regulars cannot hold office.");
   const db = getDb();
-  if (isAdmin(userId)) db.prepare("UPDATE users SET is_admin = 0 WHERE id = ?").run(userId);
-  if (!isGov(userId)) {
-    db.prepare("UPDATE users SET is_gov = 1 WHERE id = ?").run(userId);
-    setEvent(
+  if (await isAdmin(userId)) await db.prepare("UPDATE users SET is_admin = 0 WHERE id = ?").run(userId);
+  if (!await isGov(userId)) {
+    await db.prepare("UPDATE users SET is_gov = 1 WHERE id = ?").run(userId);
+    await setEvent(
       userId,
       "You hold the treasury. Quotes always sit at MV. Asks mint until Outstanding reaches Authorized. Bids pay sellers with new coin and burn the goods."
     );
   }
 }
 
-export function adminSetStartingGold(userId: number, gold: number) {
-  requireAdmin(userId);
+export async function adminSetStartingGold(userId: number, gold: number) {
+  await requireAdmin(userId);
   if (!Number.isInteger(gold) || gold < 0 || gold > MAX_STARTING_GOLD) {
     throw new Error(`Starting coins must be a whole number from 0 to ${MAX_STARTING_GOLD.toLocaleString("en-US")}.`);
   }
-  setStartingGold(gold);
-  setEvent(userId, `New travelers now start with ${formatCoins(gold)}. Late joiners also get coin drops the table already had.`);
+  await setStartingGold(gold);
+  await setEvent(userId, `New travelers now start with ${formatCoins(gold)}. Late joiners also get coin drops the table already had.`);
 }
 
-export function adminSetStipend(userId: number, ms: number) {
-  requireAdmin(userId);
+export async function adminSetStipend(userId: number, ms: number) {
+  await requireAdmin(userId);
   if (!STIPEND_PRESETS.some((row) => row.ms === ms)) {
     throw new Error("Pick a listed coin-drop interval.");
   }
-  setStipendMs(ms);
-  setEvent(userId, `Coin drops now every ${stipendLabel(ms)}.`);
+  await setStipendMs(ms);
+  await setEvent(userId, `Coin drops now every ${stipendLabel(ms)}.`);
 }
 
-export function adminSetStipendLadder(userId: number, amounts: number[]) {
-  requireAdmin(userId);
+export async function adminSetStipendLadder(userId: number, amounts: number[]) {
+  await requireAdmin(userId);
   const ladder = validateStipendLadder(amounts);
-  writeStipendLadder(ladder);
-  setEvent(
+  await writeStipendLadder(ladder);
+  await setEvent(
     userId,
     `Coin drop ladder saved. ${formatNumber(ladder.length)} level${ladder.length === 1 ? "" : "s"}. First drop ${formatCoins(ladder[0])}.`
   );
 }
 
-function coinDropSnapshot(userId: number) {
-  const ms = stipendMs();
+async function coinDropSnapshot(userId: number) {
+  const ms = await stipendMs();
   const now = nowMs();
   const slot = stipendSlotKey(now, ms);
-  const paid = getDb()
+  const paid = await getDb()
     .prepare("SELECT COALESCE(login_paid, 0) AS login_paid FROM player_daily WHERE user_id = ? AND day_key = ?")
     .get(userId, slot) as { login_paid: number } | undefined;
-  const days = getDb()
+  const days = await getDb()
     .prepare("SELECT COALESCE(login_days, 0) AS login_days FROM players WHERE user_id = ?")
     .get(userId) as { login_days: number } | undefined;
-  const keys = getDb()
+  const keys = await getDb()
     .prepare("SELECT day_key FROM player_daily WHERE user_id = ? AND COALESCE(login_paid, 0) = 1")
     .all(userId) as { day_key: string }[];
   let lastSlotKey: string | null = paid?.login_paid ? slot : null;
@@ -1301,17 +1297,17 @@ function coinDropSnapshot(userId: number) {
     }
   }
   return {
-    ladder: readStipendLadder(),
+    ladder: await readStipendLadder(),
     loginDays: days?.login_days ?? 0,
     lastSlotKey,
     paidThisSlot: Boolean(paid?.login_paid),
   };
 }
 
-function adminSeat(actorId: number, targetUserId?: number) {
-  requireAdmin(actorId);
+async function adminSeat(actorId: number, targetUserId?: number) {
+  await requireAdmin(actorId);
   const id = targetUserId && Number.isInteger(targetUserId) && targetUserId > 0 ? targetUserId : actorId;
-  const row = getDb()
+  const row = await getDb()
     .prepare("SELECT id, username FROM users WHERE id = ?")
     .get(id) as { id: number; username: string } | undefined;
   if (!row) throw new Error("No such traveler.");
@@ -1321,13 +1317,13 @@ function adminSeat(actorId: number, targetUserId?: number) {
   return row;
 }
 
-export function adminSetGold(userId: number, gold: number, targetUserId?: number) {
-  const target = adminSeat(userId, targetUserId);
+export async function adminSetGold(userId: number, gold: number, targetUserId?: number) {
+  const target = await adminSeat(userId, targetUserId);
   if (!Number.isInteger(gold) || gold < 0 || gold > 9_999_999) {
     throw new Error("Coins must be a whole number from 0 to 9,999,999.");
   }
-  getDb().prepare("UPDATE players SET gold = ? WHERE user_id = ?").run(gold, target.id);
-  setEvent(
+  await getDb().prepare("UPDATE players SET gold = ? WHERE user_id = ?").run(gold, target.id);
+  await setEvent(
     userId,
     target.id === userId
       ? `Admin set coins to ${formatCoins(gold)}.`
@@ -1335,8 +1331,8 @@ export function adminSetGold(userId: number, gold: number, targetUserId?: number
   );
 }
 
-export function adminSetItem(userId: number, itemId: string, quantity: number, targetUserId?: number) {
-  const target = adminSeat(userId, targetUserId);
+export async function adminSetItem(userId: number, itemId: string, quantity: number, targetUserId?: number) {
+  const target = await adminSeat(userId, targetUserId);
   const item = itemById[itemId];
   if (!item) throw new Error("Unknown item.");
   if (!Number.isInteger(quantity) || quantity < 0 || quantity > 9_999) {
@@ -1344,16 +1340,16 @@ export function adminSetItem(userId: number, itemId: string, quantity: number, t
   }
   const db = getDb();
   if (quantity === 0) {
-    db.prepare("DELETE FROM inventory WHERE user_id = ? AND item_id = ?").run(target.id, itemId);
+    await db.prepare("DELETE FROM inventory WHERE user_id = ? AND item_id = ?").run(target.id, itemId);
   } else {
-    const unit = marketPrice(itemId);
-    db.prepare(
+    const unit = await marketPrice(itemId);
+    await db.prepare(
       `INSERT INTO inventory (user_id, item_id, quantity, cost_basis) VALUES (?, ?, ?, ?)
        ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = excluded.quantity, cost_basis = excluded.cost_basis`
     ).run(target.id, itemId, quantity, unit * quantity);
   }
-  alignIssuedToAuthorized();
-  setEvent(
+  await alignIssuedToAuthorized();
+  await setEvent(
     userId,
     target.id === userId
       ? `Admin set ${item.emoji} ${item.name} to ${formatNumber(quantity)}.`
@@ -1361,24 +1357,24 @@ export function adminSetItem(userId: number, itemId: string, quantity: number, t
   );
 }
 
-export function adminSetIssued(userId: number, itemId: string, authorized: number) {
-  requireAdmin(userId);
+export async function adminSetIssued(userId: number, itemId: string, authorized: number) {
+  await requireAdmin(userId);
   const item = itemById[itemId];
   if (!item) throw new Error("Unknown item.");
   if (!Number.isInteger(authorized) || authorized < 1 || authorized > 99_999) {
     throw new Error("Issued must be a whole number from 1 to 99,999.");
   }
-  setItemAuthorized(itemId, authorized);
-  clampFloatedToAuthorized(itemId, authorized);
-  alignIssuedToAuthorized(true);
-  setEvent(userId, `Issued ${item.emoji} ${item.name} is now ${formatNumber(authorized)}.`);
+  await setItemAuthorized(itemId, authorized);
+  await clampFloatedToAuthorized(itemId, authorized);
+  await alignIssuedToAuthorized(true);
+  await setEvent(userId, `Issued ${item.emoji} ${item.name} is now ${formatNumber(authorized)}.`);
 }
 
-export function adminAddShare(
+export async function adminAddShare(
   userId: number,
   draft: { name: string; emoji?: string; image?: string | null }
 ) {
-  requireAdmin(userId);
+  await requireAdmin(userId);
   if (items.length >= MAX_SHARE_TYPES) {
     throw new Error(`The table can list at most ${MAX_SHARE_TYPES} share types.`);
   }
@@ -1387,7 +1383,7 @@ export function adminAddShare(
     next.name,
     items.map((item) => item.id)
   );
-  insertShareType({
+  await insertShareType({
     id,
     name: next.name,
     emoji: next.emoji,
@@ -1395,30 +1391,30 @@ export function adminAddShare(
     basePrice: 10,
     authorized: 15,
   });
-  alignIssuedToAuthorized(true);
+  await alignIssuedToAuthorized(true);
   const item = itemById[id];
-  setEvent(
+  await setEvent(
     userId,
     `Added ${item?.emoji ?? next.emoji} ${next.name} to the share structure. Issued 15 at MV 10. Set Issued if you want a different float.`
   );
 }
 
-export function adminRemoveShare(userId: number, itemId: string) {
-  requireAdmin(userId);
+export async function adminRemoveShare(userId: number, itemId: string) {
+  await requireAdmin(userId);
   const item = itemById[itemId];
   if (!item) throw new Error("Unknown share type.");
   if (items.length <= MIN_SHARE_TYPES) {
     throw new Error("Keep at least one share type on the table.");
   }
-  const goal = readGoal();
+  const goal = await readGoal();
   const needs = goal.needs.filter((need) => need.itemId !== itemId);
-  if (needs.length !== goal.needs.length) writeGoal({ ...goal, needs });
-  removeShareType(itemId);
-  alignIssuedToAuthorized(true);
-  setEvent(userId, `Removed ${item.emoji} ${item.name} from the share structure.`);
+  if (needs.length !== goal.needs.length) await writeGoal({ ...goal, needs });
+  await removeShareType(itemId);
+  await alignIssuedToAuthorized(true);
+  await setEvent(userId, `Removed ${item.emoji} ${item.name} from the share structure.`);
 }
 
-function dealOpeningShares(db: ReturnType<typeof getDb>, travelerIds: number[]) {
+async function dealOpeningShares(db: ReturnType<typeof getDb>, travelerIds: number[]) {
   const seats = travelerIds.length;
   if (seats === 0) return;
   const grant = db.prepare(
@@ -1428,37 +1424,37 @@ function dealOpeningShares(db: ReturnType<typeof getDb>, travelerIds: number[]) 
        cost_basis = excluded.cost_basis`
   );
   for (const item of items) {
-    const issued = authorizedOf(item.id);
+    const issued = await authorizedOf(item.id);
     if (issued < 1) continue;
     const each = Math.floor(issued / seats);
     if (each < 1) continue;
     const unit = Math.max(1, Math.round(item.basePrice));
     for (const travelerId of travelerIds) {
-      grant.run(travelerId, item.id, each, unit * each);
+      await grant.run(travelerId, item.id, each, unit * each);
     }
   }
 }
 
-export function adminStartGame(userId: number, _timeZone?: string, count?: number) {
-  requireAdmin(userId);
+export async function adminStartGame(userId: number, _timeZone?: string, count?: number) {
+  await requireAdmin(userId);
   if (count != null && (!Number.isInteger(count) || count < 0 || count > MAX_COMPUTERS)) {
     throw new Error(`Computers must be a whole number from 0 to ${MAX_COMPUTERS}.`);
   }
   const db = getDb();
-  const dayKey = stipendSlotKey(Date.now(), stipendMs());
-    db.transaction(() => {
-    seedBots(db);
-    setComputerCount(count ?? computerCount(db), db);
-    clearGameOver(db);
-    const goal = readGoal(db);
-    writeGoal(
+  const dayKey = stipendSlotKey(Date.now(), await stipendMs());
+    await db.transaction(async () => {
+    await seedBots(db);
+    await setComputerCount(count ?? await computerCount(db), db);
+    await clearGameOver(db);
+    const goal = await readGoal(db);
+    await writeGoal(
       {
         ...goal,
         endsAt: goal.mode === "timed" ? Date.now() + goal.durationMs : null,
       },
       db
     );
-    db.exec(`
+    await db.exec(`
       DELETE FROM swap_legs;
       DELETE FROM swap_offers;
       DELETE FROM orders;
@@ -1473,33 +1469,33 @@ export function adminStartGame(userId: number, _timeZone?: string, count?: numbe
       DELETE FROM festival_contracts;
       DELETE FROM area_strain;
     `);
-    const { sql, params } = tableSeatWhere(db);
-    const seats = db
+    const { sql, params } = await tableSeatWhere(db);
+    const seats = await db
       .prepare(`SELECT id FROM users WHERE ${sql} ORDER BY username COLLATE NOCASE`)
       .all(...params) as { id: number }[];
     const seatIds = seats.map((row) => row.id);
-    db.prepare(
+    await db.prepare(
       `UPDATE players SET gold = ?, energy = ?, energy_max = ?, busy_type = 'idle', busy_until = NULL,
          busy_payload = NULL, last_event = ?, login_days = 0, has_won = 0, won_at = NULL
        WHERE user_id IN (
          SELECT id FROM users WHERE ${sql}
        )`
     ).run(
-      startingGold(db),
+      await startingGold(db),
       ENERGY_MAX,
       ENERGY_MAX,
-      `A new game. ${formatNumber(startingGold(db))} coins and an even opening pack for every traveler and seated computer.`,
+      `A new game. ${formatNumber(await startingGold(db))} coins and an even opening pack for every traveler and seated computer.`,
       ...params
     );
-    const seatedNames = seatedBotUsernames(db);
+    const seatedNames = await seatedBotUsernames(db);
     if (seatedNames.length === 0) {
-      db.prepare(
+      await db.prepare(
         `UPDATE players SET gold = 0, last_event = 'Sitting this table out.'
          WHERE user_id IN (SELECT id FROM users WHERE COALESCE(is_bot, 0) = 1)`
       ).run();
     } else {
       const slots = seatedNames.map(() => "?").join(", ");
-      db.prepare(
+      await db.prepare(
         `UPDATE players SET gold = 0, last_event = 'Sitting this table out.'
          WHERE user_id IN (
            SELECT id FROM users
@@ -1507,7 +1503,7 @@ export function adminStartGame(userId: number, _timeZone?: string, count?: numbe
          )`
       ).run(...seatedNames);
     }
-    db.prepare(
+    await db.prepare(
       `UPDATE players SET gold = 0, last_event = 'Sitting this table out.'
        WHERE COALESCE(at_table, 1) = 0
          AND user_id IN (
@@ -1515,38 +1511,38 @@ export function adminStartGame(userId: number, _timeZone?: string, count?: numbe
            WHERE COALESCE(is_bot, 0) = 0 AND username NOT IN ('Banker', 'Government')
          )`
     ).run();
-    db.prepare(
+    await db.prepare(
       `UPDATE players SET gold = 0, last_event = 'The treasury desk is open.'
        WHERE user_id IN (SELECT id FROM users WHERE username IN ('Banker', 'Government'))`
     ).run();
-    dealOpeningShares(db, seatIds);
+    await dealOpeningShares(db, seatIds);
     const mark = db.prepare(
       `INSERT INTO player_daily (user_id, day_key, first_trade, special_sold, login_paid)
        VALUES (?, ?, 0, '', 1)
        ON CONFLICT(user_id, day_key) DO UPDATE SET login_paid = 1`
     );
-    for (const row of seats) mark.run(row.id, dayKey);
-  })();
+    for (const row of seats) await mark.run(row.id, dayKey);
+  });
   deskClock.bazaarDeskFloat = 0;
-  alignIssuedToAuthorized(true);
-  const bots = computerCount();
+  await alignIssuedToAuthorized(true);
+  const bots = await computerCount();
   const leftoverNote =
     " Leftover units stay in the treasury for the government to sell at MV.";
-  setEvent(
+  await setEvent(
     userId,
     bots > 0
       ? `New game started. Every traveler and ${formatNumber(bots)} computer${
           bots === 1 ? "" : "s"
-        } got ${formatNumber(startingGold())} coins and floor(Issued ÷ seats) of each good.${leftoverNote}`
-      : `New game started. Every traveler got ${formatNumber(startingGold())} coins and floor(Issued ÷ seats) of each good.${leftoverNote}`
+        } got ${formatNumber(await startingGold())} coins and floor(Issued ÷ seats) of each good.${leftoverNote}`
+      : `New game started. Every traveler got ${formatNumber(await startingGold())} coins and floor(Issued ÷ seats) of each good.${leftoverNote}`
   );
 }
 
-function applyComputerSeats(db: ReturnType<typeof getDb>, count: number) {
-  seedBots(db);
-  const next = setComputerCount(count, db);
-  const seated = new Set(seatedBotUsernames(db));
-  const bots = db
+async function applyComputerSeats(db: ReturnType<typeof getDb>, count: number) {
+  await seedBots(db);
+  const next = await setComputerCount(count, db);
+  const seated = new Set(await seatedBotUsernames(db));
+  const bots = await db
     .prepare("SELECT id, username FROM users WHERE COALESCE(is_bot, 0) = 1")
     .all() as { id: number; username: string }[];
   const sitOutIds: number[] = [];
@@ -1557,9 +1553,9 @@ function applyComputerSeats(db: ReturnType<typeof getDb>, count: number) {
   }
   if (sitOutIds.length > 0) {
     const slots = sitOutIds.map(() => "?").join(", ");
-    db.prepare(`DELETE FROM orders WHERE user_id IN (${slots})`).run(...sitOutIds);
-    db.prepare(`DELETE FROM inventory WHERE user_id IN (${slots})`).run(...sitOutIds);
-    db.prepare(
+    await db.prepare(`DELETE FROM orders WHERE user_id IN (${slots})`).run(...sitOutIds);
+    await db.prepare(`DELETE FROM inventory WHERE user_id IN (${slots})`).run(...sitOutIds);
+    await db.prepare(
       `UPDATE players SET gold = 0, last_event = 'Sitting this table out.' WHERE user_id IN (${slots})`
     ).run(...sitOutIds);
   }
@@ -1569,25 +1565,25 @@ function applyComputerSeats(db: ReturnType<typeof getDb>, count: number) {
        WHERE user_id = ? AND gold = 0`
     );
     for (const id of seatIds) {
-      pay.run(startingGold(db), "A computer trader keeping the book honest.", id);
+      await pay.run(await startingGold(db), "A computer trader keeping the book honest.", id);
     }
   }
   return next;
 }
 
-export function adminSetComputerCount(userId: number, count: number) {
-  requireAdmin(userId);
+export async function adminSetComputerCount(userId: number, count: number) {
+  await requireAdmin(userId);
   if (!Number.isInteger(count) || count < 0 || count > MAX_COMPUTERS) {
     throw new Error(`Computers must be a whole number from 0 to ${MAX_COMPUTERS}.`);
   }
   const db = getDb();
   let next = count;
-  db.transaction(() => {
-    next = applyComputerSeats(db, count);
-  })();
+  await db.transaction(async () => {
+    next = await applyComputerSeats(db, count);
+  });
   deskClock.bazaarDeskFloat = 0;
-  alignIssuedToAuthorized(true);
-  setEvent(
+  await alignIssuedToAuthorized(true);
+  await setEvent(
     userId,
     next === 0
       ? "All computers sat out. Their packs went back to the treasury."
@@ -1595,15 +1591,15 @@ export function adminSetComputerCount(userId: number, count: number) {
   );
 }
 
-export function adminSetComputers(userId: number, on: boolean) {
-  const seated = computerCount();
-  adminSetComputerCount(userId, on ? (seated > 0 ? seated : MAX_COMPUTERS) : 0);
+export async function adminSetComputers(userId: number, on: boolean) {
+  const seated = await computerCount();
+  await adminSetComputerCount(userId, on ? (seated > 0 ? seated : MAX_COMPUTERS) : 0);
 }
 
-export function adminSitOtherTravelers(userId: number) {
-  requireAdmin(userId);
+export async function adminSitOtherTravelers(userId: number) {
+  await requireAdmin(userId);
   const db = getDb();
-  const others = db
+  const others = await db
     .prepare(
       `SELECT id FROM users
        WHERE id != ? AND COALESCE(is_bot, 0) = 0 AND COALESCE(is_gov, 0) = 0
@@ -1611,24 +1607,24 @@ export function adminSitOtherTravelers(userId: number) {
     )
     .all(userId) as { id: number }[];
   if (others.length === 0) {
-    db.prepare("UPDATE players SET at_table = 1 WHERE user_id = ?").run(userId);
-    setEvent(userId, "You are the only traveler at the table.");
+    await db.prepare("UPDATE players SET at_table = 1 WHERE user_id = ?").run(userId);
+    await setEvent(userId, "You are the only traveler at the table.");
     return;
   }
   const ids = others.map((row) => row.id);
-  db.transaction(() => {
-    db.prepare("UPDATE players SET at_table = 1 WHERE user_id = ?").run(userId);
+  await db.transaction(async () => {
+    await db.prepare("UPDATE players SET at_table = 1 WHERE user_id = ?").run(userId);
     const slots = ids.map(() => "?").join(", ");
-    db.prepare(`DELETE FROM orders WHERE user_id IN (${slots})`).run(...ids);
-    db.prepare(`DELETE FROM inventory WHERE user_id IN (${slots})`).run(...ids);
-    db.prepare(
+    await db.prepare(`DELETE FROM orders WHERE user_id IN (${slots})`).run(...ids);
+    await db.prepare(`DELETE FROM inventory WHERE user_id IN (${slots})`).run(...ids);
+    await db.prepare(
       `UPDATE players SET at_table = 0, gold = 0, last_event = 'Sitting this table out.'
        WHERE user_id IN (${slots})`
     ).run(...ids);
-  })();
+  });
   deskClock.bazaarDeskFloat = 0;
-  alignIssuedToAuthorized(true);
-  setEvent(
+  await alignIssuedToAuthorized(true);
+  await setEvent(
     userId,
     `${formatNumber(ids.length)} other traveler${ids.length === 1 ? "" : "s"} sat out. Their packs went back to the treasury. You are the only traveler at the table.`
   );
@@ -1681,7 +1677,7 @@ function mapTrade(row: {
   };
 }
 
-function loadRecentTrades(limit: number, itemId?: string): TradeRow[] {
+async function loadRecentTrades(limit: number, itemId?: string): Promise<TradeRow[]> {
   const sql = `SELECT t.id, t.item_id, t.price, t.quantity, t.created_at,
               b.username AS buy_name, s.username AS sell_name,
               COALESCE(t.buy_treasury, 0) AS buy_treasury,
@@ -1694,8 +1690,8 @@ function loadRecentTrades(limit: number, itemId?: string): TradeRow[] {
        LIMIT ?`;
   const rows = (
     itemId
-      ? getDb().prepare(sql).all(itemId, limit)
-      : getDb().prepare(sql).all(limit)
+      ? await getDb().prepare(sql).all(itemId, limit)
+      : await getDb().prepare(sql).all(limit)
   ) as {
     id: number;
     item_id: string;
@@ -1710,7 +1706,7 @@ function loadRecentTrades(limit: number, itemId?: string): TradeRow[] {
   return rows.map(mapTrade);
 }
 
-function loadItemChartTrades(itemId: string): TradeRow[] {
+async function loadItemChartTrades(itemId: string): Promise<TradeRow[]> {
   const since = nowMs() - (CHART_MINUTES + 1) * MINUTE_MS;
   const sql = `SELECT t.id, t.item_id, t.price, t.quantity, t.created_at,
               b.username AS buy_name, s.username AS sell_name,
@@ -1721,7 +1717,7 @@ function loadItemChartTrades(itemId: string): TradeRow[] {
        JOIN users s ON s.id = t.sell_user_id
        WHERE t.item_id = ? AND t.created_at >= ?
        ORDER BY t.id ASC`;
-  const rows = getDb()
+  const rows = await getDb()
     .prepare(sql)
     .all(itemId, since) as {
     id: number;
@@ -1735,7 +1731,7 @@ function loadItemChartTrades(itemId: string): TradeRow[] {
     sell_treasury: number;
   }[];
   if (rows.length > 0) return rows.map(mapTrade);
-  return [...loadRecentTrades(80, itemId)].reverse();
+  return [...(await loadRecentTrades(80, itemId))].reverse();
 }
 
 function requireOpenStall(stallId: string, clock: FestivalClock) {
@@ -1747,14 +1743,14 @@ function requireOpenStall(stallId: string, clock: FestivalClock) {
   return stall;
 }
 
-function ensureContracts(clock: FestivalClock) {
+async function ensureContracts(clock: FestivalClock) {
   const week = weekId(clock.dateKey);
   const db = getDb();
   for (const template of contractsForWeek(week)) {
     const id = `${week}:${template.id}`;
-    const existing = db.prepare("SELECT id FROM festival_contracts WHERE id = ?").get(id);
+    const existing = await db.prepare("SELECT id FROM festival_contracts WHERE id = ?").get(id);
     if (existing) continue;
-    db.prepare(
+    await db.prepare(
       `INSERT INTO festival_contracts
         (id, week_id, stall_id, title, detail, item_id, quantity, vp, gold, expires_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -1773,43 +1769,43 @@ function ensureContracts(clock: FestivalClock) {
   }
 }
 
-function crateRow(stallId: string, key: string) {
-  return getDb()
+async function crateRow(stallId: string, key: string) {
+  return await getDb()
     .prepare("SELECT user_id, used FROM stall_crates WHERE stall_id = ? AND window_key = ?")
     .get(stallId, key) as { user_id: number; used: number } | undefined;
 }
 
-function usernameOf(userId: number) {
-  const row = getDb().prepare("SELECT username FROM users WHERE id = ?").get(userId) as
+async function usernameOf(userId: number) {
+  const row = await getDb().prepare("SELECT username FROM users WHERE id = ?").get(userId) as
     | { username: string }
     | undefined;
   return row?.username ?? "Someone";
 }
 
-function applySpecialHourVp(userId: number, stallId: string) {
+async function applySpecialHourVp(userId: number, stallId: string) {
   const day = utcDayKey();
-  touchDaily(userId, day);
-  const row = getDb()
+  await touchDaily(userId, day);
+  const row = await getDb()
     .prepare("SELECT special_sold FROM player_daily WHERE user_id = ? AND day_key = ?")
     .get(userId, day) as { special_sold: string } | undefined;
   const seen = new Set((row?.special_sold ?? "").split(",").filter(Boolean));
   if (seen.has(stallId)) return false;
   seen.add(stallId);
-  getDb()
+  await getDb()
     .prepare("UPDATE player_daily SET special_sold = ? WHERE user_id = ? AND day_key = ?")
     .run([...seen].join(","), userId, day);
-  awardVp(userId, 1);
+  await awardVp(userId, 1);
   return true;
 }
 
-export function sellToStall(
+export async function sellToStall(
   userId: number,
   stallId: string,
   itemId: string,
   quantity: number,
   timeZone?: string
 ) {
-  requireIdle(userId);
+  await requireIdle(userId);
   const clock = festivalClock(timeZone);
   const stall = requireOpenStall(stallId, clock);
   const item = itemById[itemId];
@@ -1818,20 +1814,20 @@ export function sellToStall(
   if (!stall.buyIds.includes(itemId)) {
     throw new Error(`${stall.name} is not buying ${item.name} today.`);
   }
-  if (availableItem(userId, itemId) < quantity) {
+  if (await availableItem(userId, itemId) < quantity) {
     throw new Error("Not enough unbound stock.");
   }
   const chalk = chalkboardItem(stall.id, clock.dateKey);
   let rate = stallBuyRate(stall, itemId, clock, chalk);
   const key = windowKey(stall.id, clock);
-  const crate = crateRow(stall.id, key);
+  const crate = await crateRow(stall.id, key);
   const crateBonus = crate && crate.user_id === userId && !crate.used;
   if (crateBonus) rate += 0.1;
-  const mv = marketPrice(itemId);
+  const mv = await marketPrice(itemId);
   const payEach = Math.max(1, Math.round(mv * rate));
   const total = payEach * quantity;
-  removeItem(userId, itemId, quantity);
-  getDb()
+  await removeItem(userId, itemId, quantity);
+  await getDb()
     .prepare(
       `UPDATE players
        SET gold = gold + ?,
@@ -1848,13 +1844,13 @@ export function sellToStall(
       userId
     );
   if (crateBonus) {
-    getDb()
+    await getDb()
       .prepare("UPDATE stall_crates SET used = 1 WHERE stall_id = ? AND window_key = ?")
       .run(stall.id, key);
   }
   const special = itemId === chalk;
-  const specialVp = special ? applySpecialHourVp(userId, stall.id) : false;
-  setEvent(
+  const specialVp = special ? await applySpecialHourVp(userId, stall.id) : false;
+  await setEvent(
     userId,
     `${stall.emoji} ${stall.name} bought ${item.emoji} ${item.name} ×${formatNumber(quantity)} for ${formatCoins(total)} (${Math.round(rate * 100)}% of MV).${
       crateBonus ? " Crate bonus applied." : ""
@@ -1862,14 +1858,14 @@ export function sellToStall(
   );
 }
 
-export function buyFromStall(
+export async function buyFromStall(
   userId: number,
   stallId: string,
   itemId: string,
   quantity: number,
   timeZone?: string
 ) {
-  requireIdle(userId);
+  await requireIdle(userId);
   const clock = festivalClock(timeZone);
   const stall = requireOpenStall(stallId, clock);
   const item = itemById[itemId];
@@ -1880,59 +1876,59 @@ export function buyFromStall(
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) {
     throw new Error("Choose a quantity from 1 to 20.");
   }
-  const price = stallSellPrice(itemId, marketPrice(itemId));
+  const price = stallSellPrice(itemId, await marketPrice(itemId));
   const total = price * quantity;
-  if (availableGold(userId) < total) throw new Error("Not enough free coin.");
-  getDb().prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(total, userId);
-  addItem(userId, itemId, quantity, price);
-  setEvent(
+  if (await availableGold(userId) < total) throw new Error("Not enough free coin.");
+  await getDb().prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(total, userId);
+  await addItem(userId, itemId, quantity, price);
+  await setEvent(
     userId,
     `Bought ${item.emoji} ${item.name} ×${formatNumber(quantity)} from ${stall.name} for ${formatCoins(total)}.`
   );
 }
 
-export function buyRumor(userId: number, stallId: string, timeZone?: string) {
-  requireIdle(userId);
+export async function buyRumor(userId: number, stallId: string, timeZone?: string) {
+  await requireIdle(userId);
   const stall = stallById[stallId];
   if (!stall) throw new Error("That stall is not on the plaza.");
   const clock = festivalClock(timeZone);
   const tomorrow = shiftDateKey(clock.dateKey, 1);
-  const already = getDb()
+  const already = await getDb()
     .prepare("SELECT 1 FROM player_rumors WHERE user_id = ? AND stall_id = ? AND for_date = ?")
     .get(userId, stallId, tomorrow);
   if (already) throw new Error("You already paid for tomorrow's chalkboard.");
-  if (availableGold(userId) < RUMOR_COST) throw new Error("Not enough free coin for a rumor.");
-  getDb().prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(RUMOR_COST, userId);
-  getDb()
+  if (await availableGold(userId) < RUMOR_COST) throw new Error("Not enough free coin for a rumor.");
+  await getDb().prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(RUMOR_COST, userId);
+  await getDb()
     .prepare("INSERT INTO player_rumors (user_id, stall_id, for_date) VALUES (?, ?, ?)")
     .run(userId, stallId, tomorrow);
   const item = itemById[chalkboardItem(stallId, tomorrow)];
-  setEvent(
+  await setEvent(
     userId,
     `${stall.name} leans in: tomorrow the chalkboard is ${item?.emoji ?? ""} ${item?.name ?? "something odd"}.`
   );
 }
 
-export function rentCrate(userId: number, stallId: string, timeZone?: string) {
-  requireIdle(userId);
+export async function rentCrate(userId: number, stallId: string, timeZone?: string) {
+  await requireIdle(userId);
   const stall = stallById[stallId];
   if (!stall) throw new Error("That stall is not on the plaza.");
   const clock = festivalClock(timeZone);
   const key = windowKey(stallId, clock);
-  const existing = crateRow(stallId, key);
+  const existing = await crateRow(stallId, key);
   if (existing) {
     throw new Error(
       existing.user_id === userId
         ? "You already rented that crate."
-        : `${usernameOf(existing.user_id)} already reserved this window.`
+        : `${await usernameOf(existing.user_id)} already reserved this window.`
     );
   }
-  if (availableGold(userId) < CRATE_COST) throw new Error("Not enough free coin to rent a crate.");
-  getDb().prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(CRATE_COST, userId);
-  getDb()
+  if (await availableGold(userId) < CRATE_COST) throw new Error("Not enough free coin to rent a crate.");
+  await getDb().prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(CRATE_COST, userId);
+  await getDb()
     .prepare("INSERT INTO stall_crates (stall_id, window_key, user_id, used) VALUES (?, ?, ?, 0)")
     .run(stallId, key, userId);
-  setEvent(
+  await setEvent(
     userId,
     stallOpen(stall, clock)
       ? `You rented a crate at ${stall.name} for this window. Your next sale here gets a 10% bump.`
@@ -1940,35 +1936,37 @@ export function rentCrate(userId: number, stallId: string, timeZone?: string) {
   );
 }
 
-function contractNeed(itemId: string, userId: number) {
+async function contractNeed(itemId: string, userId: number) {
   if (itemId === "*food") {
-    return FOOD_ITEM_IDS.reduce((sum, id) => sum + availableItem(userId, id), 0);
+    let sum = 0;
+    for (const id of FOOD_ITEM_IDS) sum += await availableItem(userId, id);
+    return sum;
   }
   return availableItem(userId, itemId);
 }
 
-function takeContractItems(userId: number, itemId: string, quantity: number) {
+async function takeContractItems(userId: number, itemId: string, quantity: number) {
   if (itemId !== "*food") {
-    removeItem(userId, itemId, quantity);
+    await removeItem(userId, itemId, quantity);
     return;
   }
   let left = quantity;
   for (const foodId of FOOD_ITEM_IDS) {
     if (left <= 0) break;
-    const have = availableItem(userId, foodId);
+    const have = await availableItem(userId, foodId);
     const take = Math.min(have, left);
     if (take > 0) {
-      removeItem(userId, foodId, take);
+      await removeItem(userId, foodId, take);
       left -= take;
     }
   }
   if (left > 0) throw new Error("Not enough food for that contract.");
 }
 
-export function completeContract(userId: number, contractId: string, timeZone?: string) {
-  requireIdle(userId);
+export async function completeContract(userId: number, contractId: string, timeZone?: string) {
+  await requireIdle(userId);
   const clock = festivalClock(timeZone);
-  const row = getDb()
+  const row = await getDb()
     .prepare(
       `SELECT id, stall_id, title, item_id, quantity, vp, gold, expires_at
        FROM festival_contracts WHERE id = ?`
@@ -1987,35 +1985,35 @@ export function completeContract(userId: number, contractId: string, timeZone?: 
     | undefined;
   if (!row) throw new Error("That contract is gone.");
   if (row.expires_at <= nowMs()) throw new Error("That contract expired.");
-  const done = getDb()
+  const done = await getDb()
     .prepare("SELECT 1 FROM contract_completions WHERE contract_id = ? AND user_id = ?")
     .get(contractId, userId);
   if (done) throw new Error("You already finished that job.");
   const stall = requireOpenStall(row.stall_id, clock);
-  if (contractNeed(row.item_id, userId) < row.quantity) {
+  if (await contractNeed(row.item_id, userId) < row.quantity) {
     throw new Error("You do not have enough for that job yet.");
   }
-  takeContractItems(userId, row.item_id, row.quantity);
+  await takeContractItems(userId, row.item_id, row.quantity);
   if (row.gold > 0) {
-    getDb()
+    await getDb()
       .prepare("UPDATE players SET gold = gold + ?, gold_from_stalls = COALESCE(gold_from_stalls, 0) + ? WHERE user_id = ?")
       .run(row.gold, row.gold, userId);
   }
   if (isFoodItem(row.item_id) || row.item_id === "*food") {
-    getDb()
+    await getDb()
       .prepare("UPDATE players SET food_delivered = COALESCE(food_delivered, 0) + ? WHERE user_id = ?")
       .run(row.quantity, userId);
   }
   if (isLegendaryItem(row.item_id)) {
-    getDb()
+    await getDb()
       .prepare("UPDATE players SET legendary_turnins = COALESCE(legendary_turnins, 0) + ? WHERE user_id = ?")
       .run(row.quantity, userId);
   }
-  getDb()
+  await getDb()
     .prepare("INSERT INTO contract_completions (contract_id, user_id, completed_at) VALUES (?, ?, ?)")
     .run(contractId, userId, nowMs());
-  awardVp(userId, row.vp);
-  setEvent(
+  await awardVp(userId, row.vp);
+  await setEvent(
     userId,
     `${stall.emoji} ${stall.name} stamps "${row.title}". +${row.vp} VP${
       row.gold > 0 ? ` and ${formatCoins(row.gold)}` : ""
@@ -2023,27 +2021,27 @@ export function completeContract(userId: number, contractId: string, timeZone?: 
   );
 }
 
-export function donateLanterns(userId: number) {
-  requireIdle(userId);
-  const player = loadPlayerRow(userId);
+export async function donateLanterns(userId: number) {
+  await requireIdle(userId);
+  const player = await loadPlayerRow(userId);
   const cost = donationCost(player.donate_count ?? 0);
-  if (availableGold(userId) < cost) {
+  if (await availableGold(userId) < cost) {
     throw new Error(`The festival desk wants ${formatCoins(cost)} for the next lantern.`);
   }
-  getDb()
+  await getDb()
     .prepare(
       `UPDATE players
        SET gold = gold - ?, gold_donated = COALESCE(gold_donated, 0) + ?, donate_count = COALESCE(donate_count, 0) + 1
        WHERE user_id = ?`
     )
     .run(cost, cost, userId);
-  awardVp(userId, 1);
-  setEvent(userId, `You sponsor a plaza lantern for ${formatCoins(cost)}. +1 VP.`);
+  await awardVp(userId, 1);
+  await setEvent(userId, `You sponsor a plaza lantern for ${formatCoins(cost)}. +1 VP.`);
 }
 
-function listContracts(userId: number, clock: FestivalClock): ContractView[] {
-  ensureContracts(clock);
-  const rows = getDb()
+async function listContracts(userId: number, clock: FestivalClock): Promise<ContractView[]> {
+  await ensureContracts(clock);
+  const rows = await getDb()
     .prepare(
       `SELECT id, stall_id, title, detail, item_id, quantity, vp, gold, expires_at
        FROM festival_contracts
@@ -2063,7 +2061,7 @@ function listContracts(userId: number, clock: FestivalClock): ContractView[] {
   }[];
   const doneIds = new Set(
     (
-      getDb()
+      await getDb()
         .prepare("SELECT contract_id FROM contract_completions WHERE user_id = ?")
         .all(userId) as { contract_id: string }[]
     ).map((row) => row.contract_id)
@@ -2088,24 +2086,25 @@ function listContracts(userId: number, clock: FestivalClock): ContractView[] {
   });
 }
 
-function listStallViews(userId: number, clock: FestivalClock, prices: MarketPrice[]): StallView[] {
+async function listStallViews(userId: number, clock: FestivalClock, prices: MarketPrice[]): Promise<StallView[]> {
   const rumors = new Set(
     (
-      getDb()
+      await getDb()
         .prepare("SELECT stall_id FROM player_rumors WHERE user_id = ? AND for_date = ?")
         .all(userId, shiftDateKey(clock.dateKey, 1)) as { stall_id: string }[]
     ).map((row) => row.stall_id)
   );
-  return stalls.map((stall) => {
+  const views: StallView[] = [];
+  for (const stall of stalls) {
     const open = stallOpen(stall, clock);
     const change = nextStallChange(stall, clock);
     const chalk = chalkboardItem(stall.id, clock.dateKey);
     const tomorrow = chalkboardItem(stall.id, shiftDateKey(clock.dateKey, 1));
     const key = windowKey(stall.id, clock);
-    const crate = crateRow(stall.id, key);
+    const crate = await crateRow(stall.id, key);
     const mvOf = (itemId: string) =>
       prices.find((row) => row.itemId === itemId)?.vwap ?? itemById[itemId]?.basePrice ?? 1;
-    return {
+    views.push({
       id: stall.id,
       emoji: stall.emoji,
       name: stall.name,
@@ -2132,16 +2131,17 @@ function listStallViews(userId: number, clock: FestivalClock, prices: MarketPric
         itemId,
         price: stallSellPrice(itemId, mvOf(itemId)),
       })),
-      crateReservedBy: crate ? usernameOf(crate.user_id) : null,
+      crateReservedBy: crate ? await usernameOf(crate.user_id) : null,
       crateYours: crate?.user_id === userId,
       crateUsed: Boolean(crate?.used),
       windowKey: key,
-    };
-  });
+    });
+  }
+  return views;
 }
 
-function listTitles(): FestivalTitle[] {
-  const rows = getDb()
+async function listTitles(): Promise<FestivalTitle[]> {
+  const rows = await getDb()
     .prepare(
       `SELECT u.username, p.vp, p.gold_from_stalls, p.gold_donated, p.food_delivered,
               p.legendary_turnins, p.board_fills
@@ -2182,8 +2182,8 @@ function playerTitles(username: string, titles: FestivalTitle[]) {
   return titles.filter((title) => title.username === username).map((title) => title.label);
 }
 
-export function getOrderBook(itemId: string): OrderBook {
-  const rows = getDb()
+export async function getOrderBook(itemId: string): Promise<OrderBook> {
+  const rows = await getDb()
     .prepare(
       `SELECT o.id, o.user_id, u.username, o.item_id, o.side, o.price, o.remaining, o.created_at,
               COALESCE(o.treasury, 0) AS is_gov
@@ -2210,14 +2210,14 @@ export function getOrderBook(itemId: string): OrderBook {
     asks: mapped
       .filter((row) => row.side === "sell")
       .sort((a, b) => a.price - b.price || a.createdAt - b.createdAt),
-    history: getPriceHistory(itemId),
-    trades: coalesceTrades(loadRecentTrades(80, itemId)).slice(0, 25),
-    chartTrades: loadItemChartTrades(itemId),
+    history: await getPriceHistory(itemId),
+    trades: coalesceTrades(await loadRecentTrades(80, itemId)).slice(0, 25),
+    chartTrades: await loadItemChartTrades(itemId),
   };
 }
 
-export function getPriceHistory(itemId: string): PricePoint[] {
-  const rows = getDb()
+export async function getPriceHistory(itemId: string): Promise<PricePoint[]> {
+  const rows = await getDb()
     .prepare(
       `SELECT created_at, price FROM trades WHERE item_id = ? ORDER BY id DESC LIMIT ${MV_PRINTS}`
     )
@@ -2225,9 +2225,9 @@ export function getPriceHistory(itemId: string): PricePoint[] {
   return [...rows].reverse().map((row) => ({ at: row.created_at, price: row.price }));
 }
 
-function bookDepth() {
+async function bookDepth() {
   const map: Record<string, { listed: number; wanted: number }> = {};
-  const rows = getDb()
+  const rows = await getDb()
     .prepare(
       `SELECT item_id, side, COALESCE(SUM(remaining), 0) AS qty
        FROM orders
@@ -2245,8 +2245,8 @@ function bookDepth() {
   return map;
 }
 
-function packTotals() {
-  const rows = getDb()
+async function packTotals() {
+  const rows = await getDb()
     .prepare(
       `SELECT i.item_id, COALESCE(SUM(i.quantity), 0) AS qty
        FROM inventory i JOIN users u ON u.id = i.user_id
@@ -2257,8 +2257,8 @@ function packTotals() {
   return Object.fromEntries(rows.map((row) => [row.item_id, row.qty])) as Record<string, number>;
 }
 
-function qtyByItem(sql: string, params: unknown[] = []) {
-  const rows = getDb()
+async function qtyByItem(sql: string, params: unknown[] = []) {
+  const rows = await getDb()
     .prepare(sql)
     .all(...params) as { item_id: string; qty: number }[];
   const map: Record<string, number> = {};
@@ -2266,12 +2266,12 @@ function qtyByItem(sql: string, params: unknown[] = []) {
   return map;
 }
 
-function authorizedOf(itemId: string) {
-  return getItemAuthorized(itemId);
+async function authorizedOf(itemId: string) {
+  return await getItemAuthorized(itemId);
 }
 
-function outstandingOf(itemId: string) {
-  const row = getDb()
+async function outstandingOf(itemId: string) {
+  const row = await getDb()
     .prepare(
       `SELECT COALESCE(SUM(i.quantity), 0) AS qty
        FROM inventory i JOIN users u ON u.id = i.user_id
@@ -2281,8 +2281,8 @@ function outstandingOf(itemId: string) {
   return row.qty;
 }
 
-function listedTreasuryAsks(itemId: string) {
-  const row = getDb()
+async function listedTreasuryAsks(itemId: string) {
+  const row = await getDb()
     .prepare(
       `SELECT COALESCE(SUM(remaining), 0) AS qty FROM orders
        WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND COALESCE(treasury, 0) = 1
@@ -2292,8 +2292,8 @@ function listedTreasuryAsks(itemId: string) {
   return row.qty;
 }
 
-function listedTreasuryBids(itemId: string) {
-  const row = getDb()
+async function listedTreasuryBids(itemId: string) {
+  const row = await getDb()
     .prepare(
       `SELECT COALESCE(SUM(remaining), 0) AS qty FROM orders
        WHERE item_id = ? AND side = 'buy' AND remaining > 0 AND COALESCE(treasury, 0) = 1
@@ -2303,12 +2303,12 @@ function listedTreasuryBids(itemId: string) {
   return row.qty;
 }
 
-function remainingToIssue(itemId: string) {
-  return Math.max(0, authorizedOf(itemId) - outstandingOf(itemId));
+async function remainingToIssue(itemId: string) {
+  return Math.max(0, await authorizedOf(itemId) - await outstandingOf(itemId));
 }
 
-function shareStructure(itemId: string, outstanding: number) {
-  const authorized = authorizedOf(itemId);
+async function shareStructure(itemId: string, outstanding: number) {
+  const authorized = await authorizedOf(itemId);
   const issued = authorized;
   return {
     authorized,
@@ -2317,37 +2317,37 @@ function shareStructure(itemId: string, outstanding: number) {
   };
 }
 
-function ensureDeskUser() {
+async function ensureDeskUser() {
   const db = getDb();
-  const row = db
+  const row = await db
     .prepare("SELECT id FROM users WHERE username = ?")
     .get(DESK_USERNAME) as { id: number } | undefined;
   if (!row) throw new Error("Treasury desk is missing.");
-  db.prepare("UPDATE users SET is_gov = 1 WHERE id = ?").run(row.id);
+  await db.prepare("UPDATE users SET is_gov = 1 WHERE id = ?").run(row.id);
   return row.id;
 }
 
-function clearDeskBook(userId: number, itemId: string, side: "buy" | "sell") {
-  getDb()
+async function clearDeskBook(userId: number, itemId: string, side: "buy" | "sell") {
+  await getDb()
     .prepare(
       "DELETE FROM orders WHERE user_id = ? AND item_id = ? AND side = ? AND COALESCE(treasury, 0) = 1"
     )
     .run(userId, itemId, side);
 }
 
-function postDeskQuotes(userId: number, itemId: string, side: "buy" | "sell", quantity: number, price: number) {
+async function postDeskQuotes(userId: number, itemId: string, side: "buy" | "sell", quantity: number, price: number) {
   const qty = Math.max(0, Math.floor(quantity));
   if (qty < 1 || price < 1) return;
   for (let n = 0; n < qty; n += 1) {
-    insertLiveOrder(userId, itemId, side, price, 1, true);
+    await insertLiveOrder(userId, itemId, side, price, 1, true);
   }
-  matchItem(itemId);
+  await matchItem(itemId);
 }
 
 const deskClock = globalThis as unknown as { bazaarDeskFloat?: number };
 
-function listedDeskQty(deskId: number, itemId: string, side: "buy" | "sell") {
-  const row = getDb()
+async function listedDeskQty(deskId: number, itemId: string, side: "buy" | "sell") {
+  const row = await getDb()
     .prepare(
       `SELECT COALESCE(SUM(remaining), 0) AS qty FROM orders
        WHERE user_id = ? AND item_id = ? AND side = ? AND remaining > 0 AND COALESCE(treasury, 0) = 1`
@@ -2356,8 +2356,8 @@ function listedDeskQty(deskId: number, itemId: string, side: "buy" | "sell") {
   return row.qty;
 }
 
-function listedDeskPrice(deskId: number, itemId: string, side: "buy" | "sell") {
-  const row = getDb()
+async function listedDeskPrice(deskId: number, itemId: string, side: "buy" | "sell") {
+  const row = await getDb()
     .prepare(
       `SELECT price FROM orders
        WHERE user_id = ? AND item_id = ? AND side = ? AND remaining > 0 AND COALESCE(treasury, 0) = 1
@@ -2367,70 +2367,70 @@ function listedDeskPrice(deskId: number, itemId: string, side: "buy" | "sell") {
   return row?.price ?? null;
 }
 
-function snapTreasuryPricesToMv() {
+async function snapTreasuryPricesToMv() {
   const db = getDb();
   for (const item of items) {
-    const mv = Math.max(1, Math.round(marketPrice(item.id)));
-    const info = db
+    const mv = Math.max(1, Math.round(await marketPrice(item.id)));
+    const info = await db
       .prepare(
         `UPDATE orders SET price = ?
          WHERE remaining > 0 AND COALESCE(treasury, 0) = 1 AND item_id = ? AND price != ?`
       )
       .run(mv, item.id, mv);
-    if (info.changes > 0) matchItem(item.id);
+    if (info.changes > 0) await matchItem(item.id);
   }
 }
 
-function clampFloatedToAuthorized(itemId: string, authorized: number) {
-  const stored = floatedOf(itemId);
+async function clampFloatedToAuthorized(itemId: string, authorized: number) {
+  const stored = await floatedOf(itemId);
   if (stored <= authorized) return;
-  getDb()
+  await getDb()
     .prepare("UPDATE item_float SET floated = ? WHERE item_id = ?")
-    .run(Math.min(outstandingOf(itemId), authorized), itemId);
+    .run(Math.min(await outstandingOf(itemId), authorized), itemId);
 }
 
-function alignIssuedToAuthorized(force = false) {
-  const deskId = ensureDeskUser();
+async function alignIssuedToAuthorized(force = false) {
+  const deskId = await ensureDeskUser();
   for (const item of items) {
-    const authorized = authorizedOf(item.id);
-    clampFloatedToAuthorized(item.id, authorized);
-    noteIssuedCap(item.id);
-    const mv = Math.max(1, Math.round(marketPrice(item.id)));
-    const outstanding = outstandingOf(item.id);
-    const floated = floatedOf(item.id);
+    const authorized = await authorizedOf(item.id);
+    await clampFloatedToAuthorized(item.id, authorized);
+    await noteIssuedCap(item.id);
+    const mv = Math.max(1, Math.round(await marketPrice(item.id)));
+    const outstanding = await outstandingOf(item.id);
+    const floated = await floatedOf(item.id);
     let wantBuy = 0;
     let wantSell = 0;
     if (outstanding > authorized) wantBuy = outstanding - authorized;
     else if (outstanding < authorized && floated < authorized) wantSell = authorized - outstanding;
-    const deskBids = listedDeskQty(deskId, item.id, "buy");
-    const deskAsks = listedDeskQty(deskId, item.id, "sell");
-    const otherBids = Math.max(0, listedTreasuryBids(item.id) - deskBids);
-    const otherAsks = Math.max(0, listedTreasuryAsks(item.id) - deskAsks);
+    const deskBids = await listedDeskQty(deskId, item.id, "buy");
+    const deskAsks = await listedDeskQty(deskId, item.id, "sell");
+    const otherBids = Math.max(0, await listedTreasuryBids(item.id) - deskBids);
+    const otherAsks = Math.max(0, await listedTreasuryAsks(item.id) - deskAsks);
     const needBuy = Math.max(0, wantBuy - otherBids);
     const needSell = Math.max(0, wantSell - otherAsks);
-    const bidPx = listedDeskPrice(deskId, item.id, "buy");
-    const askPx = listedDeskPrice(deskId, item.id, "sell");
+    const bidPx = await listedDeskPrice(deskId, item.id, "buy");
+    const askPx = await listedDeskPrice(deskId, item.id, "sell");
     const buyOk = deskBids === needBuy && (needBuy === 0 || bidPx === mv);
     const sellOk = deskAsks === needSell && (needSell === 0 || askPx === mv);
     if (force || !buyOk || !sellOk) {
-      clearDeskBook(deskId, item.id, "buy");
-      clearDeskBook(deskId, item.id, "sell");
-      if (needBuy > 0) postDeskQuotes(deskId, item.id, "buy", needBuy, mv);
-      if (needSell > 0) postDeskQuotes(deskId, item.id, "sell", needSell, mv);
+      await clearDeskBook(deskId, item.id, "buy");
+      await clearDeskBook(deskId, item.id, "sell");
+      if (needBuy > 0) await postDeskQuotes(deskId, item.id, "buy", needBuy, mv);
+      if (needSell > 0) await postDeskQuotes(deskId, item.id, "sell", needSell, mv);
     }
   }
-  snapTreasuryPricesToMv();
+  await snapTreasuryPricesToMv();
 }
 
-function floatedOf(itemId: string) {
-  const row = getDb()
+async function floatedOf(itemId: string) {
+  const row = await getDb()
     .prepare("SELECT floated FROM item_float WHERE item_id = ?")
     .get(itemId) as { floated: number } | undefined;
   return row?.floated ?? 0;
 }
 
-function setFloated(itemId: string, floated: number) {
-  getDb()
+async function setFloated(itemId: string, floated: number) {
+  await getDb()
     .prepare(
       `INSERT INTO item_float (item_id, floated) VALUES (?, ?)
        ON CONFLICT(item_id) DO UPDATE SET floated = MAX(item_float.floated, excluded.floated)`
@@ -2438,29 +2438,29 @@ function setFloated(itemId: string, floated: number) {
     .run(itemId, floated);
 }
 
-function noteIssuedCap(itemId: string) {
-  const authorized = authorizedOf(itemId);
+async function noteIssuedCap(itemId: string) {
+  const authorized = await authorizedOf(itemId);
   if (authorized <= 0) return;
-  if (outstandingOf(itemId) < authorized) return;
-  setFloated(itemId, authorized);
-  const desk = getDb()
+  if (await outstandingOf(itemId) < authorized) return;
+  await setFloated(itemId, authorized);
+  const desk = await getDb()
     .prepare("SELECT id FROM users WHERE username = ?")
     .get(DESK_USERNAME) as { id: number } | undefined;
-  if (desk) clearDeskBook(desk.id, itemId, "sell");
+  if (desk) await clearDeskBook(desk.id, itemId, "sell");
 }
 
-function netWorthLeaders(prices: MarketPrice[]): LeaderRow[] {
+async function netWorthLeaders(prices: MarketPrice[]): Promise<LeaderRow[]> {
   const db = getDb();
   const mv = new Map(prices.map((row) => [row.itemId, row.vwap]));
-  const { sql, params } = tableSeatWhere(db);
-  const purses = db
+  const { sql, params } = await tableSeatWhere(db);
+  const purses = await db
     .prepare(
       `SELECT u.id, u.username, p.gold
        FROM players p JOIN users u ON u.id = p.user_id
        WHERE ${sql}`
     )
     .all(...params) as { id: number; username: string; gold: number }[];
-  const stacks = db
+  const stacks = await db
     .prepare("SELECT user_id, item_id, quantity FROM inventory WHERE quantity > 0")
     .all() as { user_id: number; item_id: string; quantity: number }[];
   const goods = new Map<number, number>();
@@ -2494,34 +2494,34 @@ function netWorthLeaders(prices: MarketPrice[]): LeaderRow[] {
     }));
 }
 
-function markWinnerName(username: string, now: number) {
-  const user = getDb()
+async function markWinnerName(username: string, now: number) {
+  const user = await getDb()
     .prepare("SELECT id FROM users WHERE username = ?")
     .get(username) as { id: number } | undefined;
   if (!user) return;
-  getDb()
+  await getDb()
     .prepare("UPDATE players SET has_won = 1, won_at = COALESCE(won_at, ?) WHERE user_id = ?")
     .run(now, user.id);
 }
 
-function resolveGoal(leaders: LeaderRow[], viewerId: number) {
+async function resolveGoal(leaders: LeaderRow[], viewerId: number) {
   const now = nowMs();
-  let goal = readGoal();
-  const current = readGameOver();
+  let goal = await readGoal();
+  const current = await readGameOver();
   if (current.over) return { goal, over: current };
   if (goal.mode === "timed") {
     const endsAt = goal.endsAt ?? now + goal.durationMs;
     if (goal.endsAt == null) {
       goal = { ...goal, endsAt };
-      writeGoal(goal);
+      await writeGoal(goal);
     }
     if (now < endsAt) return { goal, over: current };
     const winner = sortByGoal(leaders, goal)[0]?.username ?? null;
     const over = { over: true, winner, endedAt: now, reason: "time" as const };
-    writeGameOver(over);
-    if (winner) markWinnerName(winner, now);
-    if (winner === loadPlayerRow(viewerId).username) {
-      setEvent(viewerId, `Game over. You had the most ${goal.score === "gold" ? "coins" : goal.score === "items" ? "of those goods" : "net worth"}.`);
+    await writeGameOver(over);
+    if (winner) await markWinnerName(winner, now);
+    if (winner === (await loadPlayerRow(viewerId)).username) {
+      await setEvent(viewerId, `Game over. You had the most ${goal.score === "gold" ? "coins" : goal.score === "items" ? "of those goods" : "net worth"}.`);
     }
     return { goal, over };
   }
@@ -2532,70 +2532,71 @@ function resolveGoal(leaders: LeaderRow[], viewerId: number) {
   const winner = crossed[0]?.username;
   if (!winner) return { goal, over: current };
   const over = { over: true, winner, endedAt: now, reason: "threshold" as const };
-  writeGameOver(over);
-  markWinnerName(winner, now);
-  if (winner === loadPlayerRow(viewerId).username) {
-    setEvent(viewerId, "Game over. You hit the mark.");
+  await writeGameOver(over);
+  await markWinnerName(winner, now);
+  if (winner === (await loadPlayerRow(viewerId)).username) {
+    await setEvent(viewerId, "Game over. You hit the mark.");
   }
   return { goal, over };
 }
 
-export function adminSetGoal(userId: number, draft: Partial<GoalConfig>) {
-  requireAdmin(userId);
+export async function adminSetGoal(userId: number, draft: Partial<GoalConfig>) {
+  await requireAdmin(userId);
   const now = nowMs();
   const goal = validateGoalDraft(draft);
   const next: GoalConfig = {
     ...goal,
     endsAt: goal.mode === "timed" ? now + goal.durationMs : null,
   };
-  writeGoal(next);
-  clearGameOver();
-  setEvent(userId, `Goal set. ${describeGoal(next)}`);
+  await writeGoal(next);
+  await clearGameOver();
+  await setEvent(userId, `Goal set. ${describeGoal(next)}`);
 }
 
-function priceSheet(timeZone?: string): MarketPrice[] {
+async function priceSheet(timeZone?: string): Promise<MarketPrice[]> {
   const db = getDb();
-  const depth = bookDepth();
-  const packs = packTotals();
+  const depth = await bookDepth();
+  const packs = await packTotals();
   const dayStart = startOfLocalDayMs(timeZone);
-  const tradesToday = qtyByItem(
+  const tradesToday = await qtyByItem(
     "SELECT item_id, COUNT(*) AS qty FROM trades WHERE created_at >= ? GROUP BY item_id",
     [dayStart]
   );
-  return items.map((item) => {
+  const sheet: MarketPrice[] = [];
+  for (const item of items) {
     const itemId = item.id;
-    const stats = db
+    const stats = (await db
       .prepare(
         "SELECT SUM(price * quantity) AS notional, SUM(quantity) AS volume, MAX(id) AS last_id FROM trades WHERE item_id = ?"
       )
-      .get(itemId) as {
+      .get(itemId)) as {
       notional: number | null;
       volume: number | null;
       last_id: number | null;
     };
     const last = stats.last_id
-      ? (db.prepare("SELECT price FROM trades WHERE id = ?").get(stats.last_id) as
+      ? ((await db.prepare("SELECT price FROM trades WHERE id = ?").get(stats.last_id)) as
           | { price: number }
           | undefined)
       : undefined;
-    const bid = db
+    const bid = (await db
       .prepare(
         "SELECT MAX(price) AS p FROM orders WHERE item_id = ? AND side = 'buy' AND remaining > 0 AND COALESCE(treasury, 0) = 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')"
       )
-      .get(itemId) as { p: number | null };
-    const ask = db
+      .get(itemId)) as { p: number | null };
+    const ask = (await db
       .prepare(
         "SELECT MIN(price) AS p FROM orders WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND COALESCE(treasury, 0) = 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')"
       )
-      .get(itemId) as { p: number | null };
-    const tapePrints = marketPrints(itemId, 120);
+      .get(itemId)) as { p: number | null };
+    const tapePrints = await marketPrints(itemId, 120);
     const prints = tapePrints.slice(0, MV_PRINTS);
     const lastPrint = prints[0];
     const vwap = computeFairValue(itemById[itemId]?.basePrice ?? item.basePrice, [...prints].reverse());
     const book = depth[itemId] ?? { listed: 0, wanted: 0 };
     const outstanding = packs[itemId] ?? 0;
-    const shares = shareStructure(itemId, outstanding);
-    return {
+    const shares = await shareStructure(itemId, outstanding);
+    sheet.push({
       itemId,
       vwap,
       last: lastPrint?.price ?? last?.price ?? null,
@@ -2619,8 +2620,9 @@ function priceSheet(timeZone?: string): MarketPrice[] {
       treasury: shares.treasury,
       bestBid: bid.p,
       bestAsk: ask.p,
-    };
-  });
+    });
+  }
+  return sheet;
 }
 
 function shufflePick<T>(list: T[], count: number) {
@@ -2643,7 +2645,7 @@ type BotQuoteRow = {
   created_at: number;
 };
 
-function chaseOneBotQuote(
+async function chaseOneBotQuote(
   userId: number,
   style: BotProfile["style"],
   now: number,
@@ -2655,7 +2657,7 @@ function chaseOneBotQuote(
   if (steps === 1 && Math.random() < 0.35) return false;
 
   const itemId = quote.item_id;
-  const fair = marketPrice(itemId);
+  const fair = await marketPrice(itemId);
   const spread = botSpread(style);
   const slack = chaseSlack(spread, fair, waitMs);
   const impatient =
@@ -2663,7 +2665,7 @@ function chaseOneBotQuote(
   const db = getDb();
 
   if (quote.side === "buy") {
-    const ask = db
+    const ask = await db
       .prepare(
         `SELECT id, price, created_at FROM orders
          WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND user_id != ?
@@ -2676,25 +2678,25 @@ function chaseOneBotQuote(
       impatient &&
       botWillTake(spread, fair, "liftAsk", ask.price, true, slack, now - ask.created_at)
     ) {
-      if (availableGold(userId) < ask.price) return false;
-      cancelOrders(userId, [quote.id]);
-      if (availableGold(userId) >= ask.price) {
-        takeOrder(userId, ask.id, 1);
+      if (await availableGold(userId) < ask.price) return false;
+      await cancelOrders(userId, [quote.id]);
+      if (await availableGold(userId) >= ask.price) {
+        await takeOrder(userId, ask.id, 1);
         return true;
       }
     }
     const next = chaseBidPrice(quote.price, fair, slack, steps);
     if (next > quote.price) {
       const extra = (next - quote.price) * quote.remaining;
-      if (availableGold(userId) < extra) return false;
-      db.prepare("UPDATE orders SET price = ? WHERE id = ?").run(next, quote.id);
-      matchItem(itemId);
+      if (await availableGold(userId) < extra) return false;
+      await db.prepare("UPDATE orders SET price = ? WHERE id = ?").run(next, quote.id);
+      await matchItem(itemId);
       return true;
     }
     return false;
   }
 
-  const bid = db
+  const bid = await db
     .prepare(
       `SELECT id, price FROM orders
        WHERE item_id = ? AND side = 'buy' AND remaining > 0 AND user_id != ?
@@ -2707,23 +2709,23 @@ function chaseOneBotQuote(
     impatient &&
     botWillTake(spread, fair, "hitBid", bid.price, true, slack)
   ) {
-    cancelOrders(userId, [quote.id]);
-    if (availableItem(userId, itemId) >= 1) {
-      takeOrder(userId, bid.id, 1);
+    await cancelOrders(userId, [quote.id]);
+    if (await availableItem(userId, itemId) >= 1) {
+      await takeOrder(userId, bid.id, 1);
       return true;
     }
   }
   const next = chaseAskPrice(quote.price, fair, slack, steps);
   if (next < quote.price) {
-    db.prepare("UPDATE orders SET price = ? WHERE id = ?").run(next, quote.id);
-    matchItem(itemId);
+    await db.prepare("UPDATE orders SET price = ? WHERE id = ?").run(next, quote.id);
+    await matchItem(itemId);
     return true;
   }
   return false;
 }
 
-function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: number) {
-  const rows = getDb()
+async function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: number) {
+  const rows = await getDb()
     .prepare(
       `SELECT id, item_id, side, price, remaining, created_at
        FROM orders
@@ -2734,14 +2736,14 @@ function chaseStaleBotQuote(userId: number, style: BotProfile["style"], now: num
   let chased = 0;
   for (const quote of rows) {
     if (chased >= 4) break;
-    if (chaseOneBotQuote(userId, style, now, quote)) chased += 1;
+    if (await chaseOneBotQuote(userId, style, now, quote)) chased += 1;
   }
   return chased > 0;
 }
 
-export function tickBots() {
-  if (readGameOver().over) return;
-  const seated = computerCount();
+export async function tickBots() {
+  if ((await readGameOver()).over) return;
+  const seated = await computerCount();
   if (seated < 1) return;
   const now = nowMs();
   if (botClock.bazaarBotTick && now - botClock.bazaarBotTick < 1200) return;
@@ -2750,13 +2752,16 @@ export function tickBots() {
   const seatedProfiles = BOT_PROFILES.slice(0, seated);
   const picked = shufflePick(seatedProfiles, Math.min(seatedProfiles.length, 28));
   for (const profile of picked) {
-    const user = db
+    const user = await db
       .prepare("SELECT id FROM users WHERE username = ? AND COALESCE(is_bot, 0) = 1")
       .get(profile.username) as { id: number } | undefined;
     if (!user) continue;
     try {
-      chaseStaleBotQuote(user.id, profile.style, now);
-      const held = items.filter((item) => availableItem(user.id, item.id) >= 1).map((item) => item.id);
+      await chaseStaleBotQuote(user.id, profile.style, now);
+      const held: string[] = [];
+      for (const item of items) {
+        if ((await availableItem(user.id, item.id)) >= 1) held.push(item.id);
+      }
       const focus =
         held.length > 0
           ? shufflePick(held, Math.min(5, held.length))
@@ -2764,10 +2769,10 @@ export function tickBots() {
       for (const itemId of focus) {
         const item = itemById[itemId];
         if (!item) continue;
-        const fair = marketPrice(itemId);
+        const fair = await marketPrice(itemId);
         const spread = botSpread(profile.style);
         const feelingLucky = Math.random() < botLossChance(spread, fair);
-        const ask = db
+        const ask = await db
           .prepare(
             `SELECT id, price, created_at FROM orders
              WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND user_id != ?
@@ -2777,7 +2782,7 @@ export function tickBots() {
           .get(itemId, user.id) as { id: number; price: number; created_at: number } | undefined;
         if (
           ask &&
-          availableGold(user.id) >= ask.price &&
+          await availableGold(user.id) >= ask.price &&
           botWillTake(
             spread,
             fair,
@@ -2788,9 +2793,9 @@ export function tickBots() {
             now - ask.created_at
           )
         ) {
-          takeOrder(user.id, ask.id, 1);
+          await takeOrder(user.id, ask.id, 1);
         }
-        const bid = db
+        const bid = await db
           .prepare(
             `SELECT id, price FROM orders
              WHERE item_id = ? AND side = 'buy' AND remaining > 0 AND user_id != ?
@@ -2800,27 +2805,27 @@ export function tickBots() {
           .get(itemId, user.id) as { id: number; price: number } | undefined;
         if (
           bid &&
-          availableItem(user.id, itemId) >= 1 &&
+          await availableItem(user.id, itemId) >= 1 &&
           botWillTake(spread, fair, "hitBid", bid.price, feelingLucky)
         ) {
-          takeOrder(user.id, bid.id, 1);
+          await takeOrder(user.id, bid.id, 1);
         }
-        const live = db
+        const live = await db
           .prepare("SELECT COALESCE(SUM(remaining), 0) AS n FROM orders WHERE user_id = ? AND remaining > 0")
           .get(user.id) as { n: number };
         if (live.n >= 80) continue;
         const quote = botQuoteMultipliers(spread, fair);
-        const have = availableItem(user.id, itemId);
+        const have = await availableItem(user.id, itemId);
         const askQty = Math.min(have, Math.max(1, botAskSize(profile.style, quote.kind)));
         if (askQty >= 1) {
           const askPx = Math.max(1, Math.round(fair * quote.ask));
-          placeOrder(user.id, itemId, "sell", askPx, askQty);
+          await placeOrder(user.id, itemId, "sell", askPx, askQty);
         }
         if (live.n <= 30 && Math.random() < 0.62) {
           const bidQty = 1 + Math.floor(Math.random() * 3);
           const bidPx = Math.max(1, Math.round(fair * quote.bid));
-          if (availableGold(user.id) >= bidPx * bidQty) {
-            placeOrder(user.id, itemId, "buy", bidPx, bidQty);
+          if (await availableGold(user.id) >= bidPx * bidQty) {
+            await placeOrder(user.id, itemId, "buy", bidPx, bidQty);
           }
         }
       }
@@ -2850,8 +2855,8 @@ function mergeLegs(rows: { itemId: string; quantity: number }[] | undefined) {
   return [...map.entries()].map(([itemId, quantity]) => ({ itemId, quantity }));
 }
 
-function loadSwap(offerId: number) {
-  const row = getDb()
+async function loadSwap(offerId: number) {
+  const row = await getDb()
     .prepare(
       `SELECT o.id, o.from_user_id, o.to_user_id, o.give_gold, o.want_gold, o.status, o.created_at,
               f.username AS from_name, t.username AS to_name
@@ -2874,7 +2879,7 @@ function loadSwap(offerId: number) {
       }
     | undefined;
   if (!row) throw new Error("That deal is gone.");
-  const legs = getDb()
+  const legs = await getDb()
     .prepare("SELECT side, item_id, quantity FROM swap_legs WHERE offer_id = ?")
     .all(offerId) as { side: string; item_id: string; quantity: number }[];
   return {
@@ -2893,9 +2898,9 @@ function describeBundle(gold: number, legs: { itemId: string; quantity: number }
   return bits.length ? bits.join(", ") : "nothing";
 }
 
-export function proposeSwap(userId: number, draft: SwapDraft) {
-  resolveBusy(userId);
-  requireOpenGame();
+export async function proposeSwap(userId: number, draft: SwapDraft) {
+  await resolveBusy(userId);
+  await requireOpenGame();
   const giveGold = Number(draft.giveGold ?? 0);
   const wantGold = Number(draft.wantGold ?? 0);
   if (!Number.isInteger(giveGold) || giveGold < 0 || !Number.isInteger(wantGold) || wantGold < 0) {
@@ -2909,7 +2914,7 @@ export function proposeSwap(userId: number, draft: SwapDraft) {
   let toId: number | null = null;
   const targetName = String(draft.toUsername ?? "").trim();
   if (targetName) {
-    const target = getDb()
+    const target = await getDb()
       .prepare("SELECT id, username, COALESCE(is_bot, 0) AS is_bot FROM users WHERE username = ?")
       .get(targetName) as { id: number; username: string; is_bot: number } | undefined;
     if (!target) throw new Error("No traveler by that name.");
@@ -2919,16 +2924,16 @@ export function proposeSwap(userId: number, draft: SwapDraft) {
     }
     toId = target.id;
   }
-  if (giveGold > 0 && availableGold(userId) < giveGold) {
+  if (giveGold > 0 && await availableGold(userId) < giveGold) {
     throw new Error("Not enough free coin to put on that deal.");
   }
   for (const leg of give) {
-    if (availableItem(userId, leg.itemId) < leg.quantity) {
+    if (await availableItem(userId, leg.itemId) < leg.quantity) {
       throw new Error(`Not enough unbound ${itemById[leg.itemId]?.name ?? leg.itemId}.`);
     }
   }
   const db = getDb();
-  const info = db
+  const info = await db
     .prepare(
       `INSERT INTO swap_offers (from_user_id, to_user_id, give_gold, want_gold, status, created_at)
        VALUES (?, ?, ?, ?, 'open', ?)`
@@ -2938,91 +2943,91 @@ export function proposeSwap(userId: number, draft: SwapDraft) {
   const insertLeg = db.prepare(
     "INSERT INTO swap_legs (offer_id, side, item_id, quantity) VALUES (?, ?, ?, ?)"
   );
-  for (const leg of give) insertLeg.run(offerId, "give", leg.itemId, leg.quantity);
-  for (const leg of want) insertLeg.run(offerId, "want", leg.itemId, leg.quantity);
-  const who = toId ? loadPlayerRow(toId).username : "anyone on the board";
-  setEvent(
+  for (const leg of give) await insertLeg.run(offerId, "give", leg.itemId, leg.quantity);
+  for (const leg of want) await insertLeg.run(offerId, "want", leg.itemId, leg.quantity);
+  const who = toId ? (await loadPlayerRow(toId)).username : "anyone on the board";
+  await setEvent(
     userId,
     `Deal posted to ${who}: you give ${describeBundle(giveGold, give)} for ${describeBundle(wantGold, want)}.`
   );
 }
 
-export function cancelSwap(userId: number, offerId: number) {
-  resolveBusy(userId);
-  const offer = loadSwap(offerId);
+export async function cancelSwap(userId: number, offerId: number) {
+  await resolveBusy(userId);
+  const offer = await loadSwap(offerId);
   if (offer.status !== "open") throw new Error("That deal is already closed.");
   if (offer.from_user_id !== userId) throw new Error("Only the sender can pull that deal.");
-  getDb().prepare("UPDATE swap_offers SET status = 'cancelled' WHERE id = ?").run(offerId);
-  setEvent(userId, "Deal pulled. Your pack is free again.");
+  await getDb().prepare("UPDATE swap_offers SET status = 'cancelled' WHERE id = ?").run(offerId);
+  await setEvent(userId, "Deal pulled. Your pack is free again.");
 }
 
-export function declineSwap(userId: number, offerId: number) {
-  resolveBusy(userId);
-  const offer = loadSwap(offerId);
+export async function declineSwap(userId: number, offerId: number) {
+  await resolveBusy(userId);
+  const offer = await loadSwap(offerId);
   if (offer.status !== "open") throw new Error("That deal is already closed.");
   if (offer.to_user_id !== userId) throw new Error("That deal was not sent to you.");
-  getDb().prepare("UPDATE swap_offers SET status = 'declined' WHERE id = ?").run(offerId);
-  setEvent(offer.from_user_id, `${loadPlayerRow(userId).username} declined your deal.`);
-  setEvent(userId, `You declined ${offer.from_name}'s deal.`);
+  await getDb().prepare("UPDATE swap_offers SET status = 'declined' WHERE id = ?").run(offerId);
+  await setEvent(offer.from_user_id, `${(await loadPlayerRow(userId)).username} declined your deal.`);
+  await setEvent(userId, `You declined ${offer.from_name}'s deal.`);
 }
 
-export function acceptSwap(userId: number, offerId: number) {
-  resolveBusy(userId);
-  requireOpenGame();
-  const offer = loadSwap(offerId);
+export async function acceptSwap(userId: number, offerId: number) {
+  await resolveBusy(userId);
+  await requireOpenGame();
+  const offer = await loadSwap(offerId);
   if (offer.status !== "open") throw new Error("That deal is already closed.");
   if (offer.from_user_id === userId) throw new Error("You cannot take your own deal.");
   if (offer.to_user_id != null && offer.to_user_id !== userId) {
     throw new Error("That deal was sent to someone else.");
   }
-  if (offer.want_gold > 0 && availableGold(userId) < offer.want_gold) {
+  if (offer.want_gold > 0 && await availableGold(userId) < offer.want_gold) {
     throw new Error("Not enough free coin to take that deal.");
   }
   for (const leg of offer.want) {
-    if (availableItem(userId, leg.itemId) < leg.quantity) {
+    if (await availableItem(userId, leg.itemId) < leg.quantity) {
       throw new Error(`Need more ${itemById[leg.itemId]?.name ?? leg.itemId} to take that deal.`);
     }
   }
   for (const leg of offer.give) {
-    const have = inventoryMap(offer.from_user_id).get(leg.itemId) ?? 0;
+    const have = (await inventoryMap(offer.from_user_id)).get(leg.itemId) ?? 0;
     if (have < leg.quantity) {
       throw new Error("The sender no longer has those goods.");
     }
   }
-  if (offer.give_gold > 0 && loadPlayerRow(offer.from_user_id).gold < offer.give_gold) {
+  if (offer.give_gold > 0 && (await loadPlayerRow(offer.from_user_id)).gold < offer.give_gold) {
     throw new Error("The sender no longer has the coin on that deal.");
   }
   for (const leg of offer.give) {
-    removeItem(offer.from_user_id, leg.itemId, leg.quantity);
-    addItem(userId, leg.itemId, leg.quantity);
+    await removeItem(offer.from_user_id, leg.itemId, leg.quantity);
+    await addItem(userId, leg.itemId, leg.quantity);
   }
   for (const leg of offer.want) {
-    removeItem(userId, leg.itemId, leg.quantity);
-    addItem(offer.from_user_id, leg.itemId, leg.quantity);
+    await removeItem(userId, leg.itemId, leg.quantity);
+    await addItem(offer.from_user_id, leg.itemId, leg.quantity);
   }
   if (offer.give_gold > 0) {
-    getDb().prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(offer.give_gold, offer.from_user_id);
-    getDb().prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?").run(offer.give_gold, userId);
+    await getDb().prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(offer.give_gold, offer.from_user_id);
+    await getDb().prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?").run(offer.give_gold, userId);
   }
   if (offer.want_gold > 0) {
-    getDb().prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(offer.want_gold, userId);
-    getDb().prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?").run(offer.want_gold, offer.from_user_id);
+    await getDb().prepare("UPDATE players SET gold = gold - ? WHERE user_id = ?").run(offer.want_gold, userId);
+    await getDb().prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?").run(offer.want_gold, offer.from_user_id);
   }
-  getDb().prepare("UPDATE swap_offers SET status = 'accepted' WHERE id = ?").run(offerId);
-  const taker = loadPlayerRow(userId).username;
-  setEvent(
+  await getDb().prepare("UPDATE swap_offers SET status = 'accepted' WHERE id = ?").run(offerId);
+  const taker = (await loadPlayerRow(userId)).username;
+  await setEvent(
     offer.from_user_id,
     `${taker} took your deal. You gave ${describeBundle(offer.give_gold, offer.give)} for ${describeBundle(offer.want_gold, offer.want)}.`
   );
-  setEvent(
+  await setEvent(
     userId,
     `You took ${offer.from_name}'s deal. You gave ${describeBundle(offer.want_gold, offer.want)} for ${describeBundle(offer.give_gold, offer.give)}.`
   );
 }
 
-function listAdminRoster(): AdminSeat[] {
-  const seatedBots = new Set(seatedBotUsernames());
-  const people = getDb()
+async function listAdminRoster(): Promise<AdminSeat[]> {
+  const seatedBots = new Set(await seatedBotUsernames());
+  const people = await getDb()
     .prepare(
       `SELECT u.id, u.username, p.gold, COALESCE(u.is_bot, 0) AS is_bot,
               COALESCE(p.at_table, 1) AS at_table
@@ -3031,7 +3036,7 @@ function listAdminRoster(): AdminSeat[] {
        ORDER BY COALESCE(u.is_bot, 0) ASC, u.username COLLATE NOCASE`
     )
     .all() as { id: number; username: string; gold: number; is_bot: number; at_table: number }[];
-  const packs = getDb()
+  const packs = await getDb()
     .prepare(
       `SELECT user_id, item_id, quantity FROM inventory WHERE quantity > 0`
     )
@@ -3052,9 +3057,9 @@ function listAdminRoster(): AdminSeat[] {
   }));
 }
 
-function listTravelers(userId: number): TravelerRow[] {
+async function listTravelers(userId: number): Promise<TravelerRow[]> {
   return (
-    getDb()
+    await getDb()
       .prepare(
         `SELECT u.id, u.username, COALESCE(u.is_bot, 0) AS is_bot
          FROM users u JOIN players p ON p.user_id = u.id
@@ -3078,7 +3083,7 @@ function decorateLegs(legs: { itemId: string; quantity: number }[]) {
   });
 }
 
-function mapSwap(row: ReturnType<typeof loadSwap>, userId: number): SwapOffer {
+function mapSwap(row: Awaited<ReturnType<typeof loadSwap>>, userId: number): SwapOffer {
   const yours = row.from_user_id === userId;
   const incoming = row.to_user_id === userId;
   return {
@@ -3098,8 +3103,8 @@ function mapSwap(row: ReturnType<typeof loadSwap>, userId: number): SwapOffer {
   };
 }
 
-function listSwaps(userId: number): SwapOffer[] {
-  const ids = getDb()
+async function listSwaps(userId: number): Promise<SwapOffer[]> {
+  const ids = await getDb()
     .prepare(
       `SELECT id FROM swap_offers
        WHERE status = 'open' AND (from_user_id = ? OR to_user_id = ? OR to_user_id IS NULL)
@@ -3107,28 +3112,28 @@ function listSwaps(userId: number): SwapOffer[] {
        LIMIT 40`
     )
     .all(userId, userId) as { id: number }[];
-  return ids.map((row) => mapSwap(loadSwap(row.id), userId));
+  return Promise.all(ids.map(async (row) => mapSwap(await loadSwap(row.id), userId)));
 }
 
-export function getGameState(
+export async function getGameState(
   userId: number,
   timeZone?: string,
   options?: { tick?: boolean }
-): GameState {
-  hydrateShareCatalog();
+): Promise<GameState> {
+  await hydrateShareCatalog();
   if (options?.tick !== false) {
-    tickBots();
-    alignIssuedToAuthorized();
+    await tickBots();
+    await alignIssuedToAuthorized();
   }
-  resolveBusy(userId);
-  const depositNotice = payTableStipends(userId, timeZone);
-  const player = loadPlayerRow(userId);
-  const stacks = getDb()
+  await resolveBusy(userId);
+  const depositNotice = await payTableStipends(userId, timeZone);
+  const player = await loadPlayerRow(userId);
+  const stacks = await getDb()
     .prepare(
       "SELECT item_id, quantity, COALESCE(cost_basis, 0) AS cost_basis FROM inventory WHERE user_id = ? AND quantity > 0"
     )
     .all(userId) as { item_id: string; quantity: number; cost_basis: number }[];
-  const reserved = reservedItems(userId);
+  const reserved = await reservedItems(userId);
   const inventory: InventoryRow[] = stacks
     .map((row) => ({
       itemId: row.item_id,
@@ -3139,7 +3144,7 @@ export function getGameState(
           : null,
     }))
     .sort((a, b) => a.itemId.localeCompare(b.itemId));
-  const owned = getDb()
+  const owned = await getDb()
     .prepare("SELECT cosmetic_id FROM cosmetics WHERE user_id = ?")
     .all(userId) as { cosmetic_id: string }[];
   const equipped: Equipped = {
@@ -3151,7 +3156,7 @@ export function getGameState(
     id: player.user_id,
     username: player.username,
     gold: player.gold,
-    availableGold: player.gold - reservedGold(userId),
+    availableGold: player.gold - await reservedGold(userId),
     locationId: player.location_id,
     inventory,
     reservedItems: reserved,
@@ -3163,7 +3168,7 @@ export function getGameState(
     lastEvent: player.last_event,
     energy: player.energy ?? ENERGY_MAX,
     energyMax: player.energy_max ?? ENERGY_MAX,
-    buffs: listBuffs(userId),
+    buffs: await listBuffs(userId),
     vp: player.vp ?? 0,
     goldFromStalls: player.gold_from_stalls ?? 0,
     foodDelivered: player.food_delivered ?? 0,
@@ -3173,11 +3178,11 @@ export function getGameState(
     titles: [],
     isGov: Boolean(player.is_gov),
     isAdmin: Boolean(player.is_admin),
-    canOffice: canHoldOffice(userId),
+    canOffice: await canHoldOffice(userId),
   };
 
   const myOrders = (
-    getDb()
+    await getDb()
       .prepare(
       `SELECT o.id, o.user_id, u.username, o.item_id, o.side, o.price, o.remaining, o.created_at,
               COALESCE(o.treasury, 0) AS is_gov
@@ -3197,12 +3202,12 @@ export function getGameState(
     }[]
   ).map(mapOrder);
 
-  const recentTrades = coalesceTrades(loadRecentTrades(40)).slice(0, 18);
+  const recentTrades = coalesceTrades(await loadRecentTrades(40)).slice(0, 18);
 
-  const prices = priceSheet(timeZone);
-  const leaders = netWorthLeaders(prices);
-  const { goal, over } = resolveGoal(leaders, userId);
-  const winners = getDb()
+  const prices = await priceSheet(timeZone);
+  const leaders = await netWorthLeaders(prices);
+  const { goal, over } = await resolveGoal(leaders, userId);
+  const winners = await getDb()
     .prepare(
       `SELECT u.username, p.won_at AS wonAt
        FROM players p JOIN users u ON u.id = p.user_id
@@ -3211,11 +3216,11 @@ export function getGameState(
        LIMIT 12`
     )
     .all() as { username: string; wonAt: number }[];
-  const botsSeated = computerCount();
+  const botsSeated = await computerCount();
   const computers = botsSeated > 0;
-  const { sql: seatSql, params: seatParams } = tableSeatWhere();
+  const { sql: seatSql, params: seatParams } = await tableSeatWhere();
   const coinVolume = (
-    getDb()
+    await getDb()
       .prepare(
         `SELECT COALESCE(SUM(p.gold), 0) AS gold
          FROM players p JOIN users u ON u.id = p.user_id
@@ -3252,18 +3257,18 @@ export function getGameState(
     myOrders,
     recentTrades,
     winners,
-    areas: listAreas(player.location_id),
+    areas: await listAreas(player.location_id),
     festival,
-    swaps: listSwaps(userId),
-    travelers: listTravelers(userId),
+    swaps: await listSwaps(userId),
+    travelers: await listTravelers(userId),
     coinVolume,
     computers,
     computerCount: botsSeated,
-    travelerCount: travelerCount(),
-    stipendMs: stipendMs(),
-    startingGold: startingGold(),
-    coinDrop: coinDropSnapshot(userId),
-    adminRoster: canHoldOffice(userId) ? listAdminRoster() : [],
+    travelerCount: await travelerCount(),
+    stipendMs: await stipendMs(),
+    startingGold: await startingGold(),
+    coinDrop: await coinDropSnapshot(userId),
+    adminRoster: (await canHoldOffice(userId)) ? await listAdminRoster() : [],
     netWorthGoal: goal.score === "netWorth" ? goal.threshold : NET_WORTH_GOAL,
     goal: { ...goal, label: describeGoal(goal) },
     gameOver: over,

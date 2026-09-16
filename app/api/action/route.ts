@@ -98,23 +98,23 @@ export async function POST(request: Request) {
       case "craft":
         throw new Error("Items are not combined. Trade them on the board.");
       case "order":
-        placeOrder(userId, body.itemId, body.side, Number(body.price), Number(body.quantity));
+        await placeOrder(userId, body.itemId, body.side, Number(body.price), Number(body.quantity));
         break;
       case "take":
-        takeOrder(userId, Number(body.orderId), Number(body.quantity ?? 1));
+        await takeOrder(userId, Number(body.orderId), Number(body.quantity ?? 1));
         break;
       case "cancel": {
         const ids = Array.isArray(body.orderIds)
           ? body.orderIds.map(Number)
           : [Number(body.orderId)];
-        cancelOrders(userId, ids);
+        await cancelOrders(userId, ids);
         break;
       }
       case "use":
-        consumeItem(userId, body.itemId);
+        await consumeItem(userId, body.itemId);
         break;
       case "swapPropose":
-        proposeSwap(userId, {
+        await proposeSwap(userId, {
           toUsername: body.toUsername,
           giveGold: Number(body.giveGold ?? 0),
           wantGold: Number(body.wantGold ?? 0),
@@ -123,56 +123,56 @@ export async function POST(request: Request) {
         });
         break;
       case "swapAccept":
-        acceptSwap(userId, Number(body.offerId));
+        await acceptSwap(userId, Number(body.offerId));
         break;
       case "swapCancel":
-        cancelSwap(userId, Number(body.offerId));
+        await cancelSwap(userId, Number(body.offerId));
         break;
       case "swapDecline":
-        declineSwap(userId, Number(body.offerId));
+        await declineSwap(userId, Number(body.offerId));
         break;
       case "government":
-        setGovernment(userId, Boolean(body.on));
+        await setGovernment(userId, Boolean(body.on));
         break;
       case "admin":
-        setAdmin(userId, Boolean(body.on));
+        await setAdmin(userId, Boolean(body.on));
         break;
       case "adminGold":
-        adminSetGold(userId, Number(body.gold), Number(body.targetUserId ?? userId));
+        await adminSetGold(userId, Number(body.gold), Number(body.targetUserId ?? userId));
         break;
       case "adminItem":
-        adminSetItem(userId, String(body.itemId), Number(body.quantity), Number(body.targetUserId ?? userId));
+        await adminSetItem(userId, String(body.itemId), Number(body.quantity), Number(body.targetUserId ?? userId));
         break;
       case "adminIssued":
-        adminSetIssued(userId, String(body.itemId), Number(body.authorized));
+        await adminSetIssued(userId, String(body.itemId), Number(body.authorized));
         break;
       case "adminShareAdd":
-        adminAddShare(userId, { name: body.name, emoji: body.emoji, image: body.image });
+        await adminAddShare(userId, { name: body.name, emoji: body.emoji, image: body.image });
         break;
       case "adminShareRemove":
-        adminRemoveShare(userId, String(body.itemId));
+        await adminRemoveShare(userId, String(body.itemId));
         break;
       case "adminNewGame":
-        adminStartGame(userId, tz, body.count != null ? Number(body.count) : undefined);
+        await adminStartGame(userId, tz, body.count != null ? Number(body.count) : undefined);
         break;
       case "adminComputers":
-        if (body.count != null) adminSetComputerCount(userId, Number(body.count));
-        else adminSetComputers(userId, Boolean(body.on));
+        if (body.count != null) await adminSetComputerCount(userId, Number(body.count));
+        else await adminSetComputers(userId, Boolean(body.on));
         break;
       case "adminSitOthers":
-        adminSitOtherTravelers(userId);
+        await adminSitOtherTravelers(userId);
         break;
       case "adminStipend":
-        adminSetStipend(userId, Number(body.ms));
+        await adminSetStipend(userId, Number(body.ms));
         break;
       case "adminStartingGold":
-        adminSetStartingGold(userId, Number(body.gold));
+        await adminSetStartingGold(userId, Number(body.gold));
         break;
       case "adminStipendLadder":
-        adminSetStipendLadder(userId, body.amounts);
+        await adminSetStipendLadder(userId, body.amounts);
         break;
       case "adminGoal":
-        adminSetGoal(userId, {
+        await adminSetGoal(userId, {
           mode: body.mode,
           score: body.score,
           threshold: body.threshold,
@@ -183,7 +183,7 @@ export async function POST(request: Request) {
       default:
         throw new Error("Unknown action.");
     }
-    return asJson(getGameState(userId, tz, { tick: false }));
+    return asJson(await getGameState(userId, tz, { tick: false }));
   } catch (error) {
     return handleError(error);
   }

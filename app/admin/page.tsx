@@ -10,14 +10,14 @@ export default async function AdminPage() {
   if (!userId) {
     redirect("/");
   }
-  if (!canHoldOffice(userId)) {
+  if (!(await canHoldOffice(userId))) {
     redirect("/play");
   }
-  enterAdmin(userId);
+  await enterAdmin(userId);
   const jar = await cookies();
   return (
     <AdminScreen
-      initialState={getGameState(userId)}
+      initialState={await getGameState(userId)}
       initialItemId={selectedItemFromCookie(jar.get(SELECTED_ITEM_COOKIE)?.value)}
     />
   );
