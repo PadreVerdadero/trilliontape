@@ -1,0 +1,27 @@
+# TrillionTape libSQL data host. Unique name so it will not collide with
+# another Fly app. Change `app` only if this name is already taken.
+app = "trilliontape-data"
+primary_region = "iad"
+
+[build]
+  image = "ghcr.io/tursodatabase/libsql-server:latest"
+
+[env]
+  SQLD_NODE = "primary"
+  SQLD_HTTP_LISTEN_ADDR = "0.0.0.0:8080"
+
+[mounts]
+  source = "trilliontape_libsql"
+  destination = "/var/lib/sqld"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

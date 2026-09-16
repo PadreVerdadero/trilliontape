@@ -1,0 +1,4 @@
+# Private signing material for the TrillionTape libSQL data host.
+# Generate with: node scripts/gen-trilliontape-db-auth.mjs
+*
+!.gitignore

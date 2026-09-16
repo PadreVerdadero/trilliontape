@@ -38,7 +38,13 @@ yarn-error.log*
 /data/*.db
 /data/*.db-*
 
-# vercel
+# TrillionTape data-host secrets (JWT private key + token)
+/data-host/.env.local
+/data-host/keys/jwt.key
+/data-host/keys/token
+/data-host/keys/jwt.pub.b64url
+
+# vercel (this game is not deployed there)
 .vercel
 
 # typescript

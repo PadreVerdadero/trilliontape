@@ -1,0 +1,19 @@
+name: trilliontape-data
+
+services:
+  libsql:
+    image: ghcr.io/tursodatabase/libsql-server:latest
+    platform: linux/amd64
+    container_name: trilliontape-data
+    ports:
+      - "127.0.0.1:43148:8080"
+    environment:
+      SQLD_NODE: primary
+      SQLD_AUTH_JWT_KEY_FILE: /etc/sqld/jwt.pub
+    volumes:
+      - trilliontape_libsql:/var/lib/sqld
+      - ./keys/jwt.pub:/etc/sqld/jwt.pub:ro
+    restart: unless-stopped
+
+volumes:
+  trilliontape_libsql:
