@@ -27,9 +27,30 @@ const initStore = new AsyncLocalStorage<boolean>();
 
 const LOCAL_FILE = "file:data/bazaar.db";
 
+const DESK_HOSTS = new Set([
+  "trilliontape.fly.dev",
+  "trilliontape.com",
+  "www.trilliontape.com",
+]);
+
 function envUrl() {
-  const raw = process.env.TRILLIONTAPE_DATABASE_URL?.trim();
-  return raw && raw.length > 0 ? raw : LOCAL_FILE;
+  let raw = process.env.TRILLIONTAPE_DATABASE_URL?.trim() ?? "";
+  if (!raw) return LOCAL_FILE;
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(raw)) raw = `https://${raw}`;
+  let host = "";
+  try {
+    host = new URL(raw.replace(/^libsql:/i, "https:")).hostname.toLowerCase();
+  } catch {
+    throw new Error(
+      "TRILLIONTAPE_DATABASE_URL must be https://trilliontape-data.fly.dev — not the website hostname."
+    );
+  }
+  if (DESK_HOSTS.has(host)) {
+    throw new Error(
+      "TRILLIONTAPE_DATABASE_URL is the website, not the book. Leave that secret empty to use the local file, or set https://trilliontape-data.fly.dev after the data host is up."
+    );
+  }
+  return raw;
 }
 
 function envToken() {

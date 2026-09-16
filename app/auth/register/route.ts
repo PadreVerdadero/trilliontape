@@ -1,4 +1,5 @@
 import { registerUser } from "@/lib/game/auth";
+import { publicAuthError } from "@/lib/game/auth-error";
 import { nextFromForm } from "@/lib/game/auth-redirect";
 import { redirect } from "next/navigation";
 
@@ -10,8 +11,7 @@ export async function POST(request: Request) {
   try {
     await registerUser(username, password);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Could not create a traveler.";
+    const message = publicAuthError(error, "Could not create a traveler.");
     redirect(`/?error=${encodeURIComponent(message)}&next=${encodeURIComponent(next)}`);
   }
   redirect(next);
