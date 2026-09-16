@@ -2945,6 +2945,7 @@ async function chaseStaleBotQuote(userId: number, style: BotProfile["style"], no
 export async function tickBots() {
   if ((await readGamePhase()) === "lobby") return;
   if ((await readGameOver()).over) return;
+  if (!humanOnDesk()) return;
   const seated = await computerCount();
   if (seated < 1) return;
   const now = nowMs();
@@ -3040,7 +3041,18 @@ export async function tickBots() {
 const deskWork = globalThis as unknown as {
   bazaarDeskTimer?: ReturnType<typeof setInterval>;
   bazaarDeskBusy?: boolean;
+  bazaarHumanAt?: number;
 };
+
+const HUMAN_IDLE_MS = 25_000;
+
+function noteHumanOnDesk() {
+  deskWork.bazaarHumanAt = Date.now();
+}
+
+function humanOnDesk() {
+  return Boolean(deskWork.bazaarHumanAt && Date.now() - deskWork.bazaarHumanAt < HUMAN_IDLE_MS);
+}
 
 export function startDeskWork() {
   if (deskWork.bazaarDeskTimer) return;
@@ -3056,6 +3068,7 @@ async function runDeskWork() {
   try {
     if ((await readGamePhase()) !== "live") return;
     if ((await readGameOver()).over) return;
+    if (!humanOnDesk()) return;
     await tickBots();
     await alignIssuedToAuthorized();
     for (const row of await tableSeatIds()) {
@@ -3367,6 +3380,7 @@ export async function getGameState(
   timeZone?: string,
   options?: { tick?: boolean }
 ): Promise<GameState> {
+  if (!await isBot(userId)) noteHumanOnDesk();
   startDeskWork();
   await hydrateShareCatalog();
   await maybeStartScheduledGame();
