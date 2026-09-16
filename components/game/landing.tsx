@@ -3,7 +3,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MobileToggle } from "@/components/game/mobile-toggle";
 import { useMobileLayout } from "@/hooks/use-mobile-layout";
-import { GAME_NAME, GAME_PITCH, GAME_TAGLINE } from "@/lib/game/brand";
+import { GAME_DOMAIN, GAME_NAME, GAME_PITCH, GAME_TAGLINE } from "@/lib/game/brand";
 import { items } from "@/lib/game/catalog";
 
 const highlights = [
@@ -50,7 +50,7 @@ export function Landing({ error, next }: { error?: string; next?: string }) {
           <div className="flex items-center gap-3">
             <MobileToggle checked={mobile} onChange={setMobile} />
             <p className="hidden text-sm text-muted-foreground sm:block">
-              {GAME_TAGLINE} · {GAME_PITCH}
+              {GAME_DOMAIN} · {GAME_TAGLINE} · {GAME_PITCH}
             </p>
           </div>
         </header>

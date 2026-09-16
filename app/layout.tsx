@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Outfit } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { GAME_PITCH, GAME_TITLE } from "@/lib/game/brand";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -14,8 +15,8 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "TrillionTrade — Player Market Game",
-  description: "Trade for a Trillion! A player market of emoji goods.",
+  title: GAME_TITLE,
+  description: `${GAME_PITCH} A player market of emoji goods.`,
 };
 
 export const viewport: Viewport = {

@@ -1,6 +1,6 @@
-# TrillionTrade — Player Market Game
+# TrillionTape — Player Market Game
 
-Trade for a Trillion. A player market of emoji goods. Post bids and asks, swap bundles, and race to the mark Jesse sets — by default 1,000,000,000,000 of net worth (coin plus goods at market value).
+Trade for a Trillion. A player market of emoji goods at [trilliontape.com](https://trilliontape.com). Post bids and asks, swap bundles, and race to the mark Jesse sets — by default 1,000,000,000,000 of net worth (coin plus goods at market value).
 
 The UI is built for a phone in the pocket and a computer at the desk.
 
