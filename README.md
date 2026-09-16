@@ -100,13 +100,32 @@ fly deploy --config fly.toml --app trilliontape
 
 If `trilliontape` is taken, change `app` in the root `fly.toml`.
 
-Push-to-deploy: in the GitHub repo, **Settings → Secrets and variables → Actions**, add `FLY_API_TOKEN` from `fly tokens create deploy`. A push to `main` runs `.github/workflows/fly.yml` and deploys only the desk. The data host is not redeployed on every push.
+**Launch from GitHub** in the Fly dashboard is enough. Leave the working directory blank so it uses the repo-root `fly.toml` (the desk), not `data-host`. Do not paste `fly deploy --image registry.fly.io/trilliontape:deployment-…` — that reuses an old image that listens on the wrong port.
 
-Fly’s dashboard **Launch from GitHub** also works if you point it at this repo and keep the existing `fly.toml` / `Dockerfile`. Still set those two secrets on the Fly app, not in the repo.
+Push-to-deploy is optional. If you want GitHub Actions to deploy too, add repo secret `FLY_API_TOKEN` from `fly tokens create deploy`. Without that secret the Action skips; Launch UI deploys still count.
+
+### If https://trilliontape.fly.dev does not open
+
+Fly can mark a deploy green and still leave the app with **no public IP**. Without an IP, `trilliontape.fly.dev` has no DNS and the browser says the site cannot be reached.
+
+1. Open the desk app: [https://fly.io/apps/trilliontape](https://fly.io/apps/trilliontape) (not `trilliontape-data`).
+2. On the **overview** page, find **IP addresses**.
+3. Allocate **Shared IPv4** (free). Allocate **IPv6** too if the button is there.
+4. Wait about a minute, then open [https://trilliontape.fly.dev](https://trilliontape.fly.dev).
+
+Same thing from a terminal that is already logged into Fly:
+
+```bash
+fly ips list -a trilliontape
+fly ips allocate-v4 --shared -a trilliontape
+fly ips allocate-v6 -a trilliontape
+```
+
+You should then see an A or AAAA record for `trilliontape.fly.dev`. The landing page says **TrillionTape** and **Trade for a Trillion**. Cursor preview is a different world; do not create Jesse there if you mean to play on Fly.
 
 ### 4. Point trilliontape.com at the desk (Cloudflare)
 
-DNS → **CNAME** `@` and `www` to `trilliontape.fly.dev` (or the app name you used), proxy **on**. SSL is automatic.
+Wait until https://trilliontape.fly.dev itself works. Then DNS → **CNAME** `@` and `www` to `trilliontape.fly.dev` (or the app name you used), proxy **on**. SSL is automatic.
 
 After DNS is green, open https://trilliontape.com. Create Jesse on that hosted world; the Cursor preview world is a different database and will not follow the domain.
 

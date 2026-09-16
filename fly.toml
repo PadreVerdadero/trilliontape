@@ -1,7 +1,7 @@
-# fly.toml app configuration file generated for trilliontape on 2026-09-16T02:43:54Z
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
+# TrillionTape desk (Next.js). Fly Launch generated this file.
+# If https://trilliontape.fly.dev does not resolve, the app has no public IP:
+# open https://fly.io/apps/trilliontape and allocate Shared IPv4 (and IPv6).
+# Change `app` only if this name is already taken.
 
 app = 'trilliontape'
 primary_region = 'iad'
@@ -18,6 +18,7 @@ primary_region = 'iad'
   auto_stop_machines = 'off'
   auto_start_machines = true
   min_machines_running = 1
+  processes = ['app']
 
 [[vm]]
   size = 'shared-cpu-1x'
