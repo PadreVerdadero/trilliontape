@@ -101,16 +101,18 @@ function mixTone(
 
 function renderCue(kind: DeskSound | "silent") {
   const duration =
-    kind === "silent" ? 0.05 : kind === "deposit" ? 0.55 : kind === "fail" ? 0.32 : 0.38;
+    kind === "silent" ? 0.05 : kind === "deposit" ? 0.55 : kind === "fail" ? 0.32 : kind === "sell" ? 0.5 : 0.38;
   const out = new Float32Array(Math.floor(SAMPLE_RATE * duration));
   if (kind === "buy") {
     mixTone(out, 523.25, 0, 0.12, 0.62);
     mixTone(out, 783.99, 0.08, 0.26, 0.72);
     mixTone(out, 1046.5, 0.16, 0.2, 0.35);
   } else if (kind === "sell") {
-    mixTone(out, 659.25, 0, 0.1, 0.58);
-    mixTone(out, 523.25, 0.08, 0.14, 0.62);
-    mixTone(out, 392.0, 0.16, 0.2, 0.7, 329.63);
+    mixTone(out, 783.99, 0, 0.1, 0.52);
+    mixTone(out, 987.77, 0.07, 0.11, 0.6);
+    mixTone(out, 1174.66, 0.14, 0.14, 0.68);
+    mixTone(out, 1567.98, 0.22, 0.24, 0.78);
+    mixTone(out, 3135.96, 0.24, 0.14, 0.22);
   } else if (kind === "deposit") {
     mixTone(out, 1760, 0, 0.08, 0.5);
     mixTone(out, 2349, 0.07, 0.08, 0.55);
@@ -248,8 +250,10 @@ function playWebFallback(audio: AudioContext, kind: DeskSound) {
     beep(audio, 523.25, t, 0.12, 0.22);
     beep(audio, 783.99, t + 0.08, 0.22, 0.28);
   } else if (kind === "sell") {
-    beep(audio, 659.25, t, 0.1, 0.22, "triangle");
-    beep(audio, 392, t + 0.12, 0.2, 0.26, "sine", 329.63);
+    beep(audio, 783.99, t, 0.09, 0.2);
+    beep(audio, 987.77, t + 0.07, 0.1, 0.22);
+    beep(audio, 1174.66, t + 0.14, 0.12, 0.24);
+    beep(audio, 1567.98, t + 0.22, 0.2, 0.28);
   } else if (kind === "deposit") {
     beep(audio, 1760, t, 0.08, 0.16, "square");
     beep(audio, 2349, t + 0.07, 0.08, 0.16, "square");
