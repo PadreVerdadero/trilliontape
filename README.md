@@ -43,3 +43,51 @@ Each friend creates their own traveler name on the same landing page. Quick `try
 If you are in a Cursor Cloud Agent, **Preview** is a tunnel from your laptop to that remote machine — `127.0.0.1` in your browser is your laptop, not the game. This repo lists port `43147` in `.cursor/environment.json` so new agents can forward it. When that tunnel fails, the agent can open a temporary `trycloudflare.com` URL to the same server.
 
 No extra services or API keys. Accounts are stored on this machine; do not reuse a real password.
+
+## Go live on trilliontape.com
+
+The domain on Cloudflare is only DNS. This game keeps the book in a SQLite file (`data/bazaar.db`), so it has to run on **one computer that stays on**. Do not use Cloudflare Pages, Workers, or Vercel for this — they cannot hold that file.
+
+### 1. Rent a small always-on box
+
+A $4–6/month Ubuntu VPS is enough (Hetzner, DigitalOcean, Linode). A home PC works if it never sleeps. Note the public IP if you will use a DNS A record.
+
+### 2. Put the app on that box
+
+```bash
+sudo apt update
+sudo apt install -y git nodejs npm python3 make g++
+git clone <your-repo-url> trilliontape
+cd trilliontape
+npm ci
+npm run build
+npm start
+```
+
+`npm start` listens on all interfaces, port `43147`. Leave it running (systemd, `tmux`, or Docker). The first boot creates `data/bazaar.db`. Copy that file in if you want to keep an existing world.
+
+Docker instead of Node on the host:
+
+```bash
+docker build -t trilliontape .
+docker run -d --name trilliontape --restart unless-stopped -p 43147:43147 -v trilliontape-data:/app/data trilliontape
+```
+
+### 3. Point trilliontape.com at it (Cloudflare)
+
+**Easier, no open ports — Cloudflare Tunnel**
+
+1. In Cloudflare: **Zero Trust** → **Networks** → **Tunnels** → create a tunnel.
+2. Install `cloudflared` on the VPS with the token Cloudflare shows.
+3. Add a public hostname: `trilliontape.com` → `http://localhost:43147`. Add `www` the same way if you want it.
+4. SSL is automatic. You do not open port 80/443 on the VPS.
+
+**Or a normal DNS record**
+
+1. Cloudflare **DNS** → add an **A** record: name `@`, content = the VPS IP, proxy **on** (orange cloud).
+2. Add **CNAME** `www` → `trilliontape.com`, proxy on.
+3. **SSL/TLS** → Overview → **Full (strict)**. Install a certificate on the origin (Cloudflare Origin CA, or Let’s Encrypt behind nginx).
+4. Put nginx or Caddy in front of `127.0.0.1:43147` on the VPS so HTTPS terminates there.
+
+After DNS is green (often a few minutes), open https://trilliontape.com. Create Jesse on that new world; the Cursor preview world is a different machine and will not follow the domain.
+
