@@ -86,7 +86,16 @@ export function PlayScreen({
       sortDir={marketSort.sortDir}
       cycleSort={marketSort.cycleSort}
       onOrder={(input) => run({ action: "order", ...input })}
-      onTake={(orderId) => run({ action: "take", orderId })}
+      onTake={(input) =>
+        run({
+          action: "take",
+          orderId: input.orderId,
+          itemId: input.itemId,
+          side: input.side,
+          price: input.price,
+          treasury: input.treasury,
+        })
+      }
       onCancel={(orderId) => run({ action: "cancel", orderId })}
       onProposeSwap={(input) => run({ action: "swapPropose", ...input })}
       onAcceptSwap={(offerId) => run({ action: "swapAccept", offerId })}

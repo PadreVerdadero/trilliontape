@@ -58,6 +58,14 @@ export type OrderRow = {
   isGov: boolean;
 };
 
+export type TakeQuoteInput = {
+  orderId: number;
+  itemId: string;
+  side: OrderSide;
+  price: number;
+  treasury?: boolean;
+};
+
 export type TradeRow = {
   id: number;
   itemId: string;

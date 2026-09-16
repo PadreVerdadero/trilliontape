@@ -1039,84 +1039,126 @@ export async function placeOrder(
   );
 }
 
-export async function takeOrder(userId: number, orderId: number, quantity = 1) {
-  await resolveBusy(userId);
-  await requireOpenGame();
-  const db = getDb();
-  const order = await db
+type LiveOrder = {
+  id: number;
+  user_id: number;
+  item_id: string;
+  side: string;
+  price: number;
+  remaining: number;
+  treasury: number;
+};
+
+async function loadLiveOrder(orderId: number) {
+  return (await getDb()
     .prepare(
       "SELECT id, user_id, item_id, side, price, remaining, COALESCE(treasury, 0) AS treasury FROM orders WHERE id = ? AND remaining > 0"
     )
-    .get(orderId) as
-    | {
-        id: number;
-        user_id: number;
-        item_id: string;
-        side: string;
-        price: number;
-        remaining: number;
-        treasury: number;
-      }
-    | undefined;
-  if (!order) throw new Error("That order is gone.");
-  const treasuryQuote = Boolean(order.treasury);
-  if (order.user_id === userId && !treasuryQuote) throw new Error("That is your own order.");
+    .get(orderId)) as LiveOrder | undefined;
+}
+
+async function findLiveQuote(
+  userId: number,
+  hint?: {
+    itemId?: string;
+    side?: string;
+    price?: number;
+    treasury?: boolean;
+  }
+) {
+  const itemId = hint?.itemId;
+  const side = hint?.side;
+  const price = hint?.price;
+  if (!itemId || (side !== "buy" && side !== "sell") || !Number.isInteger(price) || (price ?? 0) < 1) {
+    return undefined;
+  }
+  const treasury = hint.treasury ? 1 : 0;
+  return (await getDb()
+    .prepare(
+      `SELECT id, user_id, item_id, side, price, remaining, COALESCE(treasury, 0) AS treasury
+       FROM orders
+       WHERE item_id = ? AND side = ? AND price = ? AND remaining > 0
+         AND COALESCE(treasury, 0) = ?
+         AND user_id != ?
+       ORDER BY created_at ASC, id ASC
+       LIMIT 1`
+    )
+    .get(itemId, side, price, treasury, userId)) as LiveOrder | undefined;
+}
+
+export async function takeOrder(
+  userId: number,
+  orderId: number,
+  quantity = 1,
+  hint?: { itemId?: string; side?: string; price?: number; treasury?: boolean }
+) {
+  await resolveBusy(userId);
+  await requireOpenGame();
   if (!Number.isInteger(quantity) || quantity < 1) {
     throw new Error("Choose how many to take.");
   }
-  let fillQty = Math.min(quantity, order.remaining);
-  if (order.side === "sell" && treasuryQuote) {
-    const room = await remainingToIssue(order.item_id);
-    if (room <= 0) throw new Error("Nothing left to issue under Authorized.");
-    fillQty = Math.min(fillQty, room);
-  }
+  await getDb().transaction(async () => {
+    let order = await loadLiveOrder(orderId);
+    if (!order) order = await findLiveQuote(userId, hint);
+    if (!order) {
+      throw new Error("That quote just filled. The book moved — tap another.");
+    }
+    const treasuryQuote = Boolean(order.treasury);
+    if (order.user_id === userId && !treasuryQuote) throw new Error("That is your own order.");
+    let fillQty = Math.min(quantity, order.remaining);
+    if (order.side === "sell" && treasuryQuote) {
+      const room = await remainingToIssue(order.item_id);
+      if (room <= 0) throw new Error("Nothing left to issue under Authorized.");
+      fillQty = Math.min(fillQty, room);
+    }
 
-  if (order.side === "sell") {
-    if (await availableGold(userId) < order.price * fillQty) {
-      throw new Error("Not enough coin to take that ask.");
+    if (order.side === "sell") {
+      if (await availableGold(userId) < order.price * fillQty) {
+        throw new Error("Not enough coin to take that ask.");
+      }
+      const buyId = await insertLiveOrder(userId, order.item_id, "buy", order.price, fillQty, false);
+      await executeFill(
+        { id: buyId, user_id: userId, price: order.price, remaining: fillQty, treasury: 0 },
+        {
+          id: order.id,
+          user_id: order.user_id,
+          price: order.price,
+          remaining: order.remaining,
+          treasury: order.treasury,
+        },
+        order.item_id,
+        fillQty,
+        order.price
+      );
+    } else {
+      if (await availableItem(userId, order.item_id) < fillQty) {
+        throw new Error("Not enough stock to fill that bid.");
+      }
+      const sellId = await insertLiveOrder(userId, order.item_id, "sell", order.price, fillQty, false);
+      await executeFill(
+        {
+          id: order.id,
+          user_id: order.user_id,
+          price: order.price,
+          remaining: order.remaining,
+          treasury: order.treasury,
+        },
+        { id: sellId, user_id: userId, price: order.price, remaining: fillQty, treasury: 0 },
+        order.item_id,
+        fillQty,
+        order.price
+      );
     }
-    const buyId = await insertLiveOrder(userId, order.item_id, "buy", order.price, fillQty, false);
-    await executeFill(
-      { id: buyId, user_id: userId, price: order.price, remaining: fillQty, treasury: 0 },
-      {
-        id: order.id,
-        user_id: order.user_id,
-        price: order.price,
-        remaining: order.remaining,
-        treasury: order.treasury,
-      },
-      order.item_id,
-      fillQty,
-      order.price
+    const item = itemById[order.item_id];
+    await setEvent(
+      userId,
+      treasuryQuote && order.side === "sell"
+        ? `Treasury minted ${item.emoji} ${item.name} ×${formatNumber(fillQty)} into your pack at ${formatCoins(order.price)}.`
+        : treasuryQuote && order.side === "buy"
+          ? `Sold into the treasury: ${item.emoji} ${item.name} ×${formatNumber(fillQty)} at ${formatCoins(order.price)}.`
+          : `Filled ${item.emoji} ${item.name} ×${formatNumber(fillQty)} at ${formatCoins(order.price)}.`
     );
-  } else {
-    if (await availableItem(userId, order.item_id) < fillQty) {
-      throw new Error("Not enough stock to fill that bid.");
-    }
-    const sellId = await insertLiveOrder(userId, order.item_id, "sell", order.price, fillQty, false);
-    await executeFill(
-      {
-        id: order.id,
-        user_id: order.user_id,
-        price: order.price,
-        remaining: order.remaining,
-        treasury: order.treasury,
-      },
-      { id: sellId, user_id: userId, price: order.price, remaining: fillQty, treasury: 0 },
-      order.item_id,
-      fillQty,
-      order.price
-    );
-  }
-  const item = itemById[order.item_id];
-  await setEvent(
-    userId,
-    treasuryQuote && order.side === "sell"
-      ? `Treasury minted ${item.emoji} ${item.name} ×${formatNumber(fillQty)} into your pack at ${formatCoins(order.price)}.`
-      : treasuryQuote && order.side === "buy"
-        ? `Sold into the treasury: ${item.emoji} ${item.name} ×${formatNumber(fillQty)} at ${formatCoins(order.price)}.`
-        : `Filled ${item.emoji} ${item.name} ×${formatNumber(fillQty)} at ${formatCoins(order.price)}.`
-  );
+  });
 }
 
 export async function cancelOrder(userId: number, orderId: number, quantity = 1) {

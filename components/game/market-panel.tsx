@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 import { useOrderBook } from "@/hooks/use-game";
 import { PriceChart } from "@/components/game/price-chart";
 import { SwapPanel } from "@/components/game/swap-panel";
-import type { GameState, Item, OrderRow, OrderSide } from "@/lib/game/types";
+import type { GameState, Item, OrderRow, OrderSide, TakeQuoteInput } from "@/lib/game/types";
 
 function playerQuotes(rows: OrderRow[]) {
   return rows.filter((row) => !row.isGov);
@@ -31,6 +31,7 @@ function treasuryAtBest(rows: OrderRow[]) {
   const price = treasury[0].price;
   return {
     id: treasury[0].id,
+    itemId: treasury[0].itemId,
     price,
     remaining: treasury.filter((row) => row.price === price).reduce((sum, row) => sum + row.remaining, 0),
   };
@@ -43,9 +44,9 @@ function TreasuryButton({
   onTake,
 }: {
   kind: "buy" | "sell";
-  quote: { id: number; price: number; remaining: number };
+  quote: { id: number; itemId: string; price: number; remaining: number };
   pending: boolean;
-  onTake: (id: number) => void;
+  onTake: (input: TakeQuoteInput) => void;
 }) {
   const buy = kind === "buy";
   return (
@@ -53,7 +54,15 @@ function TreasuryButton({
       type="button"
       disabled={pending}
       title={`${buy ? "Buy" : "Sell"} ${formatNumber(quote.remaining)} at ${formatCoins(quote.price)}`}
-      onClick={() => onTake(quote.id)}
+      onClick={() =>
+        onTake({
+          orderId: quote.id,
+          itemId: quote.itemId,
+          side: buy ? "sell" : "buy",
+          price: quote.price,
+          treasury: true,
+        })
+      }
       className={cn(
         "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium ring-1 disabled:opacity-50",
         buy
@@ -197,11 +206,11 @@ function unitRows<T extends { remaining: number }>(rows: T[]) {
   );
 }
 
-function stackUnitRows<T extends { remaining: number; playerId: number; price: number; isGov?: boolean }>(
-  rows: T[]
-) {
+function stackUnitRows<
+  T extends { id: number; remaining: number; playerId: number; price: number; isGov?: boolean },
+>(rows: T[]) {
   const units = unitRows(rows);
-  const stacks: (T & { remaining: number; unit: number; count: number })[] = [];
+  const stacks: (T & { remaining: number; unit: number; count: number; ids: number[] })[] = [];
   for (const row of units) {
     const prev = stacks[stacks.length - 1];
     if (
@@ -211,9 +220,10 @@ function stackUnitRows<T extends { remaining: number; playerId: number; price: n
       Boolean(prev.isGov) === Boolean(row.isGov)
     ) {
       prev.count += 1;
+      prev.ids.push(row.id);
       continue;
     }
-    stacks.push({ ...row, count: 1 });
+    stacks.push({ ...row, count: 1, ids: [row.id] });
   }
   return stacks;
 }
@@ -245,7 +255,7 @@ export function MarketPanel({
     price: number;
     quantity: number;
   }) => Promise<unknown>;
-  onTake: (orderId: number) => Promise<unknown>;
+  onTake: (input: TakeQuoteInput) => Promise<unknown>;
   onCancel: (orderId: number) => Promise<unknown>;
   onProposeSwap: (input: {
     toUsername: string | null;
@@ -337,9 +347,9 @@ export function MarketPanel({
     return rows.find((row) => row.playerId !== state.player.id) ?? null;
   }
 
-  async function takeQuote(orderId: number) {
+  async function takeQuote(input: TakeQuoteInput) {
     const shot = snapshotScrolls();
-    await onTake(orderId);
+    await onTake(input);
     await reloadBook();
     restoreScrolls(shot);
     requestAnimationFrame(() => restoreScrolls(shot));
@@ -348,7 +358,13 @@ export function MarketPanel({
   async function takeBest(side: "buy" | "ask") {
     const row = firstTakeable(side);
     if (!row) return;
-    await takeQuote(row.id);
+    await takeQuote({
+      orderId: row.id,
+      itemId: row.itemId,
+      side: row.side,
+      price: row.price,
+      treasury: row.isGov,
+    });
   }
 
   useEffect(() => {
@@ -427,12 +443,28 @@ export function MarketPanel({
       }
       if (key === "t") {
         event.preventDefault();
-        if (!pending && deskAsk) void takeQuote(deskAsk.id);
+        if (!pending && deskAsk) {
+          void takeQuote({
+            orderId: deskAsk.id,
+            itemId: deskAsk.itemId,
+            side: "sell",
+            price: deskAsk.price,
+            treasury: true,
+          });
+        }
         return;
       }
       if (key === "r") {
         event.preventDefault();
-        if (!pending && deskBid) void takeQuote(deskBid.id);
+        if (!pending && deskBid) {
+          void takeQuote({
+            orderId: deskBid.id,
+            itemId: deskBid.itemId,
+            side: "buy",
+            price: deskBid.price,
+            treasury: true,
+          });
+        }
       }
     }
     window.addEventListener("keydown", onKey);
@@ -677,7 +709,7 @@ export function MarketPanel({
                     kind="sell"
                     quote={deskBid}
                     pending={pending}
-                    onTake={(id) => void takeQuote(id)}
+                    onTake={(input) => void takeQuote(input)}
                   />
                 ) : null}
               </div>
@@ -691,10 +723,7 @@ export function MarketPanel({
                 rows={playerQuotes(book?.bids ?? [])}
                 selfId={state.player.id}
                 pending={pending}
-                onTake={async (id) => {
-                  await onTake(id);
-                  await reloadBook();
-                }}
+                onTake={(input) => void takeQuote(input)}
                 onCancel={async (id) => {
                   await onCancel(id);
                   await reloadBook();
@@ -709,7 +738,7 @@ export function MarketPanel({
                     kind="buy"
                     quote={deskAsk}
                     pending={pending}
-                    onTake={(id) => void takeQuote(id)}
+                    onTake={(input) => void takeQuote(input)}
                   />
                 ) : null}
               </div>
@@ -723,10 +752,7 @@ export function MarketPanel({
                 rows={playerQuotes(book?.asks ?? [])}
                 selfId={state.player.id}
                 pending={pending}
-                onTake={async (id) => {
-                  await onTake(id);
-                  await reloadBook();
-                }}
+                onTake={(input) => void takeQuote(input)}
                 onCancel={async (id) => {
                   await onCancel(id);
                   await reloadBook();
@@ -1040,12 +1066,20 @@ function OrderList({
   onTake,
   onCancel,
 }: {
-  rows: { id: number; username: string; price: number; remaining: number; playerId: number; isGov?: boolean }[];
+  rows: {
+    id: number;
+    itemId: string;
+    username: string;
+    price: number;
+    remaining: number;
+    playerId: number;
+    isGov?: boolean;
+  }[];
   empty: string;
   selfId: number;
   pending: boolean;
   side: OrderSide;
-  onTake: (id: number) => void;
+  onTake: (input: TakeQuoteInput) => void;
   onCancel: (id: number) => void;
 }) {
   if (rows.length === 0) {
@@ -1059,12 +1093,23 @@ function OrderList({
         const govAsk = Boolean(row.isGov) && side === "sell";
         const govBid = Boolean(row.isGov) && side === "buy";
         const name = row.isGov ? "Government" : yours ? "you" : row.username;
+        const liveId = row.ids[row.ids.length - 1] ?? row.id;
         return (
           <li key={`${row.id}-${row.unit}`}>
             <button
               type="button"
               disabled={pending}
-              onClick={() => (yours ? onCancel(row.id) : onTake(row.id))}
+              onClick={() =>
+                yours
+                  ? onCancel(liveId)
+                  : onTake({
+                      orderId: liveId,
+                      itemId: row.itemId,
+                      side,
+                      price: row.price,
+                      treasury: Boolean(row.isGov),
+                    })
+              }
               className={cn(
                 "flex h-7 w-full items-center justify-between gap-2 rounded-md px-2 text-left text-sm ring-1 disabled:opacity-100",
                 govAsk && "bg-white text-zinc-950 ring-zinc-300 hover:bg-zinc-100",

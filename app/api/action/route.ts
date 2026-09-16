@@ -38,7 +38,7 @@ type ActionBody = {
   | { action: "mine"; itemId?: string }
   | { action: "craft"; outputId: string }
   | { action: "order"; itemId: string; side: "buy" | "sell"; price: number; quantity: number }
-  | { action: "take"; orderId: number; quantity?: number }
+  | { action: "take"; orderId: number; quantity?: number; itemId?: string; side?: "buy" | "sell"; price?: number; treasury?: boolean }
   | { action: "cancel"; orderId?: number; orderIds?: number[] }
   | { action: "use"; itemId: string }
   | { action: "stallSell"; stallId: string; itemId: string; quantity: number }
@@ -107,7 +107,12 @@ export async function POST(request: Request) {
         await placeOrder(userId, body.itemId, body.side, Number(body.price), Number(body.quantity));
         break;
       case "take":
-        await takeOrder(userId, Number(body.orderId), Number(body.quantity ?? 1));
+        await takeOrder(userId, Number(body.orderId), Number(body.quantity ?? 1), {
+          itemId: body.itemId,
+          side: body.side,
+          price: body.price != null ? Number(body.price) : undefined,
+          treasury: body.treasury,
+        });
         break;
       case "cancel": {
         const ids = Array.isArray(body.orderIds)

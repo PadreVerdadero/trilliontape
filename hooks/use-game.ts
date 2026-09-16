@@ -113,7 +113,7 @@ export function useOrderBook(itemId: string | null) {
     }, 0);
     const id = window.setInterval(() => {
       void load();
-    }, 4000);
+    }, 2000);
     return () => {
       window.clearTimeout(timeout);
       window.clearInterval(id);
