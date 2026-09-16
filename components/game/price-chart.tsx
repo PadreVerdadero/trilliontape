@@ -216,13 +216,13 @@ export function PriceChart({
                 ? "fill-emerald-400"
                 : tone === "down"
                   ? "fill-rose-400"
-                  : "fill-zinc-400";
+                  : "fill-sky-400";
             const stroke =
               tone === "up"
                 ? "stroke-emerald-300"
                 : tone === "down"
                   ? "stroke-rose-300"
-                  : "stroke-zinc-400";
+                  : "stroke-sky-300";
             return (
               <g key={`${candle.at}-${index}`}>
                 <line
