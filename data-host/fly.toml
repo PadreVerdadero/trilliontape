@@ -1,5 +1,8 @@
-# TrillionTape libSQL data host. Unique name so it will not collide with
-# another Fly app. Change `app` only if this name is already taken.
+# TrillionTape libSQL data host — not the Next.js desk.
+# Fly Launch from GitHub: config file data-host/fly.toml, working directory
+# data-host. Leave those blank and Fly will build the desk again. Wrong.
+# After deploy, allocate Shared IPv4 on https://fly.io/apps/trilliontape-data
+# Change `app` only if this name is already taken.
 app = "trilliontape-data"
 primary_region = "iad"
 

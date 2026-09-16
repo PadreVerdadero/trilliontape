@@ -48,7 +48,9 @@ No extra services or API keys for local play. Accounts sit in the local file; do
 
 GitHub → Fly.io is the right path. Do not put this on the Vercel project you already use. One GitHub repo builds two Fly apps: **`trilliontape-data`** (the book) and **`trilliontape`** (the desk). Cloudflare only points the domain at the desk.
 
-This project does not have a GitHub repository yet. Click **Create repo** in Cursor, choose GitHub, and name it something like `trilliontape`. After that exists, pushes to `main` can deploy.
+The GitHub repo is [PadreVerdadero/trilliontape](https://github.com/PadreVerdadero/trilliontape). Fly Launch UI deploys from that `main` branch.
+
+The desk at [https://trilliontape.fly.dev](https://trilliontape.fly.dev) can be up before the book is. Until `TRILLIONTAPE_DATABASE_URL` is set, that machine keeps the table in a local file that **vanishes on restart**. Do not create traveler **Jesse** yet. Guest is fine to click around.
 
 Two env names, and only these, on the **desk** app:
 
@@ -69,7 +71,16 @@ That writes `data-host/keys/` (gitignored): a public key the data host checks, a
 
 ### 2. Data host on Fly (`trilliontape-data`)
 
-[Fly.io](https://fly.io) is a small always-on VM with a disk. Log in (`fly auth login`), then:
+This is a **second** Fly app, not another copy of the desk. In Launch from GitHub:
+
+1. App name **`trilliontape-data`**.
+2. Config file **`data-host/fly.toml`**.
+3. Working directory **`data-host`** (if this is blank, Fly builds the Next.js desk again — wrong).
+4. Region **iad** (Ashburn). Create the volume **`trilliontape_libsql`** (1 GB) mounted at `/var/lib/sqld` when asked.
+5. Secret **`SQLD_AUTH_JWT_KEY`** = the one-line contents of `data-host/keys/jwt.pub.b64url` (from `npm run data-host:auth`).
+6. On the overview page, allocate **Shared IPv4** (and **IPv6**) the same way you did for the desk.
+
+Or from a terminal already logged into Fly:
 
 ```bash
 cd data-host
@@ -77,6 +88,8 @@ fly apps create trilliontape-data
 fly volumes create trilliontape_libsql --region iad --size 1 --app trilliontape-data --yes
 fly secrets set SQLD_AUTH_JWT_KEY="$(cat keys/jwt.pub.b64url)" --app trilliontape-data
 fly deploy --config fly.toml --app trilliontape-data
+fly ips allocate-v4 --shared -a trilliontape-data
+fly ips allocate-v6 -a trilliontape-data
 ```
 
 If `trilliontape-data` is taken, change `app` in `data-host/fly.toml` and use that name. Do not attach this volume to another Fly app.
@@ -86,21 +99,17 @@ export TRILLIONTAPE_DATABASE_URL=https://trilliontape-data.fly.dev
 export TRILLIONTAPE_AUTH_TOKEN="$(cat data-host/keys/token)"
 ```
 
-### 3. Desk on Fly from GitHub (`trilliontape`)
+### 3. Point the desk at the book
 
-After the GitHub repo exists:
+The desk app already exists. After `trilliontape-data` has an IP, set these two secrets on **trilliontape** (Secrets in the dashboard, or `fly secrets set`). Fly restarts the machine when secrets change — you do not need another GitHub Launch.
 
 ```bash
-fly apps create trilliontape
 fly secrets set TRILLIONTAPE_DATABASE_URL=https://trilliontape-data.fly.dev \
   TRILLIONTAPE_AUTH_TOKEN="$(cat data-host/keys/token)" \
   --app trilliontape
-fly deploy --config fly.toml --app trilliontape
 ```
 
-If `trilliontape` is taken, change `app` in the root `fly.toml`.
-
-**Launch from GitHub** in the Fly dashboard is enough. Leave the working directory blank so it uses the repo-root `fly.toml` (the desk), not `data-host`. Do not paste `fly deploy --image registry.fly.io/trilliontape:deployment-…` — that reuses an old image that listens on the wrong port.
+If you Launch the desk from GitHub again, leave the working directory **blank** so it uses the repo-root `fly.toml`, not `data-host`. Do not paste `fly deploy --image registry.fly.io/trilliontape:deployment-…`.
 
 Push-to-deploy is optional. If you want GitHub Actions to deploy too, add repo secret `FLY_API_TOKEN` from `fly tokens create deploy`. Without that secret the Action skips; Launch UI deploys still count.
 
@@ -125,7 +134,9 @@ You should then see an A or AAAA record for `trilliontape.fly.dev`. The landing 
 
 ### 4. Point trilliontape.com at the desk (Cloudflare)
 
-Wait until https://trilliontape.fly.dev itself works. Then DNS → **CNAME** `@` and `www` to `trilliontape.fly.dev` (or the app name you used), proxy **on**. SSL is automatic.
+Wait until the desk secrets are set and https://trilliontape.fly.dev still shows TrillionTape. Then in Cloudflare DNS, **CNAME** `@` and `www` to `trilliontape.fly.dev`, proxy **on**. SSL mode **Full (strict)**.
 
-After DNS is green, open https://trilliontape.com. Create Jesse on that hosted world; the Cursor preview world is a different database and will not follow the domain.
+In Fly, add certificates for `trilliontape.com` and `www.trilliontape.com` ([Certificates](https://fly.io/apps/trilliontape/certificates) on the desk app). Shared IPv4 routes by hostname, so the certs are required even with Cloudflare in front.
+
+After DNS is green, open https://trilliontape.com. Create **Jesse** on that hosted world. Cursor preview is a different database and will not follow the domain. Do not press **New game**.
 
