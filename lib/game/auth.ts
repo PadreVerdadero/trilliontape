@@ -1,9 +1,18 @@
 import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
-import { createPlayer, getDb } from "@/lib/game/db";
+import { createPlayer, getDb, inviteRequired, readInviteCode } from "@/lib/game/db";
 
 export const SESSION_COOKIE = "bazaar_session";
 const SESSION_MS = 1000 * 60 * 60 * 24 * 30;
+
+function sessionCookieBase() {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    path: "/",
+    secure: process.env.NODE_ENV === "production",
+  };
+}
 
 export function normalizeUsername(raw: string) {
   return raw.trim();
@@ -13,7 +22,8 @@ export function validateCredentials(username: string, password: string) {
   if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
     return "Use 3–20 letters, numbers, or underscores.";
   }
-  if (username.toLowerCase() === "banker" || username.toLowerCase() === "government") {
+  const lower = username.toLowerCase();
+  if (lower === "banker" || lower === "government" || lower === "guest") {
     return "That name is reserved.";
   }
   if (password.length < 4) {
@@ -22,19 +32,36 @@ export function validateCredentials(username: string, password: string) {
   return null;
 }
 
-export async function registerUser(username: string, password: string) {
+export function validateInviteCode(code: string) {
+  const next = code.trim().toUpperCase();
+  if (!/^[A-Z0-9]{4,24}$/.test(next)) {
+    return "Invite code: 4–24 letters or numbers.";
+  }
+  return null;
+}
+
+export async function registerUser(username: string, password: string, inviteCode = "") {
   const name = normalizeUsername(username);
-  const error = validateCredentials(name, password);
+  const secret = String(password);
+  const error = validateCredentials(name, secret);
   if (error) throw new Error(error);
 
   const db = getDb();
-  const exists = (await db.prepare("SELECT id FROM users WHERE username = ?").get(name)) as
-    | { id: number }
-    | undefined;
+  if (await inviteRequired(db)) {
+    const expected = await readInviteCode(db);
+    const given = inviteCode.trim().toUpperCase();
+    if (!expected || given !== expected) {
+      throw new Error("That invite code is wrong. Ask Jesse for the current code.");
+    }
+  }
+
+  const exists = (await db
+    .prepare("SELECT id FROM users WHERE username = ? COLLATE NOCASE")
+    .get(name)) as { id: number } | undefined;
   if (exists) throw new Error("That traveler name is already taken.");
 
   const now = Date.now();
-  const hash = bcrypt.hashSync(password, 10);
+  const hash = bcrypt.hashSync(secret, 10);
   const info = await db
     .prepare("INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)")
     .run(name, hash, now);
@@ -45,11 +72,18 @@ export async function registerUser(username: string, password: string) {
 
 export async function loginUser(username: string, password: string) {
   const name = normalizeUsername(username);
+  const secret = String(password);
   const db = getDb();
   const user = (await db
-    .prepare("SELECT id, password_hash FROM users WHERE username = ?")
+    .prepare("SELECT id, password_hash FROM users WHERE username = ? COLLATE NOCASE")
     .get(name)) as { id: number; password_hash: string } | undefined;
-  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+  let ok = false;
+  try {
+    ok = Boolean(user) && bcrypt.compareSync(secret, String(user?.password_hash ?? ""));
+  } catch {
+    ok = false;
+  }
+  if (!user || !ok) {
     throw new Error("Unknown name or wrong password.");
   }
   return createSession(user.id);
@@ -66,11 +100,8 @@ export async function createSession(userId: number) {
   );
   const jar = await cookies();
   jar.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
+    ...sessionCookieBase(),
     expires: new Date(expiresAt),
-    secure: process.env.NODE_ENV === "production",
   });
   return token;
 }
@@ -81,7 +112,11 @@ export async function destroySession() {
   if (token) {
     await getDb().prepare("DELETE FROM sessions WHERE token = ?").run(token);
   }
-  jar.delete(SESSION_COOKIE);
+  jar.set(SESSION_COOKIE, "", {
+    ...sessionCookieBase(),
+    expires: new Date(0),
+    maxAge: 0,
+  });
 }
 
 export async function getSessionUserId() {

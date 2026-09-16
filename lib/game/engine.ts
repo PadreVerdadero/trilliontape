@@ -53,6 +53,12 @@ import {
   setStartingGold,
   tablePaidDrops,
   markStipendSlotPaid,
+  readGamePhase,
+  writeGamePhase,
+  readScheduledStartAt,
+  writeScheduledStartAt,
+  readInviteCode,
+  writeInviteCode,
 } from "@/lib/game/db";
 import { parseStipendSlotKey, stipendCatchUp, validateStipendLadder } from "@/lib/game/stipend-ladder";
 import {
@@ -76,7 +82,7 @@ import {
   waitSteps,
   type BotProfile,
 } from "@/lib/game/bots";
-import { isOfficeUsername } from "@/lib/game/office";
+import { isOfficeUsername, OFFICE_USERNAME } from "@/lib/game/office";
 import { describeGoal, meetsGoal, sortByGoal, validateGoalDraft, type GoalConfig } from "@/lib/game/goal";
 import { computeFairValue, CHART_MINUTES, MINUTE_MS, MV_PRINTS } from "@/lib/game/market";
 import { coalesceTrades, lastTapeQty } from "@/lib/game/prints";
@@ -968,6 +974,10 @@ async function insertLiveOrder(
 }
 
 async function requireOpenGame() {
+  await maybeStartScheduledGame();
+  if ((await readGamePhase()) === "lobby") {
+    throw new Error("The desk is in the lobby. Trading starts when Jesse’s clock hits the start time.");
+  }
   if ((await readGameOver()).over) throw new Error("The game is over. Jesse can start a new game from Admin.");
 }
 
@@ -1435,8 +1445,52 @@ async function dealOpeningShares(db: ReturnType<typeof getDb>, travelerIds: numb
   }
 }
 
-export async function adminStartGame(userId: number, _timeZone?: string, count?: number) {
-  await requireAdmin(userId);
+function formatStartClock(atMs: number, timeZone?: string) {
+  try {
+    return new Date(atMs).toLocaleString("en-US", {
+      timeZone: timeZone || "UTC",
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  } catch {
+    return new Date(atMs).toISOString();
+  }
+}
+
+async function officeUserId() {
+  const row = (await getDb()
+    .prepare("SELECT id FROM users WHERE username = ? COLLATE NOCASE")
+    .get(OFFICE_USERNAME)) as { id: number } | undefined;
+  return row?.id ?? 0;
+}
+
+const startClock = globalThis as unknown as { bazaarScheduledStart?: Promise<boolean> };
+
+export async function maybeStartScheduledGame() {
+  if (startClock.bazaarScheduledStart) return startClock.bazaarScheduledStart;
+  const run = (async () => {
+    if ((await readGamePhase()) !== "lobby") return false;
+    const at = await readScheduledStartAt();
+    if (at == null || Date.now() < at) return false;
+    const actor = await officeUserId();
+    await runNewGame(actor, undefined);
+    await writeGamePhase("live");
+    await writeScheduledStartAt(null);
+    return true;
+  })();
+  startClock.bazaarScheduledStart = run;
+  try {
+    return await run;
+  } finally {
+    if (startClock.bazaarScheduledStart === run) startClock.bazaarScheduledStart = undefined;
+  }
+}
+
+async function runNewGame(userId: number, count?: number) {
   if (count != null && (!Number.isInteger(count) || count < 0 || count > MAX_COMPUTERS)) {
     throw new Error(`Computers must be a whole number from 0 to ${MAX_COMPUTERS}.`);
   }
@@ -1536,6 +1590,59 @@ export async function adminStartGame(userId: number, _timeZone?: string, count?:
         } got ${formatNumber(await startingGold())} coins and floor(Issued ÷ seats) of each good.${leftoverNote}`
       : `New game started. Every traveler got ${formatNumber(await startingGold())} coins and floor(Issued ÷ seats) of each good.${leftoverNote}`
   );
+}
+
+export async function adminStartGame(userId: number, _timeZone?: string, count?: number) {
+  await requireAdmin(userId);
+  await runNewGame(userId, count);
+  await writeGamePhase("live");
+  await writeScheduledStartAt(null);
+}
+
+export async function adminScheduleStart(
+  userId: number,
+  atMs: number,
+  timeZone?: string,
+  count?: number
+) {
+  await requireAdmin(userId);
+  if (count != null && (!Number.isInteger(count) || count < 0 || count > MAX_COMPUTERS)) {
+    throw new Error(`Computers must be a whole number from 0 to ${MAX_COMPUTERS}.`);
+  }
+  if (count != null) await setComputerCount(count);
+  const when = Math.floor(Number(atMs));
+  if (!Number.isFinite(when) || when < 1) {
+    throw new Error("Pick a start time.");
+  }
+  if (when <= Date.now() + 1500) {
+    await runNewGame(userId, count);
+    await writeGamePhase("live");
+    await writeScheduledStartAt(null);
+    return;
+  }
+  await writeScheduledStartAt(when);
+  await writeGamePhase("lobby");
+  await setEvent(
+    userId,
+    `Lobby is open. New game starts at ${formatStartClock(when, timeZone)}.`
+  );
+}
+
+export async function adminClearSchedule(userId: number) {
+  await requireAdmin(userId);
+  await writeScheduledStartAt(null);
+  await writeGamePhase("live");
+  await setEvent(userId, "Start time cleared. The desk is live again.");
+}
+
+export async function adminSetInviteCode(userId: number, code: string) {
+  await requireAdmin(userId);
+  const next = code.trim().toUpperCase();
+  if (!/^[A-Z0-9]{4,24}$/.test(next)) {
+    throw new Error("Invite code: 4–24 letters or numbers.");
+  }
+  await writeInviteCode(next);
+  await setEvent(userId, `Invite code is now ${next}.`);
 }
 
 async function applyComputerSeats(db: ReturnType<typeof getDb>, count: number) {
@@ -2742,6 +2849,7 @@ async function chaseStaleBotQuote(userId: number, style: BotProfile["style"], no
 }
 
 export async function tickBots() {
+  if ((await readGamePhase()) === "lobby") return;
   if ((await readGameOver()).over) return;
   const seated = await computerCount();
   if (seated < 1) return;
@@ -3057,6 +3165,20 @@ async function listAdminRoster(): Promise<AdminSeat[]> {
   }));
 }
 
+async function listLobbyTravelers(): Promise<TravelerRow[]> {
+  return (
+    await getDb()
+      .prepare(
+        `SELECT u.id, u.username, COALESCE(u.is_bot, 0) AS is_bot
+         FROM users u JOIN players p ON p.user_id = u.id
+         WHERE u.username != 'Banker' AND COALESCE(u.is_bot, 0) = 0 AND COALESCE(u.is_gov, 0) = 0
+           AND COALESCE(p.at_table, 1) = 1
+         ORDER BY u.username COLLATE NOCASE ASC`
+      )
+      .all() as { id: number; username: string; is_bot: number }[]
+  ).map((row) => ({ id: row.id, username: row.username, bot: Boolean(row.is_bot) }));
+}
+
 async function listTravelers(userId: number): Promise<TravelerRow[]> {
   return (
     await getDb()
@@ -3121,12 +3243,14 @@ export async function getGameState(
   options?: { tick?: boolean }
 ): Promise<GameState> {
   await hydrateShareCatalog();
-  if (options?.tick !== false) {
+  await maybeStartScheduledGame();
+  const gamePhase = await readGamePhase();
+  if (options?.tick !== false && gamePhase === "live") {
     await tickBots();
     await alignIssuedToAuthorized();
   }
   await resolveBusy(userId);
-  const depositNotice = await payTableStipends(userId, timeZone);
+  const depositNotice = gamePhase === "live" ? await payTableStipends(userId, timeZone) : null;
   const player = await loadPlayerRow(userId);
   const stacks = await getDb()
     .prepare(
@@ -3206,7 +3330,10 @@ export async function getGameState(
 
   const prices = await priceSheet(timeZone);
   const leaders = await netWorthLeaders(prices);
-  const { goal, over } = await resolveGoal(leaders, userId);
+  const { goal, over } =
+    gamePhase === "lobby"
+      ? { goal: await readGoal(), over: await readGameOver() }
+      : await resolveGoal(leaders, userId);
   const winners = await getDb()
     .prepare(
       `SELECT u.username, p.won_at AS wonAt
@@ -3269,6 +3396,10 @@ export async function getGameState(
     startingGold: await startingGold(),
     coinDrop: await coinDropSnapshot(userId),
     adminRoster: (await canHoldOffice(userId)) ? await listAdminRoster() : [],
+    gamePhase,
+    scheduledStartAt: await readScheduledStartAt(),
+    lobbyTravelers: await listLobbyTravelers(),
+    inviteCode: (await canHoldOffice(userId)) ? await readInviteCode() : null,
     netWorthGoal: goal.score === "netWorth" ? goal.threshold : NET_WORTH_GOAL,
     goal: { ...goal, label: describeGoal(goal) },
     gameOver: over,

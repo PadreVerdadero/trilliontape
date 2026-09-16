@@ -1,5 +1,6 @@
 import { Landing } from "@/components/game/landing";
 import { getSessionUserId } from "@/lib/game/auth";
+import { inviteRequired } from "@/lib/game/db";
 import { safeReturnPath } from "@/lib/game/places";
 import { redirect } from "next/navigation";
 
@@ -13,5 +14,11 @@ export default async function HomePage({
   if (await getSessionUserId()) {
     redirect(next);
   }
-  return <Landing error={params.error} next={params.next ? next : undefined} />;
+  return (
+    <Landing
+      error={params.error}
+      next={params.next ? next : undefined}
+      needsInvite={await inviteRequired()}
+    />
+  );
 }

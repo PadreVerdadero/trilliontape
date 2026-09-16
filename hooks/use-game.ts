@@ -23,6 +23,7 @@ export function useGame(initialState?: GameState | null) {
   const lastEvent = useRef<string | null>(null);
   const pendingRef = useRef(false);
   const busy = state?.player.busy.type !== "idle";
+  const hurry = busy || state?.gamePhase === "lobby";
   pendingRef.current = pending;
 
   const refresh = useCallback(async () => {
@@ -55,9 +56,9 @@ export function useGame(initialState?: GameState | null) {
     const id = window.setInterval(() => {
       if (pendingRef.current) return;
       void refresh();
-    }, busy ? 1000 : 4000);
+    }, hurry ? 1000 : 4000);
     return () => window.clearInterval(id);
-  }, [refresh, busy]);
+  }, [refresh, hurry]);
 
   const run = useCallback(async (body: ActionBody) => {
     setPending(true);

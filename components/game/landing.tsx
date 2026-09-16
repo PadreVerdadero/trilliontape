@@ -33,12 +33,18 @@ const fieldClass =
   "h-11 w-full rounded-lg border border-input bg-background/60 px-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:h-9 md:text-sm";
 const primaryBtn =
   "inline-flex h-11 w-full items-center justify-center rounded-lg bg-primary px-3 text-base font-medium text-primary-foreground hover:bg-primary/80 md:h-9 md:text-sm";
-const secondaryBtn =
-  "inline-flex h-11 w-full items-center justify-center rounded-lg bg-secondary px-3 text-base font-medium text-secondary-foreground hover:bg-secondary/80 md:h-9 md:text-sm";
 const outlineBtn =
   "inline-flex h-11 w-full items-center justify-center rounded-lg border border-border bg-background px-3 text-base font-medium hover:bg-muted md:h-9 md:text-sm";
 
-export function Landing({ error, next }: { error?: string; next?: string }) {
+export function Landing({
+  error,
+  next,
+  needsInvite,
+}: {
+  error?: string;
+  next?: string;
+  needsInvite?: boolean;
+}) {
   const [mobile, setMobile] = useMobileLayout();
   const nextField = next ? <input type="hidden" name="next" value={next} /> : null;
   return (
@@ -86,7 +92,7 @@ export function Landing({ error, next }: { error?: string; next?: string }) {
             <CardHeader>
               <CardTitle>Sit at the desk</CardTitle>
               <CardDescription>
-                Use Guest or create your own traveler. Pack and gold are saved when you leave.
+                Sign in with your traveler name. Pack and gold stay with the account when you leave.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -95,25 +101,6 @@ export function Landing({ error, next }: { error?: string; next?: string }) {
                   {error}
                 </p>
               ) : null}
-
-              <form action="/auth/guest" method="post" className="space-y-2">
-                {nextField}
-                <button className={primaryBtn} type="submit">
-                  Play as Guest
-                </button>
-                <p className="text-center text-xs text-muted-foreground">
-                  Opens the demo book · Guest / play
-                </p>
-              </form>
-
-              <div className="relative py-1">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-border/80" />
-                </div>
-                <p className="relative mx-auto w-fit bg-card px-2 text-xs text-muted-foreground">
-                  or sign in
-                </p>
-              </div>
 
               <form action="/auth/login" method="post" className="space-y-3">
                 {nextField}
@@ -125,7 +112,7 @@ export function Landing({ error, next }: { error?: string; next?: string }) {
                     id="login-username"
                     name="username"
                     autoComplete="username"
-                    defaultValue="Guest"
+                    placeholder="Your name"
                     className={fieldClass}
                   />
                 </div>
@@ -138,11 +125,10 @@ export function Landing({ error, next }: { error?: string; next?: string }) {
                     name="password"
                     type="password"
                     autoComplete="current-password"
-                    defaultValue="play"
                     className={fieldClass}
                   />
                 </div>
-                <button className={secondaryBtn} type="submit">
+                <button className={primaryBtn} type="submit">
                   Sit at the desk
                 </button>
               </form>
@@ -181,6 +167,25 @@ export function Landing({ error, next }: { error?: string; next?: string }) {
                     autoComplete="new-password"
                     className={fieldClass}
                   />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium" htmlFor="register-invite">
+                    Invite code
+                  </label>
+                  <input
+                    id="register-invite"
+                    name="invite"
+                    autoComplete="off"
+                    spellCheck={false}
+                    required={Boolean(needsInvite)}
+                    placeholder={needsInvite ? "Ask Jesse" : "Not needed for the first traveler"}
+                    className={fieldClass}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {needsInvite
+                      ? "Jesse has the current code in Admin. You cannot sit down without it."
+                      : "The first traveler can skip this. After that, Jesse’s invite code is required."}
+                  </p>
                 </div>
                 <button className={outlineBtn} type="submit">
                   Create traveler

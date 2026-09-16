@@ -305,6 +305,10 @@ export type GameState = {
   startingGold: number;
   coinDrop: CoinDropState;
   adminRoster: AdminSeat[];
+  gamePhase: "lobby" | "live";
+  scheduledStartAt: number | null;
+  lobbyTravelers: TravelerRow[];
+  inviteCode: string | null;
   netWorthGoal: number;
   goal: GoalView;
   gameOver: GameOverView;

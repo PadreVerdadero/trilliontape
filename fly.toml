@@ -23,3 +23,8 @@ primary_region = 'iad'
 [[vm]]
   size = 'shared-cpu-1x'
   memory = '1024mb'
+
+# Persist the local book across deploys and restarts until the data host is live.
+[[mounts]]
+  source = 'trilliontape_sqlite'
+  destination = '/app/data'

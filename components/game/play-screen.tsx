@@ -14,6 +14,7 @@ import { useSelectedItem } from "@/hooks/use-selected-item";
 import { useMarketSort } from "@/hooks/use-market-sort";
 import { DepositDialog } from "@/components/game/deposit-dialog";
 import { GameOverBanner, GameOverScreen, GoalClock } from "@/components/game/game-over-screen";
+import { LobbyScreen } from "@/components/game/lobby-screen";
 import { GAME_NAME, GAME_PITCH } from "@/lib/game/brand";
 import { playItems } from "@/lib/game/shares";
 import { cn } from "@/lib/utils";
@@ -61,6 +62,16 @@ export function PlayScreen({
   }
 
   const { player } = state;
+
+  if (state.gamePhase === "lobby") {
+    return (
+      <LobbyScreen
+        state={state}
+        error={error}
+        onDismissError={() => setError(null)}
+      />
+    );
+  }
 
   const market = (
     <MarketPanel

@@ -14,6 +14,9 @@ import {
   adminSetGold,
   adminSetItem,
   adminStartGame,
+  adminScheduleStart,
+  adminClearSchedule,
+  adminSetInviteCode,
   adminSetComputers,
   adminSetComputerCount,
   adminSitOtherTravelers,
@@ -63,6 +66,9 @@ type ActionBody = {
   | { action: "adminShareAdd"; name: string; emoji?: string; image?: string | null }
   | { action: "adminShareRemove"; itemId: string }
   | { action: "adminNewGame"; count?: number }
+  | { action: "adminScheduleStart"; at: number; count?: number }
+  | { action: "adminClearSchedule" }
+  | { action: "adminInviteCode"; code: string }
   | { action: "adminComputers"; count?: number; on?: boolean }
   | { action: "adminSitOthers" }
   | { action: "adminStipend"; ms: number }
@@ -154,6 +160,20 @@ export async function POST(request: Request) {
         break;
       case "adminNewGame":
         await adminStartGame(userId, tz, body.count != null ? Number(body.count) : undefined);
+        break;
+      case "adminScheduleStart":
+        await adminScheduleStart(
+          userId,
+          Number(body.at),
+          tz,
+          body.count != null ? Number(body.count) : undefined
+        );
+        break;
+      case "adminClearSchedule":
+        await adminClearSchedule(userId);
+        break;
+      case "adminInviteCode":
+        await adminSetInviteCode(userId, String(body.code ?? ""));
         break;
       case "adminComputers":
         if (body.count != null) await adminSetComputerCount(userId, Number(body.count));

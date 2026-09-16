@@ -164,16 +164,8 @@ export function LeaderTicker({
     () => leaders.filter((row) => row.place <= TICKER_PLACES).slice(0, TICKER_PLACES),
     [leaders]
   );
-  const paddedLeaders = useMemo(() => {
-    const next = [...top];
-    while (next.length > 0 && next.length < 8) next.push(...top);
-    return next;
-  }, [top]);
 
-  const live = useMemo(
-    () => ({ quotes, leaders: paddedLeaders, you }),
-    [quotes, paddedLeaders, you]
-  );
+  const live = useMemo(() => ({ quotes, leaders: top, you }), [quotes, top, you]);
   const liveRef = useRef(live);
   liveRef.current = live;
 
@@ -196,7 +188,7 @@ export function LeaderTicker({
   if (items.length === 0 && top.length === 0) return null;
 
   const shown = reduce ? live : frozen;
-  const seconds = Math.max(28, (items.length + TICKER_PLACES + 1) * 2.4);
+  const seconds = Math.max(18, (items.length + Math.max(top.length, 1) + 1) * 2.4);
 
   return (
     <div className="flex items-stretch border-b border-border/70 bg-card/55">
@@ -205,7 +197,7 @@ export function LeaderTicker({
       </p>
       <div
         className="leader-ticker min-w-0 flex-1 overflow-hidden"
-        aria-label="Scrolling last prints for each good, then top ten net worth."
+        aria-label="Scrolling last prints for each good, then leaders by net worth."
       >
         <div
           className="leader-ticker-track flex w-max items-center py-1.5 text-[11px] sm:text-xs"

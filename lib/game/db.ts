@@ -23,7 +23,10 @@ import { defaultStipendLadder, normalizeStipendLadder, stipendCatchUp } from "@/
 
 export const DESK_USERNAME = "Government";
 
-const BOOTSTRAP_REV = 16;
+export type GamePhase = "lobby" | "live";
+
+const BOOTSTRAP_REV = 17;
+const INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 const globalForDb = globalThis as unknown as {
   bazaarDb?: GameDb;
@@ -403,16 +406,86 @@ async function seedDesk(db: GameDb) {
   ).run(userId, STARTING_ENERGY, ENERGY_MAX, "The treasury desk is open.");
 }
 
-async function seedGuest(db: GameDb) {
-  const existing = await db
-    .prepare("SELECT id FROM users WHERE username = ?")
-    .get("Guest") as { id: number } | undefined;
-  if (existing) return;
-  const now = Date.now();
-  const info = await db
-    .prepare("INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)")
-    .run("Guest", bcrypt.hashSync("play", 10), now);
-  await createPlayerWithDb(db, Number(info.lastInsertRowid));
+function generateInviteCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  let out = "";
+  for (const byte of bytes) out += INVITE_ALPHABET[byte % INVITE_ALPHABET.length];
+  return out;
+}
+
+export async function readInviteCode(db: GameDb = getDb()) {
+  const row = (await db.prepare("SELECT value FROM game_meta WHERE key = 'invite_code'").get()) as
+    | { value: string }
+    | undefined;
+  return row?.value?.trim() ? row.value.trim().toUpperCase() : null;
+}
+
+export async function writeInviteCode(code: string, db: GameDb = getDb()) {
+  const next = code.trim().toUpperCase();
+  await db
+    .prepare(
+      `INSERT INTO game_meta (key, value) VALUES ('invite_code', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    )
+    .run(next);
+  return next;
+}
+
+async function ensureInviteCode(db: GameDb) {
+  if (await readInviteCode(db)) return;
+  await writeInviteCode(generateInviteCode(), db);
+}
+
+export async function humanTravelerCount(db: GameDb = getDb()) {
+  const row = (await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM users
+       WHERE COALESCE(is_bot, 0) = 0 AND COALESCE(is_gov, 0) = 0
+         AND username NOT IN ('Banker', 'Government', 'Guest')`
+    )
+    .get()) as { n: number };
+  return Math.max(0, Math.floor(row?.n ?? 0));
+}
+
+export async function inviteRequired(db: GameDb = getDb()) {
+  return (await humanTravelerCount(db)) > 0;
+}
+
+export async function readGamePhase(db: GameDb = getDb()): Promise<GamePhase> {
+  const row = (await db.prepare("SELECT value FROM game_meta WHERE key = 'game_phase'").get()) as
+    | { value: string }
+    | undefined;
+  return row?.value === "lobby" ? "lobby" : "live";
+}
+
+export async function writeGamePhase(phase: GamePhase, db: GameDb = getDb()) {
+  await db
+    .prepare(
+      `INSERT INTO game_meta (key, value) VALUES ('game_phase', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    )
+    .run(phase);
+}
+
+export async function readScheduledStartAt(db: GameDb = getDb()) {
+  const row = (await db
+    .prepare("SELECT value FROM game_meta WHERE key = 'scheduled_start_at'")
+    .get()) as { value: string } | undefined;
+  const n = Number(row?.value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export async function writeScheduledStartAt(at: number | null, db: GameDb = getDb()) {
+  if (at == null) {
+    await db.prepare("DELETE FROM game_meta WHERE key = 'scheduled_start_at'").run();
+    return;
+  }
+  await db
+    .prepare(
+      `INSERT INTO game_meta (key, value) VALUES ('scheduled_start_at', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    )
+    .run(String(Math.floor(at)));
 }
 
 async function createPlayerWithDb(db: GameDb, userId: number) {
@@ -599,8 +672,8 @@ async function lockOffice(db: GameDb) {
 async function bootstrap(db: GameDb) {
   await migrate(db);
   await clearBankerBook(db);
-  await seedGuest(db);
   await seedDesk(db);
+  await ensureInviteCode(db);
   await seedBots(db);
   await purgeRetiredItems(db);
   await shareBankerHoldings(db);

@@ -21,6 +21,12 @@ import { cn } from "@/lib/utils";
 import { GAME_NAME } from "@/lib/game/brand";
 import type { GameState } from "@/lib/game/types";
 
+function toLocalInput(ms: number) {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function AdminScreen({
   initialState,
   initialItemId,
@@ -41,6 +47,10 @@ export function AdminScreen({
   const [issuedDraft, setIssuedDraft] = useState<Record<string, string>>({});
   const [computerDraft, setComputerDraft] = useState(String(initialState.computerCount ?? 0));
   const [startingDraft, setStartingDraft] = useState(String(initialState.startingGold ?? 1000));
+  const [startDraft, setStartDraft] = useState(() =>
+    toLocalInput(initialState.scheduledStartAt ?? Date.now() + 10 * 60 * 1000)
+  );
+  const [inviteDraft, setInviteDraft] = useState(initialState.inviteCode ?? "");
   const [mobile, setMobile] = useMobileLayout();
 
   const player = state?.player;
@@ -69,6 +79,14 @@ export function AdminScreen({
   useEffect(() => {
     setStartingDraft(String(state?.startingGold ?? 1000));
   }, [state?.startingGold]);
+
+  useEffect(() => {
+    if (state?.scheduledStartAt) setStartDraft(toLocalInput(state.scheduledStartAt));
+  }, [state?.scheduledStartAt]);
+
+  useEffect(() => {
+    if (state?.inviteCode) setInviteDraft(state.inviteCode);
+  }, [state?.inviteCode]);
 
   const capKey = `${catalog.map((item) => item.id).join(",")}|${(state?.prices ?? [])
     .map((row) => `${row.itemId}:${row.authorized}`)
@@ -149,6 +167,124 @@ export function AdminScreen({
             </button>
           </div>
         ) : null}
+
+        <section className="space-y-4 rounded-xl border border-amber-400/25 bg-amber-900/30 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-heading text-lg">Lobby and start</h2>
+              <p className="text-sm text-amber-100/70">
+                {state.gamePhase === "lobby"
+                  ? "The book is closed. Travelers wait in the lobby until the clock hits the start time, then the table resets like New game."
+                  : "The book is live. Set a start time to open the lobby and auto-start a new game at that moment."}
+              </p>
+            </div>
+            <p className="rounded-full border border-amber-400/30 px-2.5 py-1 text-xs tracking-wide text-amber-100 uppercase">
+              {state.gamePhase === "lobby" ? "Lobby" : "Live"}
+            </p>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-medium text-amber-100/80">Who will play</h3>
+            {(state.lobbyTravelers ?? []).length === 0 ? (
+              <p className="mt-2 text-sm text-amber-100/60">No travelers at the table yet.</p>
+            ) : (
+              <ul className="mt-2 grid gap-1 sm:grid-cols-2">
+                {(state.lobbyTravelers ?? []).map((row) => (
+                  <li
+                    key={row.id}
+                    className="rounded-lg border border-amber-400/15 bg-amber-950/40 px-3 py-2 text-sm"
+                  >
+                    {row.username}
+                    {row.username === player.username ? " · you" : ""}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-2 text-xs text-amber-100/60">
+              {(state.lobbyTravelers ?? []).length} traveler
+              {(state.lobbyTravelers ?? []).length === 1 ? "" : "s"} + {state.computerCount ?? 0} computer
+              {(state.computerCount ?? 0) === 1 ? "" : "s"} will take a seat when the game starts.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="admin-start-at" className="text-amber-100/80">
+                Start time
+              </Label>
+              <Input
+                id="admin-start-at"
+                type="datetime-local"
+                value={startDraft}
+                onChange={(event) => setStartDraft(event.target.value)}
+                className="border-amber-400/30 bg-amber-950/60"
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  disabled={pending}
+                  className="bg-amber-300 text-amber-950 hover:bg-amber-200"
+                  onClick={() => {
+                    const at = new Date(startDraft).getTime();
+                    if (!Number.isFinite(at)) {
+                      setError("Pick a start time.");
+                      return;
+                    }
+                    const bots = Number(computerDraft);
+                    if (!Number.isInteger(bots) || bots < 0 || bots > MAX_COMPUTERS) {
+                      setError(`Computers must be a whole number from 0 to ${MAX_COMPUTERS}.`);
+                      return;
+                    }
+                    void run({ action: "adminScheduleStart", at, count: bots });
+                  }}
+                >
+                  Set start time
+                </Button>
+                {state.scheduledStartAt ? (
+                  <Button
+                    variant="outline"
+                    disabled={pending}
+                    className="border-amber-400/50 bg-transparent text-amber-50 hover:bg-amber-900"
+                    onClick={() => void run({ action: "adminClearSchedule" })}
+                  >
+                    Clear start time
+                  </Button>
+                ) : null}
+              </div>
+              <p className="text-xs text-amber-100/60">
+                {state.scheduledStartAt
+                  ? `Scheduled ${new Date(state.scheduledStartAt).toLocaleString(undefined, { hour12: false })}. At that instant the table resets like New game.`
+                  : "Uses this machine’s local clock. A time in the past starts immediately."}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="admin-invite" className="text-amber-100/80">
+                Invite code
+              </Label>
+              <div className="flex items-end gap-2">
+                <Input
+                  id="admin-invite"
+                  value={inviteDraft}
+                  onChange={(event) => setInviteDraft(event.target.value.toUpperCase())}
+                  spellCheck={false}
+                  autoComplete="off"
+                  className="border-amber-400/30 bg-amber-950/60"
+                />
+                <Button
+                  disabled={pending}
+                  className="bg-amber-300 text-amber-950 hover:bg-amber-200"
+                  onClick={() => void run({ action: "adminInviteCode", code: inviteDraft })}
+                >
+                  Set
+                </Button>
+              </div>
+              <p className="text-xs text-amber-100/60">
+                New travelers must enter this code. 4–24 letters or numbers. Current code:{" "}
+                <span className="font-medium text-amber-50">{state.inviteCode ?? "not set"}</span>
+              </p>
+            </div>
+          </div>
+        </section>
 
         <section className="space-y-3 rounded-xl border border-amber-400/25 bg-amber-900/30 p-4">
           <h2 className="font-heading text-lg">Traveler</h2>
