@@ -6,6 +6,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { InventoryPanel } from "@/components/game/inventory-panel";
 import { LeaderTicker } from "@/components/game/leader-ticker";
 import { MarketPanel } from "@/components/game/market-panel";
+import { SoundToggle } from "@/components/game/sound-toggle";
 import { MobileToggle } from "@/components/game/mobile-toggle";
 import { OpenOrdersPanel } from "@/components/game/open-orders-panel";
 import { useGame } from "@/hooks/use-game";
@@ -168,6 +169,7 @@ export function PlayScreen({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            <SoundToggle />
             <MobileToggle checked={mobile} onChange={setMobile} />
             {player.canOffice ? (
               <>

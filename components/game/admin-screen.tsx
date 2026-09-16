@@ -11,6 +11,7 @@ import { ShareEditor } from "@/components/game/share-editor";
 import { MIN_SHARE_TYPES, playItemMap, playItems } from "@/lib/game/shares";
 import { MAX_COMPUTERS } from "@/lib/game/bots";
 import { formatCoins, formatNumber } from "@/lib/game/format";
+import { SoundToggle } from "@/components/game/sound-toggle";
 import { MobileToggle } from "@/components/game/mobile-toggle";
 import { GoalEditor } from "@/components/game/goal-editor";
 import { StipendEditor } from "@/components/game/stipend-editor";
@@ -138,6 +139,7 @@ export function AdminScreen({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <SoundToggle className="text-amber-100/80 hover:bg-amber-900 hover:text-amber-50" />
             <MobileToggle
               checked={mobile}
               onChange={setMobile}

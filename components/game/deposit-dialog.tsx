@@ -53,7 +53,7 @@ export function DepositDialog({
     rememberShown(key);
     setShown(deposit);
     setOpen(true);
-    playDeskSound("deposit");
+    void playDeskSound("deposit");
   }, [deposit]);
 
   if (!shown) return null;
@@ -75,7 +75,13 @@ export function DepositDialog({
           You now have {formatCoins(shown.gold)}.
         </p>
         <DialogFooter>
-          <Button className="w-full sm:w-auto" onClick={() => setOpen(false)}>
+          <Button
+            className="w-full sm:w-auto"
+            onClick={() => {
+              void playDeskSound("deposit");
+              setOpen(false);
+            }}
+          >
             Sit down
           </Button>
         </DialogFooter>

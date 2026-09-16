@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
+import { SoundToggle } from "@/components/game/sound-toggle";
 import { MobileToggle } from "@/components/game/mobile-toggle";
 import { useMobileLayout } from "@/hooks/use-mobile-layout";
 import { GAME_NAME, GAME_PITCH } from "@/lib/game/brand";
@@ -71,6 +72,7 @@ export function LobbyScreen({
             <span className="truncate text-sm text-muted-foreground sm:hidden">{player.username}</span>
           </div>
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            <SoundToggle />
             <MobileToggle checked={mobile} onChange={setMobile} />
             {player.canOffice ? (
               <Link

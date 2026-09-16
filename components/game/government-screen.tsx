@@ -9,6 +9,7 @@ import { OpenOrdersPanel } from "@/components/game/open-orders-panel";
 import { ItemIcon } from "@/components/game/item-icon";
 import { playItemMap, playItems } from "@/lib/game/shares";
 import { formatCoins, formatNumber } from "@/lib/game/format";
+import { SoundToggle } from "@/components/game/sound-toggle";
 import { MobileToggle } from "@/components/game/mobile-toggle";
 import { useGame } from "@/hooks/use-game";
 import { useMobileLayout } from "@/hooks/use-mobile-layout";
@@ -79,6 +80,7 @@ export function GovernmentScreen({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <SoundToggle className="text-emerald-100/80 hover:bg-emerald-900 hover:text-emerald-50" />
             <MobileToggle
               checked={mobile}
               onChange={setMobile}
