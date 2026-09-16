@@ -1,21 +1,24 @@
-# TrillionTape desk (Next.js). Unique Fly app name — do not reuse another
-# project's app. Change `app` only if this name is already taken.
-app = "trilliontape"
-primary_region = "iad"
+# fly.toml app configuration file generated for trilliontape on 2026-09-16T02:43:54Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'trilliontape'
+primary_region = 'iad'
 
 [build]
 
 [env]
-  NODE_ENV = "production"
-  PORT = "8080"
+  NODE_ENV = 'production'
+  PORT = '8080'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "off"
+  auto_stop_machines = 'off'
   auto_start_machines = true
   min_machines_running = 1
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "1024mb"
+  size = 'shared-cpu-1x'
+  memory = '1024mb'
