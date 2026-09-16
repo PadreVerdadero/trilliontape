@@ -1,10 +1,46 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { formatCoins } from "@/lib/game/format";
+import { formatCoins, formatCompact, formatNumber } from "@/lib/game/format";
 import { MV_PRINTS } from "@/lib/game/market";
 import { cn } from "@/lib/utils";
 import type { TradeRow } from "@/lib/game/types";
+
+type Candle = {
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  last: TradeRow | null;
+  count: number;
+};
+
+function toCandles(prints: TradeRow[]): Candle[] {
+  if (prints.length === 0) return [];
+  const per = prints.length >= 16 ? 3 : prints.length >= 8 ? 2 : 1;
+  const candles: Candle[] = [];
+  for (let i = 0; i < prints.length; i += per) {
+    const slice = prints.slice(i, i + per);
+    const prices = slice.map((print) => print.price);
+    candles.push({
+      open: slice[0].price,
+      close: slice[slice.length - 1].price,
+      high: Math.max(...prices),
+      low: Math.min(...prices),
+      volume: slice.reduce((sum, print) => sum + print.quantity, 0),
+      last: slice[slice.length - 1],
+      count: slice.length,
+    });
+  }
+  return candles;
+}
+
+function candleTone(candle: Candle) {
+  if (candle.close > candle.open) return "up" as const;
+  if (candle.close < candle.open) return "down" as const;
+  return "flat" as const;
+}
 
 export function PriceChart({
   trades,
@@ -12,12 +48,14 @@ export function PriceChart({
   mv,
   bestBid,
   bestAsk,
+  compact = false,
 }: {
   trades: TradeRow[];
   basePrice: number;
   mv?: number | null;
   bestBid?: number | null;
   bestAsk?: number | null;
+  compact?: boolean;
 }) {
   const prints = useMemo(
     () =>
@@ -26,29 +64,29 @@ export function PriceChart({
         .sort((a, b) => a.id - b.id || a.createdAt - b.createdAt),
     [trades]
   );
+  const candles = useMemo(() => toCandles(prints), [prints]);
   const [hover, setHover] = useState<number | null>(null);
   const traded = prints.length > 0;
-  const prices = traded ? prints.map((print) => print.price) : [basePrice];
+  const shown = traded
+    ? candles
+    : [{ open: basePrice, high: basePrice, low: basePrice, close: basePrice, volume: 0, last: null, count: 0 }];
   const extras = [bestBid, bestAsk, mv].filter((value): value is number => value != null);
-  const min = Math.min(...prices, ...extras);
-  const max = Math.max(...prices, ...extras);
+  const min = Math.min(...shown.flatMap((candle) => [candle.low, candle.high]), ...extras);
+  const max = Math.max(...shown.flatMap((candle) => [candle.low, candle.high]), ...extras);
   const span = Math.max(1, max - min);
-  const pad = { top: 14, right: 78, bottom: 22, left: 36 };
+  const pad = { top: 14, right: 78, bottom: 6, left: 36 };
   const width = 640;
-  const height = 180;
+  const height = compact ? 168 : 200;
+  const volH = 32;
+  const gap = 8;
   const innerW = width - pad.left - pad.right;
-  const innerH = height - pad.top - pad.bottom;
-  const yFor = (price: number) => pad.top + (1 - (price - min) / span) * innerH;
-  const count = Math.max(1, prints.length);
-  const xFor = (index: number) =>
-    pad.left + (count === 1 ? innerW / 2 : (index / (count - 1)) * innerW);
-  const coords = (traded ? prints : [{ price: basePrice }]).map((print, index) => ({
-    x: xFor(index),
-    y: yFor(print.price),
-    print: traded ? prints[index] : null,
-  }));
-  const line = coords.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
-  const area = `${line} L ${coords[coords.length - 1].x} ${pad.top + innerH} L ${coords[0].x} ${pad.top + innerH} Z`;
+  const candleH = height - pad.top - pad.bottom - volH - gap;
+  const volTop = pad.top + candleH + gap;
+  const yFor = (price: number) => pad.top + (1 - (price - min) / span) * candleH;
+  const count = Math.max(1, shown.length);
+  const slot = innerW / count;
+  const bodyW = Math.max(4, Math.min(22, slot * 0.62));
+  const xMid = (index: number) => pad.left + (index + 0.5) * slot;
   const lastPrice = prints[prints.length - 1]?.price ?? basePrice;
   const firstPrice = prints[0]?.price ?? basePrice;
   const delta = traded ? lastPrice - firstPrice : 0;
@@ -72,7 +110,10 @@ export function PriceChart({
   if (mv != null && bestAsk != null) {
     [mvLabelY, askLabelY] = nudge(mvLabelY, askLabelY);
   }
-  const active = hover != null ? coords[hover] : null;
+  const maxVol = Math.max(1, ...shown.map((candle) => candle.volume));
+  const active = hover != null ? shown[hover] : null;
+  const activeX = hover != null ? xMid(hover) : 0;
+  const activeY = active ? yFor((active.high + active.low) / 2) : 0;
 
   return (
     <div className="rounded-xl bg-background/40 p-3 ring-1 ring-foreground/10">
@@ -81,9 +122,9 @@ export function PriceChart({
           <p className="font-heading text-lg">Price</p>
           <p className="text-xs text-muted-foreground">
             {traded
-              ? `Each dot is one of the last ${MV_PRINTS} prints, oldest to newest. Hover a dot for price and who traded.`
-              : "No trades yet. The line sits at the starting price."}{" "}
-            Dashed marks on the right are MV, best bid, and best ask.
+              ? `Candles cover the last ${prints.length} print${prints.length === 1 ? "" : "s"} (oldest to newest), grouped so each bar is a few trades. Hover for open, high, low, close.`
+              : "No trades yet. The candle sits at the starting price."}{" "}
+            Dashed marks on the right are MV, best bid, and best ask. Bars under the candles are volume.
           </p>
         </div>
         <p
@@ -95,69 +136,80 @@ export function PriceChart({
           )}
           title={
             traded
-              ? `Change from the leftmost dot (oldest of these ${prints.length} prints) to the last print.`
+              ? `Change from the oldest of these ${prints.length} prints to the last print.`
               : "Starting price — no prints yet."
           }
         >
-          {traded
-            ? `${up ? "▲" : down ? "▼" : "▬"} ${formatCoins(Math.abs(delta))}`
-            : null}
+          {traded ? `${up ? "▲" : down ? "▼" : "▬"} ${formatCoins(Math.abs(delta))}` : null}
         </p>
       </div>
       <div className="relative" onMouseLeave={() => setHover(null)}>
         <svg
           viewBox={`0 0 ${width} ${height}`}
-          className="h-44 w-full"
+          className={compact ? "h-36 w-full" : "h-48 w-full"}
           role="img"
-          aria-label="Last 25 print prices"
+          aria-label="Candlestick chart of the last 25 prints"
         >
-          <path d={area} className={up ? "fill-emerald-400/15" : down ? "fill-rose-400/15" : "fill-zinc-400/15"} />
-          <path
-            d={line}
-            fill="none"
-            strokeWidth="2.5"
-            className={up ? "stroke-emerald-300" : down ? "stroke-rose-300" : "stroke-zinc-400"}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-          {traded
-            ? coords.map((point, index) => (
-                <circle
-                  key={point.print?.id ?? index}
-                  cx={point.x}
-                  cy={point.y}
-                  r={hover === index || index === 0 || index === coords.length - 1 ? 4 : 2.75}
-                  className={
-                    index === 0
-                      ? "fill-zinc-200"
-                      : index === coords.length - 1
-                        ? up
-                          ? "fill-emerald-200"
-                          : down
-                            ? "fill-rose-200"
-                            : "fill-zinc-200"
-                        : up
-                          ? "fill-emerald-200/80"
-                          : down
-                            ? "fill-rose-200/80"
-                            : "fill-zinc-300"
-                  }
+          {shown.map((candle, index) => {
+            const tone = candleTone(candle);
+            const mid = xMid(index);
+            const yHigh = yFor(candle.high);
+            const yLow = yFor(candle.low);
+            const yOpen = yFor(candle.open);
+            const yClose = yFor(candle.close);
+            const bodyTop = Math.min(yOpen, yClose);
+            const bodyH = Math.max(tone === "flat" ? 2 : 1.5, Math.abs(yClose - yOpen));
+            const vol = (candle.volume / maxVol) * volH;
+            const fill =
+              tone === "up"
+                ? "fill-emerald-400"
+                : tone === "down"
+                  ? "fill-rose-400"
+                  : "fill-zinc-400";
+            const stroke =
+              tone === "up"
+                ? "stroke-emerald-300"
+                : tone === "down"
+                  ? "stroke-rose-300"
+                  : "stroke-zinc-400";
+            return (
+              <g key={candle.last?.id ?? `empty-${index}`}>
+                <line
+                  x1={mid}
+                  x2={mid}
+                  y1={yHigh}
+                  y2={yLow}
+                  strokeWidth="1.5"
+                  className={stroke}
                 />
-              ))
-            : null}
-          {traded
-            ? coords.map((point, index) => (
-                <circle
-                  key={`hit-${point.print?.id ?? index}`}
-                  cx={point.x}
-                  cy={point.y}
-                  r={10}
+                <rect
+                  x={mid - bodyW / 2}
+                  y={bodyTop}
+                  width={bodyW}
+                  height={bodyH}
+                  className={cn(fill, hover === index && "opacity-100", hover != null && hover !== index && "opacity-70")}
+                />
+                {traded ? (
+                  <rect
+                    x={mid - bodyW / 2}
+                    y={volTop + (volH - vol)}
+                    width={bodyW}
+                    height={Math.max(2, vol)}
+                    className={cn(fill, "opacity-55")}
+                  />
+                ) : null}
+                <rect
+                  x={pad.left + index * slot}
+                  y={pad.top}
+                  width={slot}
+                  height={candleH + gap + volH}
                   className="fill-transparent"
-                  style={{ cursor: "pointer" }}
+                  style={{ cursor: traded ? "pointer" : "default" }}
                   onMouseEnter={() => setHover(index)}
                 />
-              ))
-            : null}
+              </g>
+            );
+          })}
           {mv != null ? (
             <>
               <line
@@ -227,26 +279,33 @@ export function PriceChart({
           <text x="4" y={pad.top + 4} fill="currentColor" className="text-[11px] text-muted-foreground">
             {formatCoins(max)}
           </text>
-          <text x="4" y={pad.top + innerH} fill="currentColor" className="text-[11px] text-muted-foreground">
+          <text x="4" y={pad.top + candleH} fill="currentColor" className="text-[11px] text-muted-foreground">
             {formatCoins(min)}
           </text>
         </svg>
-        {active?.print ? (
+        {active?.last ? (
           <div
             className={cn(
               "pointer-events-none absolute z-10 -translate-y-full rounded-md bg-zinc-950/95 px-2 py-1 text-xs shadow-lg ring-1 ring-white/15",
-              active.x > width * 0.62 ? "-translate-x-full" : "translate-x-1"
+              activeX > width * 0.62 ? "-translate-x-full" : "translate-x-1"
             )}
             style={{
-              left: `${(active.x / width) * 100}%`,
-              top: `${(active.y / height) * 100}%`,
+              left: `${(activeX / width) * 100}%`,
+              top: `${(activeY / height) * 100}%`,
             }}
           >
-            <p className="tabular-nums font-medium">{formatCoins(active.print.price)}</p>
+            <p className="tabular-nums font-medium">
+              O {formatCompact(active.open)} · H {formatCompact(active.high)} · L {formatCompact(active.low)} · C{" "}
+              {formatCompact(active.close)}
+            </p>
+            <p className="tabular-nums text-muted-foreground">
+              vol {formatNumber(active.volume)}
+              {active.count > 1 ? ` · ${active.count} prints` : ""}
+            </p>
             <p className="truncate">
-              <span className="text-emerald-200">{active.print.buyUsername}</span>
+              <span className="text-emerald-200">{active.last.buyUsername}</span>
               <span className="text-muted-foreground"> – </span>
-              <span className="text-rose-200">{active.print.sellUsername}</span>
+              <span className="text-rose-200">{active.last.sellUsername}</span>
             </p>
           </div>
         ) : null}

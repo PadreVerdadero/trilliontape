@@ -115,6 +115,8 @@ export type MarketPrice = {
   itemId: string;
   vwap: number;
   last: number | null;
+  lastQty: number;
+  windowOpen: number | null;
   volume: number;
   tradesToday: number;
   prints: number;

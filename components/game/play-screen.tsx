@@ -127,7 +127,13 @@ export function PlayScreen({
         />
       ) : null}
       <header className="z-20 shrink-0 border-b border-border/80 bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur">
-        <LeaderTicker leaders={state.leaders ?? []} you={player.username} />
+        <LeaderTicker
+          leaders={state.leaders ?? []}
+          you={player.username}
+          items={catalog}
+          prices={state.prices}
+          onSelectItem={setItemId}
+        />
         <div className="flex w-full items-center justify-between gap-2 px-3 py-2 sm:px-4">
           <div className="flex min-w-0 items-center gap-3">
             <p className="font-heading text-lg">{GAME_NAME}</p>

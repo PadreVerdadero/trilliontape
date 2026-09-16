@@ -2557,6 +2557,7 @@ function priceSheet(timeZone?: string): MarketPrice[] {
       )
       .get(itemId) as { p: number | null };
     const prints = marketPrints(itemId);
+    const lastPrint = prints[0];
     const vwap = computeFairValue(itemById[itemId]?.basePrice ?? item.basePrice, [...prints].reverse());
     const book = depth[itemId] ?? { listed: 0, wanted: 0 };
     const outstanding = packs[itemId] ?? 0;
@@ -2564,7 +2565,9 @@ function priceSheet(timeZone?: string): MarketPrice[] {
     return {
       itemId,
       vwap,
-      last: last?.price ?? null,
+      last: lastPrint?.price ?? last?.price ?? null,
+      lastQty: lastPrint?.quantity ?? 0,
+      windowOpen: prints.length ? prints[prints.length - 1].price : null,
       volume: stats.volume ?? 0,
       tradesToday: tradesToday[itemId] ?? 0,
       prints: prints.length,

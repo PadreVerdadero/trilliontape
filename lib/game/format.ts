@@ -47,6 +47,15 @@ export function formatCompact(amount: number) {
   return `${sign}∞`;
 }
 
+export function formatPctChange(delta: number, base: number) {
+  if (!Number.isFinite(delta) || !Number.isFinite(base) || base === 0) return "0%";
+  const pct = (delta / base) * 100;
+  if (Math.abs(pct) < 0.05) return "0%";
+  const digits = Math.abs(pct) >= 10 ? 0 : 1;
+  const n = Math.abs(pct).toFixed(digits);
+  return `${pct > 0 ? "+" : "-"}${n}%`;
+}
+
 export function formatCoins(amount: number) {
   return `${formatNumber(amount)}🪙`;
 }

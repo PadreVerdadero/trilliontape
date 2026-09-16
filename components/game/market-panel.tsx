@@ -636,15 +636,14 @@ export function MarketPanel({
             </div>
           </div>
 
-          {compact ? null : (
           <PriceChart
             trades={book?.trades ?? []}
             basePrice={selected.basePrice}
             mv={price?.vwap ?? selected.basePrice}
             bestBid={price?.bestBid}
             bestAsk={price?.bestAsk}
+            compact={compact}
           />
-          )}
 
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
