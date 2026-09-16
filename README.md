@@ -46,9 +46,11 @@ No extra services or API keys for local play. Accounts sit in the local file; do
 
 ## Go live on trilliontape.com
 
-The domain on Cloudflare is only DNS. The book talks to **libSQL over HTTP**, not to Vercel. This game keeps its own data host named `trilliontape-data` so it will not share a project, database, or token with anything else you already run.
+GitHub → Fly.io is the right path. Do not put this on the Vercel project you already use. One GitHub repo builds two Fly apps: **`trilliontape-data`** (the book) and **`trilliontape`** (the desk). Cloudflare only points the domain at the desk.
 
-Two env names, and only these:
+This project does not have a GitHub repository yet. Click **Create repo** in Cursor, choose GitHub, and name it something like `trilliontape`. After that exists, pushes to `main` can deploy.
+
+Two env names, and only these, on the **desk** app:
 
 - `TRILLIONTAPE_DATABASE_URL`
 - `TRILLIONTAPE_AUTH_TOKEN`
@@ -65,74 +67,46 @@ npm run data-host:auth
 
 That writes `data-host/keys/` (gitignored): a public key the data host checks, a private key, and a long-lived token. Put the token in `TRILLIONTAPE_AUTH_TOKEN`. Do not reuse it on another app.
 
-### 2. Run the data host on Fly.io (not Vercel)
+### 2. Data host on Fly (`trilliontape-data`)
 
-[Fly.io](https://fly.io) is a small always-on VM with a disk. The free/hobby VM is enough. Log in on your machine (`fly auth login`), then from `data-host/`:
+[Fly.io](https://fly.io) is a small always-on VM with a disk. Log in (`fly auth login`), then:
 
 ```bash
 cd data-host
 fly apps create trilliontape-data
 fly volumes create trilliontape_libsql --region iad --size 1 --app trilliontape-data --yes
 fly secrets set SQLD_AUTH_JWT_KEY="$(cat keys/jwt.pub.b64url)" --app trilliontape-data
-fly deploy --app trilliontape-data
+fly deploy --config fly.toml --app trilliontape-data
 ```
 
-If `trilliontape-data` is already taken, change `app` in `data-host/fly.toml` to something like `trilliontape-data-yourname` and use that in the commands. Do not attach this volume or these secrets to another Fly app.
-
-The book URL becomes:
+If `trilliontape-data` is taken, change `app` in `data-host/fly.toml` and use that name. Do not attach this volume to another Fly app.
 
 ```bash
 export TRILLIONTAPE_DATABASE_URL=https://trilliontape-data.fly.dev
 export TRILLIONTAPE_AUTH_TOKEN="$(cat data-host/keys/token)"
 ```
 
-**Or Docker on a box you already have** (still not Vercel):
+### 3. Desk on Fly from GitHub (`trilliontape`)
+
+After the GitHub repo exists:
 
 ```bash
-npm run data-host:auth
-cd data-host
-docker compose up -d
-export TRILLIONTAPE_DATABASE_URL=http://127.0.0.1:43148
-export TRILLIONTAPE_AUTH_TOKEN="$(cat keys/token)"
+fly apps create trilliontape
+fly secrets set TRILLIONTAPE_DATABASE_URL=https://trilliontape-data.fly.dev \
+  TRILLIONTAPE_AUTH_TOKEN="$(cat data-host/keys/token)" \
+  --app trilliontape
+fly deploy --config fly.toml --app trilliontape
 ```
 
-On a public VPS, put the compose file there, keep port `43148` off the open internet (Cloudflare Tunnel to it, or only listen on localhost), and point `TRILLIONTAPE_DATABASE_URL` at that tunnel/HTTPS URL.
+If `trilliontape` is taken, change `app` in the root `fly.toml`.
 
-### 3. Run the Next.js desk somewhere that is not your other Vercel project
+Push-to-deploy: in the GitHub repo, **Settings → Secrets and variables → Actions**, add `FLY_API_TOKEN` from `fly tokens create deploy`. A push to `main` runs `.github/workflows/fly.yml` and deploys only the desk. The data host is not redeployed on every push.
 
-This repo should not be imported into the Vercel project you already use. A $4–6/month Ubuntu VPS, a home PC that stays on, or a second Fly app for the Node process all work. Example on a box:
-
-```bash
-git clone <your-repo-url> trilliontape
-cd trilliontape
-npm ci
-export TRILLIONTAPE_DATABASE_URL=https://trilliontape-data.fly.dev
-export TRILLIONTAPE_AUTH_TOKEN=...
-npm run build
-npm start
-```
-
-`npm start` listens on all interfaces, port `43147`. Leave it running (systemd, `tmux`, or Docker).
-
-Docker for the **desk** (the data still lives on Fly):
-
-```bash
-docker build -t trilliontape .
-docker run -d --name trilliontape --restart unless-stopped -p 43147:43147 \
-  -e TRILLIONTAPE_DATABASE_URL=https://trilliontape-data.fly.dev \
-  -e TRILLIONTAPE_AUTH_TOKEN=... \
-  trilliontape
-```
+Fly’s dashboard **Launch from GitHub** also works if you point it at this repo and keep the existing `fly.toml` / `Dockerfile`. Still set those two secrets on the Fly app, not in the repo.
 
 ### 4. Point trilliontape.com at the desk (Cloudflare)
 
-**Cloudflare Tunnel (no open ports)**
-
-1. In Cloudflare: **Zero Trust** → **Networks** → **Tunnels** → create a tunnel.
-2. Install `cloudflared` on the machine running Next.js with the token Cloudflare shows.
-3. Public hostname: `trilliontape.com` → `http://localhost:43147`. Add `www` the same way if you want it.
-
-**Or a DNS A record** to that machine’s IP, proxy on, **SSL/TLS** → **Full (strict)**.
+DNS → **CNAME** `@` and `www` to `trilliontape.fly.dev` (or the app name you used), proxy **on**. SSL is automatic.
 
 After DNS is green, open https://trilliontape.com. Create Jesse on that hosted world; the Cursor preview world is a different database and will not follow the domain.
 
