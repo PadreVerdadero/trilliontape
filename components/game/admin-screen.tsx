@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,7 +9,6 @@ import { MAX_STARTING_GOLD, STIPEND_PRESETS, stipendLabel } from "@/lib/game/cat
 import { ItemIcon } from "@/components/game/item-icon";
 import { ShareEditor } from "@/components/game/share-editor";
 import { MIN_SHARE_TYPES, playItemMap, playItems } from "@/lib/game/shares";
-import { MAX_COMPUTERS } from "@/lib/game/bots";
 import { formatCoins, formatNumber } from "@/lib/game/format";
 import { SoundToggle } from "@/components/game/sound-toggle";
 import { MobileToggle } from "@/components/game/mobile-toggle";
@@ -61,15 +60,23 @@ export function AdminScreen({
   const [usernameInput, setUsernameInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
   const [issuedDraft, setIssuedDraft] = useState<Record<string, string>>({});
-  const [computerDraft, setComputerDraft] = useState(String(initialState.computerCount ?? 0));
+  const [mvDraft, setMvDraft] = useState<Record<string, string>>({});
+  const [nameDraft, setNameDraft] = useState<Record<string, string>>({});
   const [startingDraft, setStartingDraft] = useState(String(initialState.startingGold ?? 1000));
   const [startDraft, setStartDraft] = useState(() =>
     toLocalInput(initialState.scheduledStartAt ?? Date.now() + 10 * 60 * 1000)
   );
   const [inviteDraft, setInviteDraft] = useState(initialState.inviteCode ?? "");
+  const [endDraft, setEndDraft] = useState(() =>
+    toLocalInput(initialState.goal.endsAt ?? (initialState.scheduledStartAt ?? Date.now()) + initialState.goal.durationMs)
+  );
   const [candleDraft, setCandleDraft] = useState(String(Math.round(initialState.candleMs / 60_000)));
   const [hoursDraft, setHoursDraft] = useState<Record<string, { open: string; close: string; enabled: boolean }>>({});
   const [mobile, setMobile] = useMobileLayout();
+  const hoursDirty = useRef(false);
+  const candleDirty = useRef(false);
+  const mvDirty = useRef(false);
+  const nameDirty = useRef(false);
 
   const player = state?.player;
   const roster = state?.adminRoster ?? [];
@@ -96,15 +103,12 @@ export function AdminScreen({
   }, [held, itemId, selectedSeat?.id]);
 
   useEffect(() => {
-    setComputerDraft(String(state?.computerCount ?? 0));
-  }, [state?.computerCount]);
-
-  useEffect(() => {
     setStartingDraft(String(state?.startingGold ?? 1000));
   }, [state?.startingGold]);
 
   useEffect(() => {
     if (state?.scheduledStartAt) setStartDraft(toLocalInput(state.scheduledStartAt));
+    if (state?.goal.endsAt) setEndDraft(toLocalInput(state.goal.endsAt));
   }, [state?.scheduledStartAt]);
 
   useEffect(() => {
@@ -122,8 +126,8 @@ export function AdminScreen({
         enabled: Boolean(row),
       };
     }
-    setHoursDraft(next);
-    setCandleDraft(String(Math.round(state.candleMs / 60_000)));
+    if (!hoursDirty.current) setHoursDraft(next);
+    if (!candleDirty.current) setCandleDraft(String(Math.round(state.candleMs / 60_000)));
   }, [state?.candleMs, state?.tradingHours, catalog.map((item) => item.id).join("|")]);
 
   const capKey = `${catalog.map((item) => item.id).join(",")}|${(state?.prices ?? [])
@@ -137,6 +141,16 @@ export function AdminScreen({
       next[item.id] = String(row?.authorized ?? item.authorized ?? 0);
     }
     setIssuedDraft(next);
+    if (!mvDirty.current) {
+      const nextMv: Record<string, string> = {};
+      for (const item of catalog) nextMv[item.id] = String(item.basePrice);
+      setMvDraft(nextMv);
+    }
+    if (!nameDirty.current) {
+      const nextNames: Record<string, string> = {};
+      for (const item of catalog) nextNames[item.id] = item.name;
+      setNameDraft(nextNames);
+    }
   }, [capKey]);
 
   if (loading) {
@@ -213,7 +227,9 @@ export function AdminScreen({
               <h2 className="font-heading text-lg">Lobby and start</h2>
               <p className="text-sm text-amber-100/70">
                 {state.gamePhase === "lobby"
-                  ? "The book is closed. Travelers wait in the lobby until the clock hits the start time, then the table resets like New game."
+                  ? state.scheduledStartAt
+                    ? "The book is closed. Travelers wait in the lobby until the scheduled start, then the table resets like New game."
+                    : "There is no active game. Travelers wait in the lobby until you set a start time."
                   : "The book is live. Set a start time to open the lobby and auto-start a new game at that moment."}
               </p>
             </div>
@@ -241,8 +257,7 @@ export function AdminScreen({
             )}
             <p className="mt-2 text-xs text-amber-100/60">
               {(state.lobbyTravelers ?? []).length} traveler
-              {(state.lobbyTravelers ?? []).length === 1 ? "" : "s"} + {state.computerCount ?? 0} computer
-              {(state.computerCount ?? 0) === 1 ? "" : "s"} will take a seat when the game starts.
+              {(state.lobbyTravelers ?? []).length === 1 ? "" : "s"} will take a seat when the game starts.
             </p>
           </div>
 
@@ -258,6 +273,16 @@ export function AdminScreen({
                 onChange={(event) => setStartDraft(event.target.value)}
                 className="border-amber-400/30 bg-amber-950/60"
               />
+              <Label htmlFor="admin-end-at" className="pt-2 text-amber-100/80">
+                End time
+              </Label>
+              <Input
+                id="admin-end-at"
+                type="datetime-local"
+                value={endDraft}
+                onChange={(event) => setEndDraft(event.target.value)}
+                className="border-amber-400/30 bg-amber-950/60"
+              />
               <div className="flex flex-wrap gap-2">
                 <Button
                   disabled={pending}
@@ -268,31 +293,38 @@ export function AdminScreen({
                       setError("Pick a start time.");
                       return;
                     }
-                    const bots = Number(computerDraft);
-                    if (!Number.isInteger(bots) || bots < 0 || bots > MAX_COMPUTERS) {
-                      setError(`Computers must be a whole number from 0 to ${MAX_COMPUTERS}.`);
+                    const endAt = new Date(endDraft).getTime();
+                    if (!Number.isFinite(endAt) || endAt <= at) {
+                      setError("End time must be after the start time.");
                       return;
                     }
-                    void run({ action: "adminScheduleStart", at, count: bots });
+                    void run({ action: "adminScheduleStart", at, endAt }).then((result) => {
+                      if (result) {
+                        hoursDirty.current = false;
+                        candleDirty.current = false;
+                      }
+                    });
                   }}
                 >
-                  Set start time
+                  Set start and end
                 </Button>
-                {state.scheduledStartAt ? (
+                {state.gamePhase === "live" || state.scheduledStartAt ? (
                   <Button
                     variant="outline"
                     disabled={pending}
                     className="border-amber-400/50 bg-transparent text-amber-50 hover:bg-amber-900"
-                    onClick={() => void run({ action: "adminClearSchedule" })}
+                    onClick={() => void run({ action: state.gamePhase === "live" ? "adminLobby" : "adminClearSchedule" })}
                   >
-                    Clear start time
+                    {state.gamePhase === "live" ? "No active game" : "Clear schedule"}
                   </Button>
                 ) : null}
               </div>
               <p className="text-xs text-amber-100/60">
                 {state.scheduledStartAt
-                  ? `Scheduled ${new Date(state.scheduledStartAt).toLocaleString(undefined, { hour12: false })}. At that instant the table resets like New game.`
-                  : "Uses this machine’s local clock. A time in the past starts immediately."}
+                  ? `Scheduled ${new Date(state.scheduledStartAt).toLocaleString(undefined, { hour12: false })}–${state.goal.endsAt ? new Date(state.goal.endsAt).toLocaleString(undefined, { hour12: false }) : "end time"}.`
+                  : state.gamePhase === "lobby"
+                    ? "No active game. Players wait here until you set a schedule."
+                    : "Uses this browser’s local clock. Setting these times opens a lobby and makes the timed goal schedule authoritative."}
               </p>
             </div>
 
@@ -341,6 +373,7 @@ export function AdminScreen({
                 className="h-11 rounded-lg border border-amber-400/30 bg-amber-950/60 px-3 text-sm"
                 value={CANDLE_PRESETS.some((row) => row.ms === Number(candleDraft) * 60_000) ? candleDraft : "custom"}
                 onChange={(event) => {
+                  candleDirty.current = true;
                   if (event.target.value !== "custom") setCandleDraft(event.target.value);
                 }}
               >
@@ -354,7 +387,10 @@ export function AdminScreen({
                 min={1}
                 max={1440}
                 value={candleDraft}
-                onChange={(event) => setCandleDraft(event.target.value)}
+                onChange={(event) => {
+                  candleDirty.current = true;
+                  setCandleDraft(event.target.value);
+                }}
                 className="h-11 w-28 border-amber-400/30 bg-amber-950/60"
                 aria-label="Custom candle minutes"
               />
@@ -368,7 +404,9 @@ export function AdminScreen({
                   setError("Candle interval must be a whole number from 1 to 1,440 minutes.");
                   return;
                 }
-                void run({ action: "adminCandle", ms: minutes * 60_000 });
+                void run({ action: "adminCandle", ms: minutes * 60_000 }).then((result) => {
+                  if (result) candleDirty.current = false;
+                });
               }}
             >
               Set candle size
@@ -384,8 +422,8 @@ export function AdminScreen({
                   return (
                     <tr key={item.id} className="border-t border-amber-400/10">
                       <td className="py-2 pr-3"><ItemIcon item={item} /> {item.name}</td>
-                      <td className="py-2 pr-3"><Input type="time" value={draft.open} onChange={(e) => setHoursDraft((p) => ({ ...p, [item.id]: { ...draft, open: e.target.value, enabled: true } }))} className="h-8 border-amber-400/30 bg-amber-950/60" /></td>
-                      <td className="py-2 pr-3"><Input type="time" value={draft.close} onChange={(e) => setHoursDraft((p) => ({ ...p, [item.id]: { ...draft, close: e.target.value, enabled: true } }))} className="h-8 border-amber-400/30 bg-amber-950/60" /></td>
+                      <td className="py-2 pr-3"><Input type="time" value={draft.open} onChange={(e) => { hoursDirty.current = true; setHoursDraft((p) => ({ ...p, [item.id]: { ...draft, open: e.target.value, enabled: true } })); }} className="h-8 border-amber-400/30 bg-amber-950/60" /></td>
+                      <td className="py-2 pr-3"><Input type="time" value={draft.close} onChange={(e) => { hoursDirty.current = true; setHoursDraft((p) => ({ ...p, [item.id]: { ...draft, close: e.target.value, enabled: true } })); }} className="h-8 border-amber-400/30 bg-amber-950/60" /></td>
                       <td className="py-2 text-xs text-amber-100/70">{draft.enabled ? `${draft.open}–${draft.close}` : "always open"}</td>
                     </tr>
                   );
@@ -409,7 +447,9 @@ export function AdminScreen({
                 }
                 hours[item.id] = { openMin, closeMin };
               }
-              void run({ action: "adminTradingHours", hours });
+              void run({ action: "adminTradingHours", hours }).then((result) => {
+                if (result) hoursDirty.current = false;
+              });
             }}
           >
             Save share hours
@@ -646,43 +686,8 @@ export function AdminScreen({
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="admin-computers" className="text-amber-100/80">
-                Computers at the table
-              </Label>
-              <div className="flex items-end gap-2">
-                <Input
-                  id="admin-computers"
-                  inputMode="numeric"
-                  min={0}
-                  max={MAX_COMPUTERS}
-                  value={computerDraft}
-                  onChange={(event) => setComputerDraft(event.target.value)}
-                  className="border-amber-400/30 bg-amber-950/60"
-                />
-                <Button
-                  disabled={pending}
-                  className="bg-amber-300 text-amber-950 hover:bg-amber-200"
-                  onClick={() => {
-                    const next = Number(computerDraft);
-                    const current = state.computerCount ?? 0;
-                    if (next < current) {
-                      const ok = window.confirm(
-                        "Sit some computers out? They leave the book, and their packs go back to the treasury."
-                      );
-                      if (!ok) return;
-                    }
-                    void run({ action: "adminComputers", count: next });
-                  }}
-                >
-                  Set
-                </Button>
-              </div>
-              <p className="text-xs text-amber-100/60">
-                {state.travelerCount ?? 0} traveler{state.travelerCount === 1 ? "" : "s"} +{" "}
-                {state.computerCount ?? 0} computer{(state.computerCount ?? 0) === 1 ? "" : "s"} ={" "}
-                {(state.travelerCount ?? 0) + (state.computerCount ?? 0)} seats. Computers are
-                0–{MAX_COMPUTERS}. Zero computers still leaves every traveler account at the table
-                — leftover test names count as players.
+              <p className="text-sm text-amber-100/70">
+                Computer traders are disabled for now. Only human travelers take seats and receive opening packs.
               </p>
               {state.goal ? (
                 <p className="text-xs text-amber-100/70">Goal: {state.goal.label}</p>
@@ -699,8 +704,8 @@ export function AdminScreen({
                       score: draft.score,
                       threshold: draft.threshold,
                       durationMs: draft.durationMs,
-                      startsAt: draft.startsAt,
-                      endsAt: draft.endsAt,
+                      startsAt: draft.mode === "timed" ? new Date(startDraft).getTime() : null,
+                      endsAt: draft.mode === "timed" ? new Date(endDraft).getTime() : null,
                       needs: draft.needs,
                     })
                   }
@@ -727,19 +732,11 @@ export function AdminScreen({
                 disabled={pending}
                 className="w-full border-amber-400/50 bg-transparent text-amber-50 hover:bg-amber-900"
                 onClick={() => {
-                  const bots = Number(computerDraft);
-                  if (!Number.isInteger(bots) || bots < 0 || bots > MAX_COMPUTERS) {
-                    setError(`Computers must be a whole number from 0 to ${MAX_COMPUTERS}.`);
-                    return;
-                  }
                   const travelers = state.travelerCount ?? 1;
-                  const seats = travelers + bots;
                   const ok = window.confirm(
-                    `Start a new game? ${travelers} traveler${travelers === 1 ? "" : "s"} and ${bots} computer${
-                      bots === 1 ? "" : "s"
-                    } (${seats} seat${seats === 1 ? "" : "s"}). Each gets ${formatNumber(state.startingGold ?? 1000)} coins and floor(Issued ÷ ${seats}) of each good. Remainder stays in the treasury.`
+                    `Start a new game? ${travelers} traveler${travelers === 1 ? "" : "s"} will each get ${formatNumber(state.startingGold ?? 1000)} coins and an equal opening pack.`
                   );
-                  if (ok) void run({ action: "adminNewGame", count: bots });
+                  if (ok) void run({ action: "adminNewGame" });
                 }}
               >
                 New game
@@ -761,8 +758,9 @@ export function AdminScreen({
             <table className="w-full min-w-[36rem] text-left text-sm">
               <thead className="text-amber-100/70">
                 <tr className="border-b border-amber-400/20">
-                  <th className="py-2 pr-3 font-medium">Good</th>
-                  <th className="py-2 pr-3 font-medium">MV</th>
+                  <th className="py-2 pr-3 font-medium">Good name</th>
+                  <th className="py-2 pr-3 font-medium">Starting MV</th>
+                  <th className="py-2 pr-3 font-medium">Current MV</th>
                   <th className="py-2 pr-3 font-medium">Issued</th>
                   <th className="py-2 pr-3 font-medium">Outstanding</th>
                   <th className="py-2 pr-3 font-medium">Treasury</th>
@@ -775,9 +773,64 @@ export function AdminScreen({
                   return (
                     <tr key={item.id} className="border-b border-amber-400/10">
                       <td className="py-2 pr-3">
-                        <span className="inline-flex items-center gap-1.5">
-                          <ItemIcon item={item} /> {item.name}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <ItemIcon item={item} />
+                          <Input
+                            value={nameDraft[item.id] ?? item.name}
+                            onChange={(event) => {
+                              nameDirty.current = true;
+                              setNameDraft((prev) => ({ ...prev, [item.id]: event.target.value }));
+                            }}
+                            className="h-8 min-w-32 border-amber-400/30 bg-amber-950/60 px-2"
+                            aria-label={`${item.name} name`}
+                          />
+                          <Button
+                            size="sm"
+                            disabled={pending}
+                            className="h-8 bg-amber-300 px-2 text-amber-950 hover:bg-amber-200"
+                            onClick={() =>
+                              void run({
+                                action: "adminShareName",
+                                itemId: item.id,
+                                name: nameDraft[item.id] ?? item.name,
+                              }).then((result) => {
+                                if (result) nameDirty.current = false;
+                              })
+                            }
+                          >
+                            Set
+                          </Button>
+                        </div>
+                      </td>
+                      <td className="py-2 pr-3">
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            inputMode="numeric"
+                            value={mvDraft[item.id] ?? String(item.basePrice)}
+                            onChange={(event) => {
+                              mvDirty.current = true;
+                              setMvDraft((prev) => ({ ...prev, [item.id]: event.target.value }));
+                            }}
+                            className="h-8 w-24 border-amber-400/30 bg-amber-950/60 px-2"
+                          />
+                          <Button
+                            size="sm"
+                            disabled={pending}
+                            className="h-8 bg-amber-300 px-2 text-amber-950 hover:bg-amber-200"
+                            onClick={() => {
+                              const basePrice = Number(mvDraft[item.id] ?? item.basePrice);
+                              if (!Number.isInteger(basePrice) || basePrice < 1 || basePrice > 9_999_999) {
+                                setError("Starting MV must be a whole number from 1 to 9,999,999.");
+                                return;
+                              }
+                              void run({ action: "adminSharePrice", itemId: item.id, basePrice }).then((result) => {
+                                if (result) mvDirty.current = false;
+                              });
+                            }}
+                          >
+                            Set
+                          </Button>
+                        </div>
                       </td>
                       <td className="py-2 pr-3 tabular-nums">{formatNumber(row?.vwap ?? item.basePrice)}</td>
                       <td className="py-2 pr-3">

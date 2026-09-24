@@ -27,7 +27,7 @@ export const DESK_USERNAME = "Government";
 
 export type GamePhase = "lobby" | "live";
 
-const BOOTSTRAP_REV = 19;
+const BOOTSTRAP_REV = 20;
 const INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 const globalForDb = globalThis as unknown as {
@@ -634,6 +634,18 @@ export async function insertShareType(
   await hydrateShareCatalog(db, true);
 }
 
+export async function updateShareBasePrice(itemId: string, basePrice: number, db: GameDb = getDb()) {
+  await ensureShareTypesTable(db);
+  await db.prepare("UPDATE share_types SET base_price = ? WHERE id = ?").run(basePrice, itemId);
+  await hydrateShareCatalog(db, true);
+}
+
+export async function updateShareName(itemId: string, name: string, db: GameDb = getDb()) {
+  await ensureShareTypesTable(db);
+  await db.prepare("UPDATE share_types SET name = ? WHERE id = ?").run(name, itemId);
+  await hydrateShareCatalog(db, true);
+}
+
 export async function removeShareType(itemId: string, db: GameDb = getDb()) {
   await ensureShareTypesTable(db);
   await purgeItemIds(db, [itemId]);
@@ -692,6 +704,7 @@ async function bootstrap(db: GameDb) {
   await seedDesk(db);
   await ensureInviteCode(db);
   await seedBots(db);
+  await writeComputerMeta(0, db);
   await purgeRetiredItems(db);
   await shareBankerHoldings(db);
   await lockOffice(db);

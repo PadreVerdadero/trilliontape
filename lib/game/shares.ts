@@ -52,6 +52,10 @@ export function normalizeShareName(raw: string) {
   if (!/[a-zA-Z]/.test(name)) {
     throw new Error("The share name needs at least one letter.");
   }
+  const id = name.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (RESERVED_IDS.has(id)) {
+    throw new Error("That share name is reserved.");
+  }
   return name;
 }
 

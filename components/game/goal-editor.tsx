@@ -20,12 +20,6 @@ import { GOAL_TIME_PRESETS, describeGoal } from "@/lib/game/goal";
 import type { GoalView } from "@/lib/game/types";
 import { cn } from "@/lib/utils";
 
-function toLocalInput(ms: number | null) {
-  const d = new Date(ms ?? Date.now());
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 export function GoalEditor({
   goal,
   pending,
@@ -40,8 +34,6 @@ export function GoalEditor({
     score: GoalView["score"];
     threshold: number;
     durationMs: number;
-    startsAt: number | null;
-    endsAt: number | null;
     needs: { itemId: string; quantity: number }[];
   }) => Promise<unknown>;
 }) {
@@ -50,8 +42,6 @@ export function GoalEditor({
   const [score, setScore] = useState<GoalView["score"]>(goal.score);
   const [threshold, setThreshold] = useState(String(goal.threshold));
   const [durationMs, setDurationMs] = useState(goal.durationMs);
-  const [startsDraft, setStartsDraft] = useState(toLocalInput(goal.startsAt));
-  const [endsDraft, setEndsDraft] = useState(toLocalInput(goal.endsAt ?? Date.now() + goal.durationMs));
   const [customMin, setCustomMin] = useState("");
   const [qty, setQty] = useState<Record<string, string>>({});
   const goods = playItems(catalog ?? defaultItems);
@@ -62,8 +52,6 @@ export function GoalEditor({
     setScore(goal.score);
     setThreshold(String(goal.threshold));
     setDurationMs(goal.durationMs);
-    setStartsDraft(toLocalInput(goal.startsAt));
-    setEndsDraft(toLocalInput(goal.endsAt ?? Date.now() + goal.durationMs));
     const next: Record<string, string> = {};
     for (const need of goal.needs) next[need.itemId] = String(need.quantity);
     setQty(next);
@@ -89,8 +77,8 @@ export function GoalEditor({
           <DialogHeader>
             <DialogTitle className="text-amber-100">When the game ends</DialogTitle>
             <DialogDescription className="text-amber-100/70">
-              Now: {goal.label} Saving a new rule clears a finished game and starts the clock if you
-              picked a time limit.
+              Now: {goal.label} Saving a new rule clears a finished game. Use the schedule at the top
+              of Admin to choose when a timed game starts and ends.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -133,29 +121,7 @@ export function GoalEditor({
             ) : null}
             {mode === "timed" ? (
               <div className="space-y-1">
-                <Label htmlFor="goal-starts-at" className="text-amber-100/80">
-                  Starts (your browser’s local time)
-                </Label>
-                <Input
-                  id="goal-starts-at"
-                  type="datetime-local"
-                  value={startsDraft}
-                  onChange={(event) => setStartsDraft(event.target.value)}
-                  className="border-amber-400/30 bg-amber-950/60"
-                />
-                <Label htmlFor="goal-ends-at" className="pt-2 text-amber-100/80">
-                  Ends (your browser’s local time)
-                </Label>
-                <Input
-                  id="goal-ends-at"
-                  type="datetime-local"
-                  value={endsDraft}
-                  onChange={(event) => setEndsDraft(event.target.value)}
-                  className="border-amber-400/30 bg-amber-950/60"
-                />
-                <p className="text-xs text-amber-100/60">The game opens at Starts and freezes at Ends. Maximum duration is 30 days.</p>
-                <Label className="pt-2 text-amber-100/80">Duration preset (optional)</Label>
-                <Label className="text-amber-100/80">Clock</Label>
+                <Label className="text-amber-100/80">Clock duration (used when no top-page schedule is set)</Label>
                 <select
                   className="h-11 w-full rounded-lg border border-amber-400/30 bg-amber-950/60 px-3 text-sm"
                   value={presetMatch ? String(durationMs) : "custom"}
@@ -268,8 +234,6 @@ export function GoalEditor({
                   score,
                   threshold: Number(threshold),
                   durationMs,
-                  startsAt: mode === "timed" ? new Date(startsDraft).getTime() : null,
-                  endsAt: mode === "timed" ? new Date(endsDraft).getTime() : null,
                   needs: Object.entries(qty)
                     .map(([itemId, quantity]) => ({ itemId, quantity: Number(quantity) }))
                     .filter((row) => Number.isInteger(row.quantity) && row.quantity >= 1),

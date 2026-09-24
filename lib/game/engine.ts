@@ -51,6 +51,8 @@ import {
   getItemAuthorized,
   setItemAuthorized,
   insertShareType,
+  updateShareBasePrice,
+  updateShareName,
   removeShareType,
   hydrateShareCatalog,
   startingGold,
@@ -72,6 +74,7 @@ import {
   MIN_SHARE_TYPES,
   shareIdFromName,
   validateShareDraft,
+  normalizeShareName,
 } from "@/lib/game/shares";
 import { clampMinute, goodIsOpen, normalizeTradingBook, type TradingWindow } from "@/lib/game/hours";
 import {
@@ -1510,6 +1513,31 @@ export async function adminSetIssued(userId: number, itemId: string, authorized:
   await setEvent(userId, `Issued ${item.emoji} ${item.name} is now ${formatNumber(authorized)}.`);
 }
 
+export async function adminSetSharePrice(userId: number, itemId: string, basePrice: number) {
+  await requireAdmin(userId);
+  const item = itemById[itemId];
+  if (!item) throw new Error("Unknown share type.");
+  if (!Number.isInteger(basePrice) || basePrice < 1 || basePrice > 9_999_999) {
+    throw new Error("Starting MV must be a whole number from 1 to 9,999,999.");
+  }
+
+  await updateShareBasePrice(itemId, basePrice);
+  await setEvent(userId, `${item.emoji} ${item.name} starting MV is now ${formatCoins(basePrice)}.`);
+}
+
+export async function adminSetShareName(userId: number, itemId: string, rawName: string) {
+  await requireAdmin(userId);
+  const item = itemById[itemId];
+  if (!item) throw new Error("Unknown share type.");
+  const name = normalizeShareName(rawName);
+  const duplicate = items.find(
+    (row) => row.id !== itemId && row.name.localeCompare(name, undefined, { sensitivity: "base" }) === 0
+  );
+  if (duplicate) throw new Error("That share name is already in use.");
+  await updateShareName(itemId, name);
+  await setEvent(userId, `${item.emoji} is now named ${name}.`);
+}
+
 export async function adminSetCandle(userId: number, ms: number) {
   await requireAdmin(userId);
   const next = Math.floor(Number(ms));
@@ -1752,9 +1780,10 @@ async function runNewGame(userId: number, count?: number) {
   );
 }
 
-export async function adminStartGame(userId: number, _timeZone?: string, count?: number) {
+export async function adminStartGame(userId: number, _timeZone?: string, _count?: number) {
   await requireAdmin(userId);
-  await runNewGame(userId, count);
+  await setComputerCount(0);
+  await runNewGame(userId, 0);
   await writeGamePhase("live");
   await writeScheduledStartAt(null);
 }
@@ -1763,19 +1792,24 @@ export async function adminScheduleStart(
   userId: number,
   atMs: number,
   timeZone?: string,
-  count?: number
+  count?: number,
+  endAtMs?: number
 ) {
   await requireAdmin(userId);
-  if (count != null && (!Number.isInteger(count) || count < 0 || count > MAX_COMPUTERS)) {
-    throw new Error(`Computers must be a whole number from 0 to ${MAX_COMPUTERS}.`);
-  }
-  if (count != null) await setComputerCount(count);
+  await setComputerCount(0);
   const when = Math.floor(Number(atMs));
   if (!Number.isFinite(when) || when < 1) {
     throw new Error("Pick a start time.");
   }
+  const currentGoal = await readGoal();
+  const end = endAtMs == null ? null : Math.floor(Number(endAtMs));
+  const scheduledGoal = validateGoalDraft(
+    { ...currentGoal, mode: "timed", startsAt: when, endsAt: end },
+    Date.now()
+  );
+  await writeGoal(scheduledGoal);
   if (when <= Date.now() + 1500) {
-    await runNewGame(userId, count);
+    await runNewGame(userId, 0);
     await writeGamePhase("live");
     await writeScheduledStartAt(null);
     return;
@@ -1786,6 +1820,14 @@ export async function adminScheduleStart(
     userId,
     `Lobby is open. New game starts at ${formatStartClock(when, timeZone)}.`
   );
+}
+
+export async function adminSetLobby(userId: number) {
+  await requireAdmin(userId);
+  await setComputerCount(0);
+  await writeScheduledStartAt(null);
+  await writeGamePhase("lobby");
+  await setEvent(userId, "No active game. New travelers will wait in the lobby until you set a start time.");
 }
 
 export async function adminClearSchedule(userId: number) {
@@ -1859,8 +1901,7 @@ export async function adminSetComputerCount(userId: number, count: number) {
 }
 
 export async function adminSetComputers(userId: number, on: boolean) {
-  const seated = await computerCount();
-  await adminSetComputerCount(userId, on ? (seated > 0 ? seated : MAX_COMPUTERS) : 0);
+  await adminSetComputerCount(userId, 0);
 }
 
 export async function adminSitOtherTravelers(userId: number) {

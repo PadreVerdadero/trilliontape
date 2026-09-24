@@ -16,6 +16,7 @@ import {
   adminSetItem,
   adminStartGame,
   adminScheduleStart,
+  adminSetLobby,
   adminClearSchedule,
   adminSetInviteCode,
   adminSetComputers,
@@ -25,6 +26,8 @@ import {
   adminSetStartingGold,
   adminSetStipendLadder,
   adminSetIssued,
+  adminSetSharePrice,
+  adminSetShareName,
   adminSetCandle,
   adminSetTradingHours,
   adminSetGoal,
@@ -67,12 +70,15 @@ type ActionBody = {
   | { action: "adminAccount"; targetUserId: number; username: string; password?: string }
   | { action: "adminItem"; itemId: string; quantity: number; targetUserId?: number }
   | { action: "adminIssued"; itemId: string; authorized: number }
+  | { action: "adminSharePrice"; itemId: string; basePrice: number }
+  | { action: "adminShareName"; itemId: string; name: string }
   | { action: "adminCandle"; ms: number }
   | { action: "adminTradingHours"; hours: Record<string, { openMin: number; closeMin: number } | null>; }
   | { action: "adminShareAdd"; name: string; emoji?: string; image?: string | null }
   | { action: "adminShareRemove"; itemId: string }
   | { action: "adminNewGame"; count?: number }
-  | { action: "adminScheduleStart"; at: number; count?: number }
+  | { action: "adminScheduleStart"; at: number; endAt?: number }
+  | { action: "adminLobby" }
   | { action: "adminClearSchedule" }
   | { action: "adminInviteCode"; code: string }
   | { action: "adminComputers"; count?: number; on?: boolean }
@@ -183,6 +189,12 @@ export async function POST(request: Request) {
       case "adminIssued":
         await adminSetIssued(userId, String(body.itemId), Number(body.authorized));
         break;
+      case "adminSharePrice":
+        await adminSetSharePrice(userId, String(body.itemId), Number(body.basePrice));
+        break;
+      case "adminShareName":
+        await adminSetShareName(userId, String(body.itemId), String(body.name ?? ""));
+        break;
       case "adminCandle":
         await adminSetCandle(userId, Number(body.ms));
         break;
@@ -203,8 +215,12 @@ export async function POST(request: Request) {
           userId,
           Number(body.at),
           tz,
-          body.count != null ? Number(body.count) : undefined
+          0,
+          body.endAt != null ? Number(body.endAt) : undefined
         );
+        break;
+      case "adminLobby":
+        await adminSetLobby(userId);
         break;
       case "adminClearSchedule":
         await adminClearSchedule(userId);

@@ -27,6 +27,9 @@ Timed goals accept explicit browser-local start and end timestamps (maximum 30 d
 waits in the lobby until the start, then freezes at the end and selects the winner using the
 configured metric. Account editing lists all login accounts, but bot and system accounts are
 visible and protected; human account IDs and sessions are preserved when names or passwords change.
+Computer traders are currently disabled. Admin’s top-of-page start/end schedule is authoritative for
+timed games; selecting **No active game** leaves the table in a lobby with no start time until Admin
+sets one.
 
 ## The catalog
 
