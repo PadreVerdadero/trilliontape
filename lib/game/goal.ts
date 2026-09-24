@@ -15,6 +15,7 @@ export type GoalConfig = {
   score: GoalScore;
   threshold: number;
   durationMs: number;
+  startsAt: number | null;
   endsAt: number | null;
   needs: GoalNeed[];
 };
@@ -46,6 +47,7 @@ export function defaultGoal(): GoalConfig {
     score: "netWorth",
     threshold: NET_WORTH_GOAL,
     durationMs: 15 * 60_000,
+    startsAt: null,
     endsAt: null,
     needs: [],
   };
@@ -68,6 +70,8 @@ export function normalizeGoal(raw: Partial<GoalConfig> | null | undefined, now =
   const needs = (raw?.needs ?? []).map(clampNeed).filter((row): row is GoalNeed => Boolean(row));
   const unique = new Map<string, GoalNeed>();
   for (const need of needs) unique.set(need.itemId, need);
+  let startsAt = raw?.startsAt == null ? null : Math.floor(Number(raw.startsAt));
+  if (startsAt != null && !Number.isFinite(startsAt)) startsAt = null;
   let endsAt = raw?.endsAt == null ? null : Math.floor(Number(raw.endsAt));
   if (endsAt != null && !Number.isFinite(endsAt)) endsAt = null;
   return {
@@ -75,6 +79,7 @@ export function normalizeGoal(raw: Partial<GoalConfig> | null | undefined, now =
     score,
     threshold: Number.isFinite(threshold) && threshold >= 1 ? threshold : base.threshold,
     durationMs: Number.isFinite(durationMs) && durationMs >= 1_000 ? durationMs : base.durationMs,
+    startsAt,
     endsAt,
     needs: [...unique.values()].sort((a, b) => {
       const ia = items.findIndex((item) => item.id === a.itemId);
@@ -84,7 +89,9 @@ export function normalizeGoal(raw: Partial<GoalConfig> | null | undefined, now =
   };
 }
 
-export function validateGoalDraft(raw: Partial<GoalConfig>) {
+const MAX_CLOCK_MS = 30 * 24 * 60 * 60_000;
+
+export function validateGoalDraft(raw: Partial<GoalConfig>, now = Date.now()) {
   const goal = normalizeGoal(raw);
   if (goal.score === "items" && goal.needs.length === 0) {
     throw new Error("Pick at least one good and how many of it.");
@@ -92,10 +99,19 @@ export function validateGoalDraft(raw: Partial<GoalConfig>) {
   if (goal.mode === "threshold" && goal.score !== "items" && goal.threshold < 1) {
     throw new Error("The mark must be at least 1.");
   }
-  if (goal.mode === "timed" && (goal.durationMs < 1_000 || goal.durationMs > 30 * 24 * 60 * 60_000)) {
-    throw new Error("The clock must be between 1 second and 30 days.");
+  if (goal.mode !== "timed") {
+    return { ...goal, startsAt: null, endsAt: null };
   }
-  return goal;
+  const hasStart = raw.startsAt != null && Number.isFinite(Number(raw.startsAt));
+  const hasEnd = raw.endsAt != null && Number.isFinite(Number(raw.endsAt));
+  const startsAt = hasStart ? Math.floor(Number(raw.startsAt)) : now;
+  const endsAt = hasEnd ? Math.floor(Number(raw.endsAt)) : startsAt + goal.durationMs;
+  if (endsAt <= startsAt) throw new Error("The clock must end after it starts.");
+  const span = endsAt - startsAt;
+  if (span < 1_000 || span > MAX_CLOCK_MS) {
+    throw new Error("The clock must run between 1 second and 30 days.");
+  }
+  return { ...goal, startsAt, endsAt, durationMs: span };
 }
 
 export function goalScore(row: LeaderRow, goal: GoalConfig) {
@@ -146,8 +162,32 @@ export function describeScore(goal: GoalConfig) {
   return "net worth";
 }
 
-export function describeGoal(goal: GoalConfig) {
+export function formatGoalStamp(ms: number, timeZone?: string) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: timeZone || undefined,
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+      hour12: false,
+    }).formatToParts(new Date(ms));
+    const read = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+    let hour = read("hour");
+    if (hour === "24") hour = "00";
+    return `${read("day")} ${read("month")} ${hour}:${read("minute")}`;
+  } catch {
+    if (timeZone) return formatGoalStamp(ms);
+    return new Date(ms).toISOString().slice(0, 16).replace("T", " ");
+  }
+}
+
+export function describeGoal(goal: GoalConfig, timeZone?: string) {
   if (goal.mode === "timed") {
+    if (goal.startsAt != null && goal.endsAt != null) {
+      return `Most ${describeScore(goal)} from ${formatGoalStamp(goal.startsAt, timeZone)} to ${formatGoalStamp(goal.endsAt, timeZone)}.`;
+    }
     return `Most ${describeScore(goal)} when the clock runs out (${goalTimeLabel(goal.durationMs)}).`;
   }
   if (goal.score === "items") return `First to hold ${describeNeeds(goal.needs)}.`;
