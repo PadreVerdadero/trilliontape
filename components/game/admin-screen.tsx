@@ -21,11 +21,24 @@ import { useSelectedItem } from "@/hooks/use-selected-item";
 import { cn } from "@/lib/utils";
 import { GAME_NAME } from "@/lib/game/brand";
 import type { GameState } from "@/lib/game/types";
+import { CANDLE_PRESETS, candleSizeLabel } from "@/lib/game/market";
 
 function toLocalInput(ms: number) {
   const d = new Date(ms);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function minuteInput(minute: number | undefined) {
+  const value = minute ?? 0;
+  return `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`;
+}
+
+function parseMinute(value: string) {
+  const [hour, minute] = value.split(":").map(Number);
+  return Number.isInteger(hour) && Number.isInteger(minute) && hour >= 0 && hour < 24 && minute >= 0 && minute < 60
+    ? hour * 60 + minute
+    : null;
 }
 
 export function AdminScreen({
@@ -54,6 +67,8 @@ export function AdminScreen({
     toLocalInput(initialState.scheduledStartAt ?? Date.now() + 10 * 60 * 1000)
   );
   const [inviteDraft, setInviteDraft] = useState(initialState.inviteCode ?? "");
+  const [candleDraft, setCandleDraft] = useState(String(Math.round(initialState.candleMs / 60_000)));
+  const [hoursDraft, setHoursDraft] = useState<Record<string, { open: string; close: string; enabled: boolean }>>({});
   const [mobile, setMobile] = useMobileLayout();
 
   const player = state?.player;
@@ -95,6 +110,21 @@ export function AdminScreen({
   useEffect(() => {
     if (state?.inviteCode) setInviteDraft(state.inviteCode);
   }, [state?.inviteCode]);
+
+  useEffect(() => {
+    if (!state) return;
+    const next: Record<string, { open: string; close: string; enabled: boolean }> = {};
+    for (const item of catalog) {
+      const row = state.tradingHours[item.id];
+      next[item.id] = {
+        open: minuteInput(row?.openMin),
+        close: minuteInput(row?.closeMin),
+        enabled: Boolean(row),
+      };
+    }
+    setHoursDraft(next);
+    setCandleDraft(String(Math.round(state.candleMs / 60_000)));
+  }, [state?.candleMs, state?.tradingHours, catalog.map((item) => item.id).join("|")]);
 
   const capKey = `${catalog.map((item) => item.id).join(",")}|${(state?.prices ?? [])
     .map((row) => `${row.itemId}:${row.authorized}`)
@@ -295,6 +325,97 @@ export function AdminScreen({
           </div>
         </section>
 
+        <section className="space-y-4 rounded-xl border border-amber-400/25 bg-amber-900/30 p-4">
+          <div>
+            <h2 className="font-heading text-lg">Market timing</h2>
+            <p className="text-sm text-amber-100/70">
+              Candle size changes the chart buckets. Share windows use this browser’s local times and
+              apply daily; an end earlier than the start is an overnight window. Equal times mean open all day.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="space-y-1">
+              <Label htmlFor="admin-candle" className="text-amber-100/80">Candle interval</Label>
+              <select
+                id="admin-candle"
+                className="h-11 rounded-lg border border-amber-400/30 bg-amber-950/60 px-3 text-sm"
+                value={CANDLE_PRESETS.some((row) => row.ms === Number(candleDraft) * 60_000) ? candleDraft : "custom"}
+                onChange={(event) => {
+                  if (event.target.value !== "custom") setCandleDraft(event.target.value);
+                }}
+              >
+                {[1, 5, 15, 30, 60].map((minutes) => <option key={minutes} value={minutes}>{minutes} minutes</option>)}
+                <option value="custom">Custom minutes</option>
+              </select>
+            </div>
+            {!CANDLE_PRESETS.some((row) => row.ms === Number(candleDraft) * 60_000) ? (
+              <Input
+                inputMode="numeric"
+                min={1}
+                max={1440}
+                value={candleDraft}
+                onChange={(event) => setCandleDraft(event.target.value)}
+                className="h-11 w-28 border-amber-400/30 bg-amber-950/60"
+                aria-label="Custom candle minutes"
+              />
+            ) : null}
+            <Button
+              disabled={pending}
+              className="bg-amber-300 text-amber-950 hover:bg-amber-200"
+              onClick={() => {
+                const minutes = Number(candleDraft);
+                if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+                  setError("Candle interval must be a whole number from 1 to 1,440 minutes.");
+                  return;
+                }
+                void run({ action: "adminCandle", ms: minutes * 60_000 });
+              }}
+            >
+              Set candle size
+            </Button>
+            <p className="text-xs text-amber-100/60">Current: {candleSizeLabel(state.candleMs)}.</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[32rem] text-left text-sm">
+              <thead className="text-amber-100/70"><tr><th className="py-2 pr-3">Share</th><th className="py-2 pr-3">Open</th><th className="py-2 pr-3">Close</th><th className="py-2">Window</th></tr></thead>
+              <tbody>
+                {catalog.map((item) => {
+                  const draft = hoursDraft[item.id] ?? { open: "00:00", close: "00:00", enabled: false };
+                  return (
+                    <tr key={item.id} className="border-t border-amber-400/10">
+                      <td className="py-2 pr-3"><ItemIcon item={item} /> {item.name}</td>
+                      <td className="py-2 pr-3"><Input type="time" value={draft.open} onChange={(e) => setHoursDraft((p) => ({ ...p, [item.id]: { ...draft, open: e.target.value, enabled: true } }))} className="h-8 border-amber-400/30 bg-amber-950/60" /></td>
+                      <td className="py-2 pr-3"><Input type="time" value={draft.close} onChange={(e) => setHoursDraft((p) => ({ ...p, [item.id]: { ...draft, close: e.target.value, enabled: true } }))} className="h-8 border-amber-400/30 bg-amber-950/60" /></td>
+                      <td className="py-2 text-xs text-amber-100/70">{draft.enabled ? `${draft.open}–${draft.close}` : "always open"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <Button
+            disabled={pending}
+            className="bg-amber-300 text-amber-950 hover:bg-amber-200"
+            onClick={() => {
+              const hours: Record<string, { openMin: number; closeMin: number } | null> = {};
+              for (const item of catalog) {
+                const draft = hoursDraft[item.id];
+                if (!draft?.enabled) continue;
+                const openMin = parseMinute(draft.open);
+                const closeMin = parseMinute(draft.close);
+                if (openMin == null || closeMin == null) {
+                  setError(`${item.name} needs valid opening and closing times.`);
+                  return;
+                }
+                hours[item.id] = { openMin, closeMin };
+              }
+              void run({ action: "adminTradingHours", hours });
+            }}
+          >
+            Save share hours
+          </Button>
+        </section>
+
         <section className="space-y-3 rounded-xl border border-amber-400/25 bg-amber-900/30 p-4">
           <h2 className="font-heading text-lg">Traveler</h2>
           <Label htmlFor="admin-seat" className="text-amber-100/80">
@@ -311,6 +432,7 @@ export function AdminScreen({
                 {row.username}
                 {row.id === player.id ? " (you)" : ""}
                 {row.bot ? (row.seated ? " · computer" : " · sitting out") : ""}
+                {!row.editable ? ` · ${row.editBlockedReason ?? "protected"}` : ""}
               </option>
             ))}
           </select>
@@ -328,7 +450,7 @@ export function AdminScreen({
                 value={usernameInput}
                 onChange={(event) => setUsernameInput(event.target.value)}
                 autoComplete="off"
-                disabled={pending || !selectedSeat || selectedSeat.bot}
+                disabled={pending || !selectedSeat || !selectedSeat.editable}
                 className="border-amber-400/30 bg-amber-950/60"
               />
             </div>
@@ -342,14 +464,14 @@ export function AdminScreen({
                 value={passwordInput}
                 onChange={(event) => setPasswordInput(event.target.value)}
                 autoComplete="new-password"
-                disabled={pending || !selectedSeat || selectedSeat.bot}
+                disabled={pending || !selectedSeat || !selectedSeat.editable}
                 placeholder="Leave blank to keep it"
                 className="border-amber-400/30 bg-amber-950/60"
               />
             </div>
             <div className="md:col-span-2">
               <Button
-                disabled={pending || !selectedSeat || selectedSeat.bot || !usernameInput.trim()}
+                disabled={pending || !selectedSeat || !selectedSeat.editable || !usernameInput.trim()}
                 className="bg-amber-300 text-amber-950 hover:bg-amber-200"
                 onClick={() =>
                   void run({
@@ -363,6 +485,7 @@ export function AdminScreen({
                 Save account
               </Button>
               <p className="mt-2 text-xs text-amber-100/60">
+                Editable accounts are marked above. Computer and system accounts are visible but protected.
                 Use 3–20 letters, numbers, or underscores. A new password must be at least 4 characters;
                 leave it blank to keep the current password. Existing sessions stay signed in.
               </p>
@@ -576,6 +699,8 @@ export function AdminScreen({
                       score: draft.score,
                       threshold: draft.threshold,
                       durationMs: draft.durationMs,
+                      startsAt: draft.startsAt,
+                      endsAt: draft.endsAt,
                       needs: draft.needs,
                     })
                   }

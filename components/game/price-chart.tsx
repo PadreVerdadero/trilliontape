@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { formatCoins, formatCompact, formatMilitaryTime, formatNumber } from "@/lib/game/format";
-import { CHART_MINUTES, MINUTE_MS } from "@/lib/game/market";
+import { CHART_CANDLES, MINUTE_MS } from "@/lib/game/market";
 import { cn } from "@/lib/utils";
 import type { TradeRow } from "@/lib/game/types";
 
@@ -17,15 +17,16 @@ type Candle = {
   at: number;
 };
 
-function minuteKey(at: number) {
-  return Math.floor(at / MINUTE_MS) * MINUTE_MS;
+function minuteKey(at: number, interval = MINUTE_MS) {
+  return Math.floor(at / interval) * interval;
 }
 
-function toMinuteCandles(prints: TradeRow[], now: number, basePrice: number): Candle[] {
+function toMinuteCandles(prints: TradeRow[], now: number, basePrice: number, candleMs: number): Candle[] {
   if (prints.length === 0) return [];
+  const interval = Math.max(MINUTE_MS, candleMs);
   const sorted = [...prints].sort((a, b) => a.id - b.id || a.createdAt - b.createdAt);
-  const windowEnd = minuteKey(now);
-  const windowStart = windowEnd - (CHART_MINUTES - 1) * MINUTE_MS;
+  const windowEnd = minuteKey(now, interval);
+  const windowStart = windowEnd - (CHART_CANDLES - 1) * interval;
   let prevClose = basePrice;
   const prior = sorted.filter((print) => print.createdAt < windowStart);
   if (prior.length > 0) prevClose = prior[prior.length - 1].price;
@@ -34,16 +35,16 @@ function toMinuteCandles(prints: TradeRow[], now: number, basePrice: number): Ca
   const byMinute = new Map<number, TradeRow[]>();
   for (const print of sorted) {
     if (print.createdAt < windowStart) continue;
-    const key = minuteKey(print.createdAt);
+    const key = minuteKey(print.createdAt, interval);
     const list = byMinute.get(key);
     if (list) list.push(print);
     else byMinute.set(key, [print]);
   }
 
   const firstTrade = sorted.find((print) => print.createdAt >= windowStart) ?? sorted[0];
-  const firstMinute = Math.max(windowStart, minuteKey(firstTrade.createdAt));
+  const firstMinute = Math.max(windowStart, minuteKey(firstTrade.createdAt, interval));
   const candles: Candle[] = [];
-  for (let at = firstMinute; at <= windowEnd; at += MINUTE_MS) {
+  for (let at = firstMinute; at <= windowEnd; at += interval) {
     const bucket = byMinute.get(at) ?? [];
     if (bucket.length === 0) {
       candles.push({
@@ -90,6 +91,7 @@ export function PriceChart({
   bestAsk,
   compact = false,
   now,
+  candleMs = MINUTE_MS,
 }: {
   trades: TradeRow[];
   basePrice: number;
@@ -98,13 +100,17 @@ export function PriceChart({
   bestAsk?: number | null;
   compact?: boolean;
   now?: number;
+  candleMs?: number;
 }) {
   const clock = now ?? Date.now();
   const prints = useMemo(
     () => [...trades].sort((a, b) => a.id - b.id || a.createdAt - b.createdAt),
     [trades]
   );
-  const candles = useMemo(() => toMinuteCandles(prints, clock, basePrice), [prints, clock, basePrice]);
+  const candles = useMemo(
+    () => toMinuteCandles(prints, clock, basePrice, candleMs),
+    [prints, clock, basePrice, candleMs]
+  );
   const [hover, setHover] = useState<number | null>(null);
   const traded = prints.length > 0;
   const shown = traded
@@ -118,7 +124,7 @@ export function PriceChart({
           volume: 0,
           last: null,
           count: 0,
-          at: minuteKey(clock),
+          at: minuteKey(clock, candleMs),
         },
       ];
   const extras = [bestBid, bestAsk, mv].filter((value): value is number => value != null);
@@ -173,7 +179,7 @@ export function PriceChart({
           <p className="font-heading text-lg">Price</p>
           <p className="text-xs text-muted-foreground">
             {traded
-              ? `Each candle is one minute. Open is the previous close. Last ${CHART_MINUTES} minutes, oldest to newest. Hover for open, high, low, close.`
+              ? `Each candle is ${Math.round(candleMs / MINUTE_MS)} minutes. Open is the previous close. Last ${CHART_CANDLES} candles, oldest to newest. Hover for open, high, low, close.`
               : "No trades yet. The candle sits at the starting price."}{" "}
             Dashed marks on the right are MV, best bid, and best ask. Bars under the candles are volume.
           </p>
@@ -187,7 +193,7 @@ export function PriceChart({
           )}
           title={
             traded
-              ? `Change from the first candle’s open to the last close in this ${CHART_MINUTES}-minute window.`
+              ? `Change from the first candle’s open to the last close in this ${CHART_CANDLES}-candle window.`
               : "Starting price — no prints yet."
           }
         >

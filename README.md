@@ -17,6 +17,17 @@ The UI is built for a phone in the pocket and a computer at the desk.
 
 Everyone starts at the admin starting purse (default 1,000 coins), including seated computers. Someone who joins after drops have already landed gets that starting purse plus every drop the table has already been paid, then waits for the next window with everyone else. Coin drops land on a timer (default 5 minutes, set in Admin) for every traveler and seated computer. Admin edits the amounts; the default ladder is 1,000 the first drop, 2,000 the next, 3,000 the next, then 5k, 8k, 15k and on up (not in the same window you join or start a new game). After the last saved level, that purse repeats. A popup shows humans how many coins landed. The pack timeline shows the same clock the tape uses. The default win is **1T net worth**; Admin can change that.
 
+## Admin market controls
+
+Admin can choose 1, 5, 15, 30, or 60 minute candles, or any custom interval from 1–1,440 minutes.
+Each share can also have a daily browser-local trading window. Shares with no saved window remain
+always open; equal start and end times mean open all day, and an end earlier than the start is an
+overnight window. The market displays the current window and rejects orders while it is closed.
+Timed goals accept explicit browser-local start and end timestamps (maximum 30 days); the table
+waits in the lobby until the start, then freezes at the end and selects the winner using the
+configured metric. Account editing lists all login accounts, but bot and system accounts are
+visible and protected; human account IDs and sessions are preserved when names or passwords change.
+
 ## The catalog
 
 The default table is **10 goods**, in board order: wheat, berries, wood, fish, flower, stone, mushrooms, coal, shell, gem. Opening MV (and the IPO ask) is 10, 20, 30, 40, 50, 60, 70, 80, 90, 100. Issued caps stay 150, 135, 120, 105, 90, 75, 60, 45, 30, 15. Admin can add more share types or delete these. Trade them on the board. There is no crafting — every item stands on its own.
@@ -173,4 +184,3 @@ The desk is already live at [https://trilliontape.fly.dev](https://trilliontape.
 5. When both certs are ready, you can turn the Cloudflare proxy **on** and set SSL **Full (strict)**.
 
 The data host can wait. Until those two desk secrets are set, restarts still wipe the table — so create **Jesse** on https://trilliontape.com only after you are ready to keep that world. Do not press **New game**.
-

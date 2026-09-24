@@ -74,7 +74,7 @@ export function normalizeTradingBook(raw: unknown): TradingBook {
     if (!window || typeof window !== "object") continue;
     const openMin = clampMinute((window as TradingWindow).openMin);
     const closeMin = clampMinute((window as TradingWindow).closeMin);
-    if (openMin == null || closeMin == null || openMin === closeMin) continue;
+    if (openMin == null || closeMin == null) continue;
     hours[itemId] = { openMin, closeMin };
   }
   return { timeZone: safeTimeZone(source.timeZone), hours };

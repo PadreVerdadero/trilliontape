@@ -16,6 +16,7 @@ import {
   type RarityMap,
 } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
+import { describeTradingWindow, goodIsOpen } from "@/lib/game/hours";
 import { useOrderBook } from "@/hooks/use-game";
 import { PriceChart } from "@/components/game/price-chart";
 import { SwapPanel } from "@/components/game/swap-panel";
@@ -501,6 +502,15 @@ export function MarketPanel({
               <p className="font-heading text-xl">
                 <ItemIcon item={selected} /> {selected.name}
               </p>
+              {(() => {
+                const window = state.tradingHours[selected.id];
+                const open = goodIsOpen(window, state.now, state.tradingTimeZone);
+                return (
+                  <p className={cn("text-xs", open ? "text-emerald-400" : "text-amber-300")}>
+                    {open ? "Trading open" : "Trading closed"} · {describeTradingWindow(window)}
+                  </p>
+                );
+              })()}
             </div>
             <div
               className={cn(
@@ -698,6 +708,7 @@ export function MarketPanel({
             bestAsk={price?.bestAsk}
             compact={compact}
             now={state.now}
+            candleMs={state.candleMs}
           />
 
           <div className="grid gap-4 lg:grid-cols-2">

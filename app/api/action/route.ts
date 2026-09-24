@@ -25,6 +25,8 @@ import {
   adminSetStartingGold,
   adminSetStipendLadder,
   adminSetIssued,
+  adminSetCandle,
+  adminSetTradingHours,
   adminSetGoal,
   adminAddShare,
   adminRemoveShare,
@@ -65,6 +67,8 @@ type ActionBody = {
   | { action: "adminAccount"; targetUserId: number; username: string; password?: string }
   | { action: "adminItem"; itemId: string; quantity: number; targetUserId?: number }
   | { action: "adminIssued"; itemId: string; authorized: number }
+  | { action: "adminCandle"; ms: number }
+  | { action: "adminTradingHours"; hours: Record<string, { openMin: number; closeMin: number } | null>; }
   | { action: "adminShareAdd"; name: string; emoji?: string; image?: string | null }
   | { action: "adminShareRemove"; itemId: string }
   | { action: "adminNewGame"; count?: number }
@@ -82,6 +86,8 @@ type ActionBody = {
       score: "netWorth" | "gold" | "items";
       threshold?: number;
       durationMs?: number;
+      startsAt?: number | null;
+      endsAt?: number | null;
       needs?: { itemId: string; quantity: number }[];
     }
 );
@@ -177,6 +183,12 @@ export async function POST(request: Request) {
       case "adminIssued":
         await adminSetIssued(userId, String(body.itemId), Number(body.authorized));
         break;
+      case "adminCandle":
+        await adminSetCandle(userId, Number(body.ms));
+        break;
+      case "adminTradingHours":
+        await adminSetTradingHours(userId, body.hours, tz);
+        break;
       case "adminShareAdd":
         await adminAddShare(userId, { name: body.name, emoji: body.emoji, image: body.image });
         break;
@@ -222,6 +234,8 @@ export async function POST(request: Request) {
           score: body.score,
           threshold: body.threshold,
           durationMs: body.durationMs,
+          startsAt: body.startsAt,
+          endsAt: body.endsAt,
           needs: body.needs,
         });
         break;

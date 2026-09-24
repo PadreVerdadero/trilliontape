@@ -38,6 +38,8 @@ import {
   readGoal,
   readCandleMs,
   readTradingHours,
+  writeCandleMs,
+  writeTradingHours,
   seedBots,
   setComputerCount,
   writeGameOver,
@@ -71,6 +73,7 @@ import {
   shareIdFromName,
   validateShareDraft,
 } from "@/lib/game/shares";
+import { clampMinute, goodIsOpen, normalizeTradingBook, type TradingWindow } from "@/lib/game/hours";
 import {
   BOT_PROFILES,
   MAX_COMPUTERS,
@@ -88,7 +91,7 @@ import {
 } from "@/lib/game/bots";
 import { isOfficeUsername, OFFICE_USERNAME } from "@/lib/game/office";
 import { describeGoal, meetsGoal, sortByGoal, validateGoalDraft, type GoalConfig } from "@/lib/game/goal";
-import { computeFairValue, CHART_MINUTES, MINUTE_MS, MV_PRINTS } from "@/lib/game/market";
+import { computeFairValue, CHART_CANDLES, MV_PRINTS } from "@/lib/game/market";
 import { coalesceTrades, lastTapeQty } from "@/lib/game/prints";
 import {
   chalkboardItem,
@@ -984,7 +987,19 @@ async function requireOpenGame() {
   if ((await readGamePhase()) === "lobby") {
     throw new Error("The desk is in the lobby. Trading starts when Jesse’s clock hits the start time.");
   }
+  const goal = await readGoal();
+  if (goal.mode === "timed" && goal.endsAt != null && nowMs() >= goal.endsAt) {
+    throw new Error("The timed game has ended. The market is frozen while Jesse reviews the winner.");
+  }
   if ((await readGameOver()).over) throw new Error("The game is over. Jesse can start a new game from Admin.");
+}
+
+async function requireItemOpen(itemId: string) {
+  const trading = await readTradingHours();
+  if (!goodIsOpen(trading.hours[itemId], nowMs(), trading.timeZone)) {
+    const item = itemById[itemId];
+    throw new Error(`${item?.name ?? "That share"} is closed for trading right now.`);
+  }
 }
 
 export async function placeOrder(
@@ -998,6 +1013,7 @@ export async function placeOrder(
   await requireOpenGame();
   const item = itemById[itemId];
   if (!item) throw new Error("Unknown item.");
+  await requireItemOpen(itemId);
   const treasury = await isGov(userId);
   const px = treasury ? Math.max(1, Math.round(await marketPrice(itemId))) : price;
   if (!treasury && (!Number.isInteger(price) || price < 1)) {
@@ -1119,6 +1135,7 @@ export async function takeOrder(
     if (!order) {
       throw new Error("That quote just filled. The book moved — tap another.");
     }
+    await requireItemOpen(order.item_id);
     const treasuryQuote = Boolean(order.treasury);
     if (order.user_id === userId && !treasuryQuote) throw new Error("That is your own order.");
     let fillQty = Math.min(quantity, order.remaining);
@@ -1396,20 +1413,18 @@ export async function adminUpdateAccount(
   await requireAdmin(actorId);
   const db = getDb();
   const target = await db
-    .prepare("SELECT id, username, COALESCE(is_bot, 0) AS is_bot FROM users WHERE id = ?")
-    .get(targetUserId) as { id: number; username: string; is_bot: number } | undefined;
-  if (
-    !target ||
-    target.is_bot ||
-    ["Banker", DESK_USERNAME, "Guest"].some(
-      (reserved) => target.username.localeCompare(reserved, undefined, { sensitivity: "base" }) === 0
-    )
-  ) {
-    throw new Error("Choose a human traveler account.");
-  }
-  if (target.username.localeCompare(OFFICE_USERNAME, undefined, { sensitivity: "accent" }) === 0) {
-    throw new Error("The admin account cannot be edited here.");
-  }
+    .prepare("SELECT id, username, COALESCE(is_bot, 0) AS is_bot, COALESCE(is_gov, 0) AS is_gov FROM users WHERE id = ?")
+    .get(targetUserId) as { id: number; username: string; is_bot: number; is_gov: number } | undefined;
+  if (!target) throw new Error("Choose an existing login account.");
+  const blocked = target.is_bot
+    ? "Computer accounts cannot be edited."
+    : target.is_gov ||
+        ["Banker", DESK_USERNAME, "Guest", OFFICE_USERNAME].some(
+          (reserved) => target.username.localeCompare(reserved, undefined, { sensitivity: "base" }) === 0
+        )
+      ? "System accounts cannot be edited."
+      : null;
+  if (blocked) throw new Error(blocked);
 
   const nextUsername = normalizeUsername(username);
   const usernameError = validateUsername(nextUsername);
@@ -1488,10 +1503,42 @@ export async function adminSetIssued(userId: number, itemId: string, authorized:
   if (!Number.isInteger(authorized) || authorized < 1 || authorized > 99_999) {
     throw new Error("Issued must be a whole number from 1 to 99,999.");
   }
+
   await setItemAuthorized(itemId, authorized);
   await clampFloatedToAuthorized(itemId, authorized);
   await alignIssuedToAuthorized(true);
   await setEvent(userId, `Issued ${item.emoji} ${item.name} is now ${formatNumber(authorized)}.`);
+}
+
+export async function adminSetCandle(userId: number, ms: number) {
+  await requireAdmin(userId);
+  const next = Math.floor(Number(ms));
+  if (!Number.isFinite(next) || next < 60_000 || next > 24 * 60 * 60_000) {
+    throw new Error("Candle size must be between 1 and 1,440 minutes.");
+  }
+  const saved = await writeCandleMs(next);
+  await setEvent(userId, `Chart candles are now ${Math.round(saved / 60_000)} minutes.`);
+}
+
+export async function adminSetTradingHours(
+  userId: number,
+  rawHours: Record<string, TradingWindow | null | undefined>,
+  timeZone?: string
+) {
+  await requireAdmin(userId);
+  const hours: Record<string, TradingWindow> = {};
+  for (const item of items) {
+    const draft = rawHours[item.id];
+    if (draft == null) continue;
+    const openMin = clampMinute(draft.openMin);
+    const closeMin = clampMinute(draft.closeMin);
+    if (openMin == null || closeMin == null) {
+      throw new Error(`${item.name} needs valid times from 00:00 through 23:59.`);
+    }
+    hours[item.id] = { openMin, closeMin };
+  }
+  const next = await writeTradingHours(normalizeTradingBook({ timeZone, hours }));
+  await setEvent(userId, `Trading hours updated for ${Object.keys(next.hours).length} share types.`);
 }
 
 export async function adminAddShare(
@@ -1616,10 +1663,9 @@ async function runNewGame(userId: number, count?: number) {
     await clearGameOver(db);
     const goal = await readGoal(db);
     await writeGoal(
-      {
-        ...goal,
-        endsAt: goal.mode === "timed" ? Date.now() + goal.durationMs : null,
-      },
+      goal.mode === "timed" && goal.startsAt != null && goal.endsAt != null
+        ? goal
+        : { ...goal, startsAt: null, endsAt: goal.mode === "timed" ? Date.now() + goal.durationMs : null },
       db
     );
     await db.exec(`
@@ -1928,7 +1974,7 @@ async function loadRecentTrades(limit: number, itemId?: string): Promise<TradeRo
 }
 
 async function loadItemChartTrades(itemId: string): Promise<TradeRow[]> {
-  const since = nowMs() - (CHART_MINUTES + 1) * MINUTE_MS;
+  const since = nowMs() - (CHART_CANDLES + 1) * (await readCandleMs());
   const sql = `SELECT t.id, t.item_id, t.price, t.quantity, t.created_at,
               b.username AS buy_name, s.username AS sell_name,
               COALESCE(t.buy_treasury, 0) AS buy_treasury,
@@ -2765,11 +2811,20 @@ export async function adminSetGoal(userId: number, draft: Partial<GoalConfig>) {
   await requireAdmin(userId);
   const now = nowMs();
   const goal = validateGoalDraft(draft);
-  const next: GoalConfig = {
-    ...goal,
-    endsAt: goal.mode === "timed" ? now + goal.durationMs : null,
-  };
+  const next: GoalConfig = goal.mode === "timed"
+    ? goal
+    : { ...goal, startsAt: null, endsAt: null };
   await writeGoal(next);
+  if (next.mode === "timed" && next.startsAt != null && next.startsAt > now) {
+    await writeScheduledStartAt(next.startsAt);
+    await writeGamePhase("lobby");
+  } else if (next.mode === "timed") {
+    await runNewGame(userId);
+    await writeScheduledStartAt(null);
+    await writeGamePhase("live");
+  } else {
+    await writeScheduledStartAt(null);
+  }
   await clearGameOver();
   await setEvent(userId, `Goal set. ${describeGoal(next)}`);
 }
@@ -3334,12 +3389,12 @@ async function listAdminRoster(): Promise<AdminSeat[]> {
   const people = await getDb()
     .prepare(
       `SELECT u.id, u.username, p.gold, COALESCE(u.is_bot, 0) AS is_bot,
+              COALESCE(u.is_gov, 0) AS is_gov,
               COALESCE(p.at_table, 1) AS at_table
        FROM users u JOIN players p ON p.user_id = u.id
-       WHERE u.username NOT IN ('Banker', 'Government')
        ORDER BY COALESCE(u.is_bot, 0) ASC, u.username COLLATE NOCASE`
     )
-    .all() as { id: number; username: string; gold: number; is_bot: number; at_table: number }[];
+    .all() as { id: number; username: string; gold: number; is_bot: number; is_gov: number; at_table: number }[];
   const packs = await getDb()
     .prepare(
       `SELECT user_id, item_id, quantity FROM inventory WHERE quantity > 0`
@@ -3357,6 +3412,20 @@ async function listAdminRoster(): Promise<AdminSeat[]> {
     gold: row.gold,
     bot: Boolean(row.is_bot),
     seated: row.is_bot ? seatedBots.has(row.username) : Boolean(row.at_table),
+    editable:
+      !row.is_bot &&
+      !row.is_gov &&
+      !["Banker", DESK_USERNAME, "Guest", OFFICE_USERNAME].some(
+        (reserved) => row.username.localeCompare(reserved, undefined, { sensitivity: "base" }) === 0
+      ),
+    editBlockedReason: row.is_bot
+      ? "Computer account"
+      : row.is_gov ||
+          ["Banker", DESK_USERNAME, "Guest", OFFICE_USERNAME].some(
+            (reserved) => row.username.localeCompare(reserved, undefined, { sensitivity: "base" }) === 0
+          )
+        ? "System account"
+        : null,
     holdings: byUser.get(row.id) ?? {},
   }));
 }

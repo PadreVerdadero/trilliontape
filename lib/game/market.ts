@@ -14,8 +14,8 @@ export const CANDLE_PRESETS = [
 ] as const;
 
 export function normalizeCandleMs(raw: unknown) {
-  const ms = Math.floor(Number(raw));
-  return CANDLE_PRESETS.some((row) => row.ms === ms) ? ms : MINUTE_MS;
+  const minutes = Math.floor(Number(raw) / 60_000);
+  return Number.isInteger(minutes) && minutes >= 1 && minutes <= 1440 ? minutes * 60_000 : MINUTE_MS;
 }
 
 export function candleSizeLabel(ms: number) {

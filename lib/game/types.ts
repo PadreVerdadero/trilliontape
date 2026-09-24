@@ -175,6 +175,8 @@ export type AdminSeat = {
   gold: number;
   bot: boolean;
   seated: boolean;
+  editable: boolean;
+  editBlockedReason: string | null;
   holdings: Record<string, number>;
 };
 
