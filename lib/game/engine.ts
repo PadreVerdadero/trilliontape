@@ -36,6 +36,8 @@ import {
   getDb,
   readGameOver,
   readGoal,
+  readCandleMs,
+  readTradingHours,
   seedBots,
   setComputerCount,
   writeGameOver,
@@ -3517,6 +3519,7 @@ export async function getGameState(
     leaders: [],
   };
 
+  const trading = await readTradingHours();
   return {
     now: nowMs(),
     player: playerState,
@@ -3541,7 +3544,10 @@ export async function getGameState(
     lobbyTravelers: await listLobbyTravelers(),
     inviteCode: office ? await readInviteCode() : null,
     netWorthGoal: goal.score === "netWorth" ? goal.threshold : NET_WORTH_GOAL,
-    goal: { ...goal, label: describeGoal(goal) },
+    candleMs: await readCandleMs(),
+    tradingHours: trading.hours,
+    tradingTimeZone: trading.timeZone,
+    goal: { ...goal, label: describeGoal(goal, timeZone) },
     gameOver: over,
     leaders,
     items: items.map((item) => ({ ...item })),

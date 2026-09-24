@@ -20,6 +20,8 @@ import {
   type GoalConfig,
 } from "@/lib/game/goal";
 import { defaultStipendLadder, normalizeStipendLadder, stipendCatchUp } from "@/lib/game/stipend-ladder";
+import { normalizeCandleMs } from "@/lib/game/market";
+import { emptyTradingBook, normalizeTradingBook, type TradingBook } from "@/lib/game/hours";
 
 export const DESK_USERNAME = "Government";
 
@@ -832,6 +834,47 @@ export async function writeGoal(goal: GoalConfig, db: GameDb = getDb()) {
     `INSERT INTO game_meta (key, value) VALUES ('goal', ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`
   ).run(JSON.stringify(goal));
+}
+
+export async function readCandleMs(db: GameDb = getDb()) {
+  const row = (await db.prepare("SELECT value FROM game_meta WHERE key = 'candle_ms'").get()) as
+    | { value: string }
+    | undefined;
+  return normalizeCandleMs(row?.value);
+}
+
+export async function writeCandleMs(ms: number, db: GameDb = getDb()) {
+  const next = normalizeCandleMs(ms);
+  await db
+    .prepare(
+      `INSERT INTO game_meta (key, value) VALUES ('candle_ms', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    )
+    .run(String(next));
+  return next;
+}
+
+export async function readTradingHours(db: GameDb = getDb()): Promise<TradingBook> {
+  const row = (await db.prepare("SELECT value FROM game_meta WHERE key = 'trading_hours'").get()) as
+    | { value: string }
+    | undefined;
+  if (!row) return emptyTradingBook();
+  try {
+    return normalizeTradingBook(JSON.parse(row.value) as unknown);
+  } catch {
+    return emptyTradingBook();
+  }
+}
+
+export async function writeTradingHours(book: TradingBook, db: GameDb = getDb()) {
+  const next = normalizeTradingBook(book);
+  await db
+    .prepare(
+      `INSERT INTO game_meta (key, value) VALUES ('trading_hours', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    )
+    .run(JSON.stringify(next));
+  return next;
 }
 
 export async function readGameOver(db: GameDb = getDb()): Promise<GameOverState> {

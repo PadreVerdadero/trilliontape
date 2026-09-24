@@ -275,9 +275,15 @@ export type GoalView = {
   score: "netWorth" | "gold" | "items";
   threshold: number;
   durationMs: number;
+  startsAt: number | null;
   endsAt: number | null;
   needs: GoalNeed[];
   label: string;
+};
+
+export type TradingWindow = {
+  openMin: number;
+  closeMin: number;
 };
 
 export type GameOverView = {
@@ -318,6 +324,9 @@ export type GameState = {
   lobbyTravelers: TravelerRow[];
   inviteCode: string | null;
   netWorthGoal: number;
+  candleMs: number;
+  tradingHours: Record<string, TradingWindow>;
+  tradingTimeZone: string;
   goal: GoalView;
   gameOver: GameOverView;
   leaders: LeaderRow[];
