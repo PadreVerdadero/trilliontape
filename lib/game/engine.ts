@@ -62,6 +62,8 @@ import {
   readInviteCode,
   writeInviteCode,
 } from "@/lib/game/db";
+import bcrypt from "bcryptjs";
+import { normalizeUsername, validatePassword, validateUsername } from "@/lib/game/auth";
 import { parseStipendSlotKey, stipendCatchUp, validateStipendLadder } from "@/lib/game/stipend-ladder";
 import {
   MAX_SHARE_TYPES,
@@ -1383,6 +1385,60 @@ async function adminSeat(actorId: number, targetUserId?: number) {
     throw new Error("Leave the desk accounts alone.");
   }
   return row;
+}
+
+export async function adminUpdateAccount(
+  actorId: number,
+  targetUserId: number,
+  username: string,
+  password?: string
+) {
+  await requireAdmin(actorId);
+  const db = getDb();
+  const target = await db
+    .prepare("SELECT id, username, COALESCE(is_bot, 0) AS is_bot FROM users WHERE id = ?")
+    .get(targetUserId) as { id: number; username: string; is_bot: number } | undefined;
+  if (
+    !target ||
+    target.is_bot ||
+    ["Banker", DESK_USERNAME, "Guest"].some(
+      (reserved) => target.username.localeCompare(reserved, undefined, { sensitivity: "base" }) === 0
+    )
+  ) {
+    throw new Error("Choose a human traveler account.");
+  }
+  if (target.username.localeCompare(OFFICE_USERNAME, undefined, { sensitivity: "accent" }) === 0) {
+    throw new Error("The admin account cannot be edited here.");
+  }
+
+  const nextUsername = normalizeUsername(username);
+  const usernameError = validateUsername(nextUsername);
+  if (usernameError) throw new Error(usernameError);
+  const nextPassword = password == null ? "" : String(password);
+  if (nextPassword) {
+    const passwordError = validatePassword(nextPassword);
+    if (passwordError) throw new Error(passwordError);
+  }
+  const duplicate = await db
+    .prepare("SELECT id FROM users WHERE username = ? COLLATE NOCASE AND id != ?")
+    .get(nextUsername, target.id) as { id: number } | undefined;
+  if (duplicate) throw new Error("That traveler name is already taken.");
+
+  if (nextPassword) {
+    await db.prepare("UPDATE users SET username = ?, password_hash = ? WHERE id = ?").run(
+      nextUsername,
+      bcrypt.hashSync(nextPassword, 10),
+      target.id
+    );
+  } else {
+    await db.prepare("UPDATE users SET username = ? WHERE id = ?").run(nextUsername, target.id);
+  }
+  await setEvent(
+    actorId,
+    target.id === actorId
+      ? "Admin updated your account."
+      : `Admin updated ${nextUsername}'s account.`
+  );
 }
 
 export async function adminSetGold(userId: number, gold: number, targetUserId?: number) {

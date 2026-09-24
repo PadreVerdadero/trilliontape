@@ -18,7 +18,7 @@ export function normalizeUsername(raw: string) {
   return raw.trim();
 }
 
-export function validateCredentials(username: string, password: string) {
+export function validateUsername(username: string) {
   if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
     return "Use 3–20 letters, numbers, or underscores.";
   }
@@ -26,10 +26,18 @@ export function validateCredentials(username: string, password: string) {
   if (lower === "banker" || lower === "government" || lower === "guest") {
     return "That name is reserved.";
   }
+  return null;
+}
+
+export function validatePassword(password: string) {
   if (password.length < 4) {
     return "Password must be at least 4 characters.";
   }
   return null;
+}
+
+export function validateCredentials(username: string, password: string) {
+  return validateUsername(username) ?? validatePassword(password);
 }
 
 export function validateInviteCode(code: string) {

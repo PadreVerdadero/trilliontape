@@ -12,6 +12,7 @@ import {
   setGovernment,
   setAdmin,
   adminSetGold,
+  adminUpdateAccount,
   adminSetItem,
   adminStartGame,
   adminScheduleStart,
@@ -61,6 +62,7 @@ type ActionBody = {
   | { action: "government"; on: boolean }
   | { action: "admin"; on: boolean }
   | { action: "adminGold"; gold: number; targetUserId?: number }
+  | { action: "adminAccount"; targetUserId: number; username: string; password?: string }
   | { action: "adminItem"; itemId: string; quantity: number; targetUserId?: number }
   | { action: "adminIssued"; itemId: string; authorized: number }
   | { action: "adminShareAdd"; name: string; emoji?: string; image?: string | null }
@@ -165,6 +167,9 @@ export async function POST(request: Request) {
         break;
       case "adminGold":
         await adminSetGold(userId, Number(body.gold), Number(body.targetUserId ?? userId));
+        break;
+      case "adminAccount":
+        await adminUpdateAccount(userId, Number(body.targetUserId), String(body.username ?? ""), body.password);
         break;
       case "adminItem":
         await adminSetItem(userId, String(body.itemId), Number(body.quantity), Number(body.targetUserId ?? userId));

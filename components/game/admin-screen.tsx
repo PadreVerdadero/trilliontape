@@ -45,6 +45,8 @@ export function AdminScreen({
   const [seatId, setSeatId] = useState<number | null>(null);
   const [goldInput, setGoldInput] = useState("");
   const [qtyInput, setQtyInput] = useState("0");
+  const [usernameInput, setUsernameInput] = useState("");
+  const [passwordInput, setPasswordInput] = useState("");
   const [issuedDraft, setIssuedDraft] = useState<Record<string, string>>({});
   const [computerDraft, setComputerDraft] = useState(String(initialState.computerCount ?? 0));
   const [startingDraft, setStartingDraft] = useState(String(initialState.startingGold ?? 1000));
@@ -68,6 +70,11 @@ export function AdminScreen({
   useEffect(() => {
     if (selectedSeat) setGoldInput(String(selectedSeat.gold));
   }, [selectedSeat?.id, selectedSeat?.gold]);
+
+  useEffect(() => {
+    setUsernameInput(selectedSeat?.username ?? "");
+    setPasswordInput("");
+  }, [selectedSeat?.id, selectedSeat?.username]);
 
   useEffect(() => {
     setQtyInput(String(held));
@@ -311,6 +318,56 @@ export function AdminScreen({
             Coins and pack qty below apply to {selectedSeat?.username ?? player.username}. Issued is a table rule
             and changes every traveler.
           </p>
+          <div className="grid gap-3 border-t border-amber-400/15 pt-3 md:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="admin-username" className="text-amber-100/80">
+                Username
+              </Label>
+              <Input
+                id="admin-username"
+                value={usernameInput}
+                onChange={(event) => setUsernameInput(event.target.value)}
+                autoComplete="off"
+                disabled={pending || !selectedSeat || selectedSeat.bot}
+                className="border-amber-400/30 bg-amber-950/60"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="admin-password" className="text-amber-100/80">
+                New password
+              </Label>
+              <Input
+                id="admin-password"
+                type="password"
+                value={passwordInput}
+                onChange={(event) => setPasswordInput(event.target.value)}
+                autoComplete="new-password"
+                disabled={pending || !selectedSeat || selectedSeat.bot}
+                placeholder="Leave blank to keep it"
+                className="border-amber-400/30 bg-amber-950/60"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Button
+                disabled={pending || !selectedSeat || selectedSeat.bot || !usernameInput.trim()}
+                className="bg-amber-300 text-amber-950 hover:bg-amber-200"
+                onClick={() =>
+                  void run({
+                    action: "adminAccount",
+                    targetUserId: selectedSeat?.id,
+                    username: usernameInput,
+                    password: passwordInput || undefined,
+                  })
+                }
+              >
+                Save account
+              </Button>
+              <p className="mt-2 text-xs text-amber-100/60">
+                Use 3–20 letters, numbers, or underscores. A new password must be at least 4 characters;
+                leave it blank to keep the current password. Existing sessions stay signed in.
+              </p>
+            </div>
+          </div>
         </section>
 
         <section className="grid gap-4 md:grid-cols-2">
