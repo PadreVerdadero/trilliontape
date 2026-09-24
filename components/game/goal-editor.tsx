@@ -209,6 +209,7 @@ export function GoalEditor({
                 score,
                 threshold: Number(threshold) || 1,
                 durationMs,
+                startsAt: null,
                 endsAt: null,
                 needs: Object.entries(qty)
                   .map(([itemId, quantity]) => ({ itemId, quantity: Number(quantity) }))
