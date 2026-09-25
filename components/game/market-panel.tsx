@@ -84,35 +84,117 @@ function PriceLadder({
   bids,
   asks,
   marketValue,
+  orderType,
+  pending,
   onSelect,
+  onPlace,
+  onMarket,
 }: {
-  bids: { price: number }[];
-  asks: { price: number }[];
+  bids: OrderRow[];
+  asks: OrderRow[];
   marketValue: number;
+  orderType: "limit" | "stop";
+  pending: boolean;
   onSelect: (price: number) => void;
+  onPlace: (side: OrderSide, price: number, orderType: "limit" | "stop") => void;
+  onMarket: (row: OrderRow, side: OrderSide) => void;
 }) {
-  const quoted = [...bids, ...asks].map((row) => row.price);
   const center = Math.max(1, Math.round(marketValue));
-  const min = Math.max(1, Math.min(center - 10, ...quoted));
-  const max = Math.max(center + 10, ...quoted);
-  const prices = Array.from({ length: Math.min(121, max - min + 1) }, (_, index) => max - index);
+  const [min, setMin] = useState(Math.max(1, center - 100));
+  const [max, setMax] = useState(center + 100);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const centerRef = useRef<HTMLDivElement>(null);
+  const bidByPrice = new Map(bids.map((row) => [row.price, row]));
+  const askByPrice = new Map(asks.map((row) => [row.price, row]));
+  const prices = Array.from({ length: max - min + 1 }, (_, index) => max - index);
+
+  useEffect(() => {
+    setMin(Math.max(1, center - 100));
+    setMax(center + 100);
+  }, [center]);
+
+  useEffect(() => {
+    centerRef.current?.scrollIntoView({ block: "center" });
+  }, [min, max]);
+
+  const stop = orderType === "stop";
+  const actionLabel = stop ? "STP" : "";
+
   return (
     <div className="mt-2 md:hidden rounded-lg border border-border/60 bg-background/30 p-2">
       <p className="mb-1 text-[10px] text-muted-foreground">
-        Phone ladder: tap the left side to set a bid price or the right side to set an ask price.
+        Scroll without a price limit. Tap the middle price to edit it, the left/right buttons to place
+        {stop ? " Buy STP/Sell STP" : " a Bid/Ask"}, or a live quote to make a market order.
       </p>
-      <div className="max-h-48 overflow-y-auto rounded-md border border-border/60">
+      <div
+        ref={scrollRef}
+        className="max-h-[min(55dvh,32rem)] overflow-y-auto rounded-md border border-border/60"
+        onScroll={(event) => {
+          const element = event.currentTarget;
+          if (element.scrollTop < 240 && min > 1) setMin(Math.max(1, min - 200));
+          if (element.scrollHeight - element.scrollTop - element.clientHeight < 240) setMax(max + 200);
+        }}
+      >
         {prices.map((price) => (
           <div
             key={price}
-            className="grid h-7 grid-cols-2 border-b border-border/30 text-xs last:border-0"
+            ref={price === center ? centerRef : undefined}
+            className={cn(
+              "grid min-h-9 grid-cols-[1fr_5.5rem_1fr] items-stretch border-b border-border/30 text-xs last:border-0",
+              price === center && "bg-sky-950/30"
+            )}
           >
-            <button type="button" className="text-left text-emerald-300 hover:bg-emerald-400/15" onClick={() => onSelect(price)}>
-              {formatCoins(price)} Bid
+            <button
+              type="button"
+              disabled={pending}
+              className="text-left text-emerald-300 hover:bg-emerald-400/15 disabled:opacity-50"
+              onClick={() => onPlace("buy", price, orderType)}
+            >
+              {actionLabel ? `Buy ${actionLabel}` : "Bid"}
             </button>
-            <button type="button" className="text-right text-rose-300 hover:bg-rose-400/15" onClick={() => onSelect(price)}>
-              Ask {formatCoins(price)}
+            <button
+              type="button"
+              className="border-x border-border/40 text-center font-medium tabular-nums text-sky-200 hover:bg-sky-400/15"
+              onClick={() => {
+                onSelect(price);
+                scrollRef.current?.querySelector<HTMLInputElement>("#px")?.focus();
+              }}
+            >
+              {formatCoins(price)}
+              {price === center ? " · MV" : ""}
             </button>
+            <button
+              type="button"
+              disabled={pending}
+              className="text-right text-rose-300 hover:bg-rose-400/15 disabled:opacity-50"
+              onClick={() => onPlace("sell", price, orderType)}
+            >
+              {actionLabel ? `Sell ${actionLabel}` : "Ask"}
+            </button>
+            {bidByPrice.has(price) || askByPrice.has(price) ? (
+              <div className="col-span-3 grid grid-cols-2 gap-1 px-1 pb-1">
+                {bidByPrice.get(price) ? (
+                  <button
+                    type="button"
+                    disabled={pending}
+                    className="rounded bg-emerald-950/50 px-1 text-left text-[10px] text-emerald-200"
+                    onClick={() => onMarket(bidByPrice.get(price)!, "buy")}
+                  >
+                    Bid {formatCoins(price)} ×{bidByPrice.get(price)!.remaining} · market sell
+                  </button>
+                ) : <span />}
+                {askByPrice.get(price) ? (
+                  <button
+                    type="button"
+                    disabled={pending}
+                    className="rounded bg-rose-950/40 px-1 text-right text-[10px] text-rose-200"
+                    onClick={() => onMarket(askByPrice.get(price)!, "sell")}
+                  >
+                    market buy · Ask {formatCoins(price)} ×{askByPrice.get(price)!.remaining}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         ))}
       </div>
@@ -366,6 +448,19 @@ export function MarketPanel({
       price: Number(priceInput || suggested),
       quantity: Number(qtyInput),
       orderType,
+    });
+    await reloadBook();
+  }
+
+  async function placeAt(next: OrderSide, price: number, nextOrderType: "limit" | "stop") {
+    if (!selected) return;
+    setPriceInput(String(price));
+    await onOrder({
+      itemId: selected.id,
+      side: next,
+      price,
+      quantity: Number(qtyInput),
+      orderType: nextOrderType,
     });
     await reloadBook();
   }
@@ -770,10 +865,22 @@ export function MarketPanel({
 
           {compact ? (
             <PriceLadder
-              bids={playerQuotes(book?.bids ?? [])}
-              asks={playerQuotes(book?.asks ?? [])}
+              bids={book?.bids ?? []}
+              asks={book?.asks ?? []}
               marketValue={price?.vwap ?? selected.basePrice}
+              orderType={orderType}
+              pending={pending}
               onSelect={(value) => setPriceInput(String(value))}
+              onPlace={(side, value, nextOrderType) => void placeAt(side, value, nextOrderType)}
+              onMarket={(row, side) =>
+                void takeQuote({
+                  orderId: row.id,
+                  itemId: row.itemId,
+                  side,
+                  price: row.price,
+                  treasury: row.isGov,
+                })
+              }
             />
           ) : null}
 
@@ -827,7 +934,7 @@ export function MarketPanel({
             ) : null}
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className={cn("grid gap-4 lg:grid-cols-2", compact && "hidden md:grid")}>
             <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <p className="font-heading text-lg text-emerald-100">Bids</p>
