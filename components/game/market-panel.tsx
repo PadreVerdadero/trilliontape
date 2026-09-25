@@ -80,32 +80,51 @@ function TreasuryButton({
   );
 }
 
+function groupLadderRows(rows: OrderRow[], selfId: number) {
+  const byPrice = new Map<number, { mine: OrderRow[]; other: OrderRow[] }>();
+  for (const row of rows) {
+    const bucket = byPrice.get(row.price) ?? { mine: [], other: [] };
+    if (row.playerId === selfId && !row.isGov) bucket.mine.push(row);
+    else bucket.other.push(row);
+    byPrice.set(row.price, bucket);
+  }
+  return byPrice;
+}
+
 function PriceLadder({
   bids,
   asks,
   marketValue,
-  orderType,
+  bestBid,
+  bestAsk,
+  selfId,
   pending,
   onSelect,
-  onPlace,
+  onPlaceLimit,
+  onPlaceStop,
   onMarket,
+  onCancel,
 }: {
   bids: OrderRow[];
   asks: OrderRow[];
   marketValue: number;
-  orderType: "limit" | "stop";
+  bestBid?: number | null;
+  bestAsk?: number | null;
+  selfId: number;
   pending: boolean;
   onSelect: (price: number) => void;
-  onPlace: (side: OrderSide, price: number, orderType: "limit" | "stop") => void;
+  onPlaceLimit: (side: OrderSide, price: number) => void;
+  onPlaceStop: (side: OrderSide, price: number) => void;
   onMarket: (row: OrderRow, side: OrderSide) => void;
+  onCancel: (id: number) => void;
 }) {
   const center = Math.max(1, Math.round(marketValue));
   const [min, setMin] = useState(Math.max(1, center - 100));
   const [max, setMax] = useState(center + 100);
   const scrollRef = useRef<HTMLDivElement>(null);
   const centerRef = useRef<HTMLDivElement>(null);
-  const bidByPrice = new Map(bids.map((row) => [row.price, row]));
-  const askByPrice = new Map(asks.map((row) => [row.price, row]));
+  const bidGroups = groupLadderRows(bids, selfId);
+  const askGroups = groupLadderRows(asks, selfId);
   const prices = Array.from({ length: max - min + 1 }, (_, index) => max - index);
 
   useEffect(() => {
@@ -117,14 +136,46 @@ function PriceLadder({
     centerRef.current?.scrollIntoView({ block: "center" });
   }, [min, max]);
 
-  const stop = orderType === "stop";
-  const actionLabel = stop ? "STP" : "";
+  function buyAction(price: number): { kind: "stop" | "market" | "limit"; label: string } {
+    if (bestAsk != null && price > bestAsk) return { kind: "stop", label: "Buy STP" };
+    if (bestAsk != null && price === bestAsk) return { kind: "market", label: "Buy MKT" };
+    return { kind: "limit", label: "Bid" };
+  }
+
+  function sellAction(price: number): { kind: "stop" | "market" | "limit"; label: string } {
+    if (bestBid != null && price < bestBid) return { kind: "stop", label: "Sell STP" };
+    if (bestBid != null && price === bestBid) return { kind: "market", label: "Sell MKT" };
+    return { kind: "limit", label: "Ask" };
+  }
+
+  function handleBuy(price: number) {
+    const action = buyAction(price);
+    if (action.kind === "market") {
+      const row = askGroups.get(price)?.other[0];
+      if (row) onMarket(row, "sell");
+      return;
+    }
+    if (action.kind === "stop") onPlaceStop("buy", price);
+    else onPlaceLimit("buy", price);
+  }
+
+  function handleSell(price: number) {
+    const action = sellAction(price);
+    if (action.kind === "market") {
+      const row = bidGroups.get(price)?.other[0];
+      if (row) onMarket(row, "buy");
+      return;
+    }
+    if (action.kind === "stop") onPlaceStop("sell", price);
+    else onPlaceLimit("sell", price);
+  }
 
   return (
-    <div className="mt-2 md:hidden rounded-lg border border-border/60 bg-background/30 p-2">
+    <div className="mt-2 rounded-lg border border-border/60 bg-background/30 p-2">
       <p className="mb-1 text-[10px] text-muted-foreground">
-        Scroll without a price limit. Tap the middle price to edit it, the left/right buttons to place
-        {stop ? " Buy STP/Sell STP" : " a Bid/Ask"}, or a live quote to make a market order.
+        Scroll without a price limit. Tap the middle price to edit it, the left/right buttons to place a
+        bid/ask (auto Buy/Sell STP beyond the book, auto market at the touch), or a resting quote to take
+        it or cancel yours.
       </p>
       <div
         ref={scrollRef}
@@ -135,68 +186,102 @@ function PriceLadder({
           if (element.scrollHeight - element.scrollTop - element.clientHeight < 240) setMax(max + 200);
         }}
       >
-        {prices.map((price) => (
-          <div
-            key={price}
-            ref={price === center ? centerRef : undefined}
-            className={cn(
-              "grid min-h-9 grid-cols-[1fr_5.5rem_1fr] items-stretch border-b border-border/30 text-xs last:border-0",
-              price === center && "bg-sky-950/30"
-            )}
-          >
-            <button
-              type="button"
-              disabled={pending}
-              className="text-left text-emerald-300 hover:bg-emerald-400/15 disabled:opacity-50"
-              onClick={() => onPlace("buy", price, orderType)}
+        {prices.map((price) => {
+          const buy = buyAction(price);
+          const sell = sellAction(price);
+          const bidGroup = bidGroups.get(price);
+          const askGroup = askGroups.get(price);
+          return (
+            <div
+              key={price}
+              ref={price === center ? centerRef : undefined}
+              className={cn(
+                "grid min-h-9 grid-cols-[1fr_5.5rem_1fr] items-stretch border-b border-border/30 text-xs last:border-0",
+                price === center && "bg-sky-950/30"
+              )}
             >
-              {actionLabel ? `Buy ${actionLabel}` : "Bid"}
-            </button>
-            <button
-              type="button"
-              className="border-x border-border/40 text-center font-medium tabular-nums text-sky-200 hover:bg-sky-400/15"
-              onClick={() => {
-                onSelect(price);
-                scrollRef.current?.querySelector<HTMLInputElement>("#px")?.focus();
-              }}
-            >
-              {formatCoins(price)}
-              {price === center ? " · MV" : ""}
-            </button>
-            <button
-              type="button"
-              disabled={pending}
-              className="text-right text-rose-300 hover:bg-rose-400/15 disabled:opacity-50"
-              onClick={() => onPlace("sell", price, orderType)}
-            >
-              {actionLabel ? `Sell ${actionLabel}` : "Ask"}
-            </button>
-            {bidByPrice.has(price) || askByPrice.has(price) ? (
-              <div className="col-span-3 grid grid-cols-2 gap-1 px-1 pb-1">
-                {bidByPrice.get(price) ? (
-                  <button
-                    type="button"
-                    disabled={pending}
-                    className="rounded bg-emerald-950/50 px-1 text-left text-[10px] text-emerald-200"
-                    onClick={() => onMarket(bidByPrice.get(price)!, "buy")}
-                  >
-                    Bid {formatCoins(price)} ×{bidByPrice.get(price)!.remaining} · market sell
-                  </button>
-                ) : <span />}
-                {askByPrice.get(price) ? (
-                  <button
-                    type="button"
-                    disabled={pending}
-                    className="rounded bg-rose-950/40 px-1 text-right text-[10px] text-rose-200"
-                    onClick={() => onMarket(askByPrice.get(price)!, "sell")}
-                  >
-                    market buy · Ask {formatCoins(price)} ×{askByPrice.get(price)!.remaining}
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        ))}
+              <button
+                type="button"
+                disabled={pending}
+                className="text-left text-emerald-300 hover:bg-emerald-400/15 disabled:opacity-50"
+                onClick={() => handleBuy(price)}
+              >
+                {buy.label}
+              </button>
+              <button
+                type="button"
+                className="border-x border-border/40 text-center font-medium tabular-nums text-sky-200 hover:bg-sky-400/15"
+                onClick={() => {
+                  onSelect(price);
+                  scrollRef.current?.querySelector<HTMLInputElement>("#px")?.focus();
+                }}
+              >
+                {formatCoins(price)}
+                {price === center ? " · MV" : ""}
+              </button>
+              <button
+                type="button"
+                disabled={pending}
+                className="text-right text-rose-300 hover:bg-rose-400/15 disabled:opacity-50"
+                onClick={() => handleSell(price)}
+              >
+                {sell.label}
+              </button>
+              {bidGroup || askGroup ? (
+                <div className="col-span-3 flex items-center justify-between gap-1 px-1 pb-1">
+                  <div className="flex gap-1">
+                    {bidGroup?.mine.length ? (
+                      <button
+                        type="button"
+                        disabled={pending}
+                        title="Cancel your bid"
+                        className="rounded bg-amber-400/25 px-1.5 text-[10px] font-medium text-amber-200 hover:bg-amber-400/40"
+                        onClick={() => onCancel(bidGroup.mine[bidGroup.mine.length - 1].id)}
+                      >
+                        ×{bidGroup.mine.length}
+                      </button>
+                    ) : null}
+                    {bidGroup?.other.length ? (
+                      <button
+                        type="button"
+                        disabled={pending}
+                        title="Sell into this bid"
+                        className="rounded bg-emerald-950/50 px-1.5 text-[10px] text-emerald-200 hover:bg-emerald-900/60"
+                        onClick={() => onMarket(bidGroup.other[0], "buy")}
+                      >
+                        ×{bidGroup.other.length}
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="flex gap-1">
+                    {askGroup?.other.length ? (
+                      <button
+                        type="button"
+                        disabled={pending}
+                        title="Buy from this ask"
+                        className="rounded bg-rose-950/40 px-1.5 text-[10px] text-rose-200 hover:bg-rose-900/50"
+                        onClick={() => onMarket(askGroup.other[0], "sell")}
+                      >
+                        ×{askGroup.other.length}
+                      </button>
+                    ) : null}
+                    {askGroup?.mine.length ? (
+                      <button
+                        type="button"
+                        disabled={pending}
+                        title="Cancel your ask"
+                        className="rounded bg-amber-400/25 px-1.5 text-[10px] font-medium text-amber-200 hover:bg-amber-400/40"
+                        onClick={() => onCancel(askGroup.mine[askGroup.mine.length - 1].id)}
+                      >
+                        ×{askGroup.mine.length}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -868,10 +953,13 @@ export function MarketPanel({
               bids={book?.bids ?? []}
               asks={book?.asks ?? []}
               marketValue={price?.vwap ?? selected.basePrice}
-              orderType={orderType}
+              bestBid={price?.bestBid}
+              bestAsk={price?.bestAsk}
+              selfId={state.player.id}
               pending={pending}
               onSelect={(value) => setPriceInput(String(value))}
-              onPlace={(side, value, nextOrderType) => void placeAt(side, value, nextOrderType)}
+              onPlaceLimit={(side, value) => void placeAt(side, value, "limit")}
+              onPlaceStop={(side, value) => void placeAt(side, value, "stop")}
               onMarket={(row, side) =>
                 void takeQuote({
                   orderId: row.id,
@@ -881,6 +969,12 @@ export function MarketPanel({
                   treasury: row.isGov,
                 })
               }
+              onCancel={(id) => {
+                void (async () => {
+                  await onCancel(id);
+                  await reloadBook();
+                })();
+              }}
             />
           ) : null}
 
@@ -934,7 +1028,7 @@ export function MarketPanel({
             ) : null}
           </div>
 
-          <div className={cn("grid gap-4 lg:grid-cols-2", compact && "hidden md:grid")}>
+          <div className={cn("grid gap-4 lg:grid-cols-2", compact && "hidden")}>
             <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <p className="font-heading text-lg text-emerald-100">Bids</p>
