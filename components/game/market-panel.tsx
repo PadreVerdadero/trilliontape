@@ -81,38 +81,39 @@ function TreasuryButton({
 }
 
 function PriceLadder({
-  side,
-  rows,
+  bids,
+  asks,
+  marketValue,
   onSelect,
 }: {
-  side: "buy" | "sell";
-  rows: { price: number }[];
+  bids: { price: number }[];
+  asks: { price: number }[];
+  marketValue: number;
   onSelect: (price: number) => void;
 }) {
-  const prices = [...new Set(rows.map((row) => row.price))].sort((a, b) =>
-    side === "buy" ? b - a : a - b
-  );
-  if (prices.length === 0) return null;
+  const quoted = [...bids, ...asks].map((row) => row.price);
+  const center = Math.max(1, Math.round(marketValue));
+  const min = Math.max(1, Math.min(center - 10, ...quoted));
+  const max = Math.max(center + 10, ...quoted);
+  const prices = Array.from({ length: Math.min(121, max - min + 1) }, (_, index) => max - index);
   return (
-    <div className="mt-2 md:hidden">
+    <div className="mt-2 md:hidden rounded-lg border border-border/60 bg-background/30 p-2">
       <p className="mb-1 text-[10px] text-muted-foreground">
-        Phone ladder: tap the left side for a bid limit price or the right side for an ask limit price.
+        Phone ladder: tap the left side to set a bid price or the right side to set an ask price.
       </p>
-      <div className="max-h-36 overflow-y-auto rounded-md border border-border/60 bg-background/30">
+      <div className="max-h-48 overflow-y-auto rounded-md border border-border/60">
         {prices.map((price) => (
-          <button
+          <div
             key={price}
-            type="button"
-            className="flex h-8 w-full items-center justify-between border-b border-border/30 px-2 text-xs last:border-0 hover:bg-primary/10"
-            onClick={() => onSelect(price)}
+            className="grid h-7 grid-cols-2 border-b border-border/30 text-xs last:border-0"
           >
-            <span className={cn("w-1/2 text-left", side === "buy" ? "text-emerald-300" : "text-muted-foreground")}>
-              {side === "buy" ? `Bid ${formatCoins(price)}` : ""}
-            </span>
-            <span className={cn("w-1/2 text-right", side === "sell" ? "text-rose-300" : "text-muted-foreground")}>
-              {side === "sell" ? `${formatCoins(price)} Ask` : ""}
-            </span>
-          </button>
+            <button type="button" className="text-left text-emerald-300 hover:bg-emerald-400/15" onClick={() => onSelect(price)}>
+              {formatCoins(price)} Bid
+            </button>
+            <button type="button" className="text-right text-rose-300 hover:bg-rose-400/15" onClick={() => onSelect(price)}>
+              Ask {formatCoins(price)}
+            </button>
+          </div>
         ))}
       </div>
     </div>
@@ -682,7 +683,7 @@ export function MarketPanel({
                   disabled={pending}
                   onClick={() => void place("buy")}
                 >
-                  {orderType === "stop" ? "Buy STP" : "Buy LMT"} <span className="sr-only">/ Buy</span>
+                  {orderType === "stop" ? "Buy STP" : "Bid"} <span className="sr-only"> / Buy limit</span>
                 </Button>
                 <Button
                   className={cn(
@@ -692,7 +693,7 @@ export function MarketPanel({
                   disabled={pending}
                   onClick={() => void place("sell")}
                 >
-                  {orderType === "stop" ? "Sell STP" : "Sell LMT"} <span className="sr-only">/ Sell</span>
+                  {orderType === "stop" ? "Sell STP" : "Ask"} <span className="sr-only"> / Sell limit</span>
                 </Button>
               </div>
               <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
@@ -766,6 +767,15 @@ export function MarketPanel({
               )}
             </div>
           </div>
+
+          {compact ? (
+            <PriceLadder
+              bids={playerQuotes(book?.bids ?? [])}
+              asks={playerQuotes(book?.asks ?? [])}
+              marketValue={price?.vwap ?? selected.basePrice}
+              onSelect={(value) => setPriceInput(String(value))}
+            />
+          ) : null}
 
           <PriceChart
             trades={book?.chartTrades ?? book?.trades ?? []}
@@ -846,13 +856,6 @@ export function MarketPanel({
                   await reloadBook();
                 }}
               />
-              {compact ? (
-                <PriceLadder
-                  side="buy"
-                  rows={playerQuotes(book?.bids ?? [])}
-                  onSelect={(value) => setPriceInput(String(value))}
-                />
-              ) : null}
             </div>
             <div className="rounded-xl bg-rose-950/20 p-3 ring-1 ring-rose-400/20">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -882,13 +885,6 @@ export function MarketPanel({
                   await reloadBook();
                 }}
               />
-              {compact ? (
-                <PriceLadder
-                  side="sell"
-                  rows={playerQuotes(book?.asks ?? [])}
-                  onSelect={(value) => setPriceInput(String(value))}
-                />
-              ) : null}
             </div>
           </div>
         </div>

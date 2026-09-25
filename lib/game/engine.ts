@@ -2631,6 +2631,7 @@ async function bookDepth() {
        FROM orders
        WHERE remaining > 0 AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')
          AND COALESCE(treasury, 0) = 0
+         AND COALESCE(order_type, 'limit') = 'limit'
        GROUP BY item_id, side`
     )
     .all() as { item_id: string; side: string; qty: number }[];
@@ -3003,6 +3004,7 @@ async function buildPriceSheet(timeZone: string): Promise<MarketPrice[]> {
       .prepare(
         `SELECT item_id, MAX(price) AS p FROM orders
          WHERE side = 'buy' AND remaining > 0 AND COALESCE(treasury, 0) = 0
+           AND COALESCE(order_type, 'limit') = 'limit'
            AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')
          GROUP BY item_id`
       )
@@ -3011,6 +3013,7 @@ async function buildPriceSheet(timeZone: string): Promise<MarketPrice[]> {
       .prepare(
         `SELECT item_id, MIN(price) AS p FROM orders
          WHERE side = 'sell' AND remaining > 0 AND COALESCE(treasury, 0) = 0
+           AND COALESCE(order_type, 'limit') = 'limit'
            AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')
          GROUP BY item_id`
       )

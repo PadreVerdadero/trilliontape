@@ -16,6 +16,7 @@ type Stack = {
   isGov: boolean;
   qty: number;
   ids: number[];
+  orderType: "limit" | "stop";
 };
 
 function groupOpenOrders(orders: OrderRow[], catalog: Item[]) {
@@ -25,7 +26,8 @@ function groupOpenOrders(orders: OrderRow[], catalog: Item[]) {
   for (const order of orders) {
     const qty = Math.max(0, order.remaining);
     if (qty < 1) continue;
-    const key = `${order.itemId}|${order.side}|${order.price}|${order.isGov ? 1 : 0}`;
+    const orderType = order.orderType ?? "limit";
+    const key = `${order.itemId}|${order.side}|${order.price}|${order.isGov ? 1 : 0}|${orderType}`;
     const existing = stacks.get(key);
     if (existing) {
       existing.qty += qty;
@@ -38,6 +40,7 @@ function groupOpenOrders(orders: OrderRow[], catalog: Item[]) {
         isGov: order.isGov,
         qty,
         ids: [order.id],
+        orderType,
       });
     }
   }
@@ -125,7 +128,13 @@ export function OpenOrdersPanel({
                           )}
                         >
                           <span className="min-w-0 truncate tabular-nums">
-                            {stack.side === "buy" ? "Bid" : "Ask"} {formatCoins(stack.price)}
+                            {stack.orderType === "stop"
+                              ? stack.side === "buy"
+                                ? "Buy STP"
+                                : "Sell STP"
+                              : stack.side === "buy"
+                                ? "Bid"
+                                : "Ask"} {formatCoins(stack.price)}
                             <span
                               className={cn(
                                 stack.isGov ? "opacity-70" : "text-muted-foreground"
