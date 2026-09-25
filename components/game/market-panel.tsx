@@ -1091,6 +1091,9 @@ export function MarketPanel({
                 empty="No traveler bids. Post one above if you want this."
                 side="buy"
                 rows={playerQuotes(book?.bids ?? [])}
+                myStops={state.myOrders.filter(
+                  (row) => row.itemId === selected.id && row.orderType === "stop" && row.side === "buy"
+                )}
                 selfId={state.player.id}
                 pending={pending}
                 onTake={(input) => void takeQuote(input)}
@@ -1120,6 +1123,9 @@ export function MarketPanel({
                 empty="No traveler asks. Post your own, or buy from the treasury if it is offering."
                 side="sell"
                 rows={playerQuotes(book?.asks ?? [])}
+                myStops={state.myOrders.filter(
+                  (row) => row.itemId === selected.id && row.orderType === "stop" && row.side === "sell"
+                )}
                 selfId={state.player.id}
                 pending={pending}
                 onTake={(input) => void takeQuote(input)}
@@ -1429,6 +1435,7 @@ function Stat({
 
 function OrderList({
   rows,
+  myStops = [],
   empty,
   selfId,
   pending,
@@ -1445,6 +1452,7 @@ function OrderList({
     playerId: number;
     isGov?: boolean;
   }[];
+  myStops?: OrderRow[];
   empty: string;
   selfId: number;
   pending: boolean;
@@ -1452,21 +1460,31 @@ function OrderList({
   onTake: (input: TakeQuoteInput) => void;
   onCancel: (id: number) => void;
 }) {
-  if (rows.length === 0) {
+  if (rows.length === 0 && myStops.length === 0) {
     return <p className="text-sm leading-6 text-muted-foreground">{empty}</p>;
   }
 
-  const units = stackUnitRows(rows);
+  const units = [
+    ...stackUnitRows(rows).map((row) => ({ ...row, stop: false as const })),
+    ...stackUnitRows(myStops).map((row) => ({ ...row, stop: true as const })),
+  ];
+  units.sort((a, b) => (side === "buy" ? b.price - a.price : a.price - b.price));
   return (
     <ul className="space-y-0.5 pr-0.5">
       {units.map((row) => {
-        const yours = row.playerId === selfId && !row.isGov;
+        const yours = row.stop || (row.playerId === selfId && !row.isGov);
         const govAsk = Boolean(row.isGov) && side === "sell";
         const govBid = Boolean(row.isGov) && side === "buy";
-        const name = row.isGov ? "Government" : yours ? "you" : row.username;
+        const name = row.stop
+          ? `you (${side === "buy" ? "Buy STP" : "Sell STP"})`
+          : row.isGov
+            ? "Government"
+            : yours
+              ? "you"
+              : row.username;
         const liveId = row.ids[row.ids.length - 1] ?? row.id;
         return (
-          <li key={`${row.id}-${row.unit}`}>
+          <li key={`${row.stop ? "stop" : "live"}-${row.id}-${row.unit}`}>
             <button
               type="button"
               disabled={pending}
@@ -1481,12 +1499,14 @@ function OrderList({
                       treasury: Boolean(row.isGov),
                     })
               }
+              title={row.stop ? `Cancel your ${side === "buy" ? "Buy STP" : "Sell STP"}` : undefined}
               className={cn(
                 "flex h-7 w-full items-center justify-between gap-2 rounded-md px-2 text-left text-sm ring-1 disabled:opacity-100",
-                govAsk && "bg-white text-zinc-950 ring-zinc-300 hover:bg-zinc-100",
-                govBid && "bg-black text-white ring-white/50 hover:bg-zinc-900",
-                !row.isGov && yours && "bg-primary/25 ring-primary hover:bg-primary/35",
-                !row.isGov && !yours && "bg-background/60 ring-foreground/10 hover:bg-background"
+                row.stop && "bg-purple-400/25 ring-purple-400/60 hover:bg-purple-400/40",
+                !row.stop && govAsk && "bg-white text-zinc-950 ring-zinc-300 hover:bg-zinc-100",
+                !row.stop && govBid && "bg-black text-white ring-white/50 hover:bg-zinc-900",
+                !row.stop && !row.isGov && yours && "bg-primary/25 ring-primary hover:bg-primary/35",
+                !row.stop && !row.isGov && !yours && "bg-background/60 ring-foreground/10 hover:bg-background"
               )}
             >
               <span className="tabular-nums font-medium">
@@ -1495,9 +1515,10 @@ function OrderList({
                   <span
                     className={cn(
                       "ml-1 text-[11px] font-normal",
-                      govAsk && "text-zinc-600",
-                      govBid && "text-white/75",
-                      !row.isGov && "text-muted-foreground"
+                      row.stop && "text-purple-100/80",
+                      !row.stop && govAsk && "text-zinc-600",
+                      !row.stop && govBid && "text-white/75",
+                      !row.stop && !row.isGov && "text-muted-foreground"
                     )}
                   >
                     ×{row.count}
@@ -1507,9 +1528,10 @@ function OrderList({
               <span
                 className={cn(
                   "min-w-0 truncate text-right text-[11px]",
-                  govAsk && "text-zinc-600",
-                  govBid && "text-white/80",
-                  !row.isGov && "text-muted-foreground"
+                  row.stop && "text-purple-100",
+                  !row.stop && govAsk && "text-zinc-600",
+                  !row.stop && govBid && "text-white/80",
+                  !row.stop && !row.isGov && "text-muted-foreground"
                 )}
               >
                 {name}
