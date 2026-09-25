@@ -288,6 +288,15 @@ export function MarketPanel({
   const [qtyInput, setQtyInput] = useState("1");
   const [nudgeStep, setNudgeStep] = useState(1);
   const [customCandleMinutes, setCustomCandleMinutes] = useState("");
+  const [candleChoice, setCandleChoice] = useState<string>(
+    CANDLE_PRESETS.some((row) => row.ms === state.candleMs) ? String(state.candleMs) : "custom"
+  );
+
+  useEffect(() => {
+    setCandleChoice(
+      CANDLE_PRESETS.some((row) => row.ms === state.candleMs) ? String(state.candleMs) : "custom"
+    );
+  }, [state.candleMs]);
   const priceRef = useRef<HTMLInputElement>(null);
   const qtyRef = useRef<HTMLInputElement>(null);
   const focusAfter = useRef<"px" | "qty" | null>(null);
@@ -719,9 +728,16 @@ export function MarketPanel({
             <select
               id="player-candle"
               className="h-8 rounded-md border border-border bg-background px-2 text-foreground"
-              value={CANDLE_PRESETS.some((row) => row.ms === state.candleMs) ? state.candleMs : "custom"}
+              value={candleChoice}
               onChange={(event) => {
-                if (event.target.value !== "custom") void onSetCandle(Number(event.target.value));
+                const choice = event.target.value;
+                setCandleChoice(choice);
+                if (choice !== "custom") {
+                  setCustomCandleMinutes("");
+                  void onSetCandle(Number(choice));
+                } else {
+                  setCustomCandleMinutes(String(Math.round(state.candleMs / 60_000)));
+                }
               }}
             >
               {CANDLE_PRESETS.filter((row) => row.ms <= 60 * 60_000).map((row) => (
@@ -729,7 +745,7 @@ export function MarketPanel({
               ))}
               <option value="custom">Custom minutes</option>
             </select>
-            {!CANDLE_PRESETS.some((row) => row.ms === state.candleMs) ? (
+            {candleChoice === "custom" ? (
               <input
                 inputMode="numeric"
                 className="h-8 w-20 rounded-md border border-border bg-background px-2 text-foreground"
