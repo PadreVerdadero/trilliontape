@@ -91,9 +91,22 @@ function groupLadderRows(rows: OrderRow[], selfId: number) {
   return byPrice;
 }
 
+function groupStopRows(rows: OrderRow[]) {
+  const buy = new Map<number, OrderRow[]>();
+  const sell = new Map<number, OrderRow[]>();
+  for (const row of rows) {
+    const map = row.side === "buy" ? buy : sell;
+    const list = map.get(row.price) ?? [];
+    list.push(row);
+    map.set(row.price, list);
+  }
+  return { buy, sell };
+}
+
 function PriceLadder({
   bids,
   asks,
+  myStops,
   marketValue,
   bestBid,
   bestAsk,
@@ -107,6 +120,7 @@ function PriceLadder({
 }: {
   bids: OrderRow[];
   asks: OrderRow[];
+  myStops: OrderRow[];
   marketValue: number;
   bestBid?: number | null;
   bestAsk?: number | null;
@@ -125,6 +139,7 @@ function PriceLadder({
   const centerRef = useRef<HTMLDivElement>(null);
   const bidGroups = groupLadderRows(bids, selfId);
   const askGroups = groupLadderRows(asks, selfId);
+  const stopGroups = groupStopRows(myStops);
   const prices = Array.from({ length: max - min + 1 }, (_, index) => max - index);
 
   useEffect(() => {
@@ -191,6 +206,8 @@ function PriceLadder({
           const sell = sellAction(price);
           const bidGroup = bidGroups.get(price);
           const askGroup = askGroups.get(price);
+          const myBuyStops = stopGroups.buy.get(price);
+          const mySellStops = stopGroups.sell.get(price);
           return (
             <div
               key={price}
@@ -227,7 +244,7 @@ function PriceLadder({
               >
                 {sell.label}
               </button>
-              {bidGroup || askGroup ? (
+              {bidGroup || askGroup || myBuyStops || mySellStops ? (
                 <div className="col-span-3 flex items-center justify-between gap-1 px-1 pb-1">
                   <div className="flex gap-1">
                     {bidGroup?.mine.length ? (
@@ -252,8 +269,30 @@ function PriceLadder({
                         ×{bidGroup.other.length}
                       </button>
                     ) : null}
+                    {myBuyStops?.length ? (
+                      <button
+                        type="button"
+                        disabled={pending}
+                        title="Cancel your Buy STP"
+                        className="rounded bg-purple-400/25 px-1.5 text-[10px] font-medium text-purple-200 hover:bg-purple-400/40"
+                        onClick={() => onCancel(myBuyStops[myBuyStops.length - 1].id)}
+                      >
+                        ×{myBuyStops.length}
+                      </button>
+                    ) : null}
                   </div>
                   <div className="flex gap-1">
+                    {mySellStops?.length ? (
+                      <button
+                        type="button"
+                        disabled={pending}
+                        title="Cancel your Sell STP"
+                        className="rounded bg-purple-400/25 px-1.5 text-[10px] font-medium text-purple-200 hover:bg-purple-400/40"
+                        onClick={() => onCancel(mySellStops[mySellStops.length - 1].id)}
+                      >
+                        ×{mySellStops.length}
+                      </button>
+                    ) : null}
                     {askGroup?.other.length ? (
                       <button
                         type="button"
@@ -952,6 +991,9 @@ export function MarketPanel({
             <PriceLadder
               bids={book?.bids ?? []}
               asks={book?.asks ?? []}
+              myStops={state.myOrders.filter(
+                (row) => row.itemId === selected.id && row.orderType === "stop"
+              )}
               marketValue={price?.vwap ?? selected.basePrice}
               bestBid={price?.bestBid}
               bestAsk={price?.bestAsk}
