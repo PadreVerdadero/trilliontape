@@ -585,6 +585,7 @@ async function matchItem(itemId: string) {
         `SELECT id, user_id, price, remaining, created_at, COALESCE(treasury, 0) AS treasury
          FROM orders
          WHERE item_id = ? AND side = 'buy' AND remaining > 0
+           AND COALESCE(order_type, 'limit') = 'limit'
            AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')
          ORDER BY price DESC, created_at ASC, id ASC`
       )
@@ -601,6 +602,7 @@ async function matchItem(itemId: string) {
         `SELECT id, user_id, price, remaining, created_at, COALESCE(treasury, 0) AS treasury
          FROM orders
          WHERE item_id = ? AND side = 'sell' AND remaining > 0
+           AND COALESCE(order_type, 'limit') = 'limit'
            AND user_id NOT IN (SELECT id FROM users WHERE username = 'Banker')
          ORDER BY price ASC, created_at ASC, id ASC`
       )
@@ -627,6 +629,7 @@ async function matchItem(itemId: string) {
         pair = { buy: bid, sell: ask };
         break;
       }
+
     }
     if (!pair) break;
     let qty = Math.min(pair.buy.remaining, pair.sell.remaining);
@@ -641,6 +644,30 @@ async function matchItem(itemId: string) {
     await executeFill(pair.buy, pair.sell, itemId, qty, pair.sell.price);
   }
   bustPriceSheet();
+}
+
+async function triggerStopOrders(itemId: string) {
+  const db = getDb();
+  const mv = await marketPrice(itemId);
+  const stops = await db.prepare(
+    `SELECT id, side, trigger_price FROM orders
+     WHERE item_id = ? AND remaining > 0 AND COALESCE(order_type, 'limit') = 'stop'`
+  ).all(itemId) as { id: number; side: "buy" | "sell"; trigger_price: number }[];
+  let triggeredAny = false;
+  for (const stop of stops) {
+    const triggered = stop.side === "buy" ? mv >= stop.trigger_price : mv <= stop.trigger_price;
+    if (!triggered) continue;
+    triggeredAny = true;
+    const quote = await db.prepare(
+      `SELECT price FROM orders
+       WHERE item_id = ? AND side = ? AND remaining > 0 AND COALESCE(order_type, 'limit') = 'limit'
+       ORDER BY price ${stop.side === "buy" ? "ASC" : "DESC"}, created_at ASC, id ASC LIMIT 1`
+    ).get(itemId, stop.side === "buy" ? "sell" : "buy") as { price: number } | undefined;
+    if (!quote) continue;
+    await db.prepare("UPDATE orders SET order_type = 'limit', price = ?, trigger_price = NULL WHERE id = ?")
+      .run(quote.price, stop.id);
+  }
+  if (triggeredAny) await matchItem(itemId);
 }
 
 async function requireIdle(userId: number) {
@@ -980,13 +1007,14 @@ async function insertLiveOrder(
   side: "buy" | "sell",
   price: number,
   quantity: number,
-  treasury: boolean
+  treasury: boolean,
+  orderType: "limit" | "stop" = "limit"
 ) {
   const info = await getDb()
     .prepare(
-      "INSERT INTO orders (user_id, item_id, side, price, remaining, created_at, treasury) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO orders (user_id, item_id, side, price, remaining, created_at, treasury, order_type, trigger_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
-    .run(userId, itemId, side, price, quantity, nowMs(), treasury ? 1 : 0);
+    .run(userId, itemId, side, price, quantity, nowMs(), treasury ? 1 : 0, orderType, orderType === "stop" ? price : null);
   return Number(info.lastInsertRowid);
 }
 
@@ -1015,7 +1043,8 @@ export async function placeOrder(
   itemId: string,
   side: "buy" | "sell",
   price: number,
-  quantity: number
+  quantity: number,
+  orderType: "limit" | "stop" = "limit"
 ) {
   await resolveBusy(userId);
   await requireOpenGame();
@@ -1023,6 +1052,7 @@ export async function placeOrder(
   if (!item) throw new Error("Unknown item.");
   await requireItemOpen(itemId);
   const treasury = await isGov(userId);
+  if (treasury && orderType === "stop") throw new Error("Treasury cannot place stop orders.");
   const px = treasury ? Math.max(1, Math.round(await marketPrice(itemId))) : price;
   if (!treasury && (!Number.isInteger(price) || price < 1)) {
     throw new Error("Price must be a whole number of at least 1.");
@@ -1035,7 +1065,7 @@ export async function placeOrder(
         : "Quantity must be a whole number from 1 to 99."
     );
   }
-  if (side === "buy" && !treasury && await availableGold(userId) < px * quantity) {
+  if (side === "buy" && !treasury && orderType === "limit" && await availableGold(userId) < px * quantity) {
     throw new Error("Not enough free coin. Cancel a bid or sell something.");
   }
   if (side === "sell" && !treasury && await availableItem(userId, itemId) < quantity) {
@@ -1053,9 +1083,9 @@ export async function placeOrder(
   }
   const ids: number[] = [];
   for (let n = 0; n < quantity; n += 1) {
-    ids.push(await insertLiveOrder(userId, itemId, side, px, 1, treasury));
+    ids.push(await insertLiveOrder(userId, itemId, side, px, 1, treasury, orderType));
   }
-  await matchItem(itemId);
+  if (orderType === "limit") await matchItem(itemId);
   let resting = 0;
   for (const id of ids) {
     const live = await loadLiveOrder(id);
@@ -1072,7 +1102,9 @@ export async function placeOrder(
         ? `Filled ${item.emoji} ${item.name} ×${formatNumber(filled)} at ${formatCoins(px)}.`
         : filled > 0
           ? `Filled ${item.emoji} ${item.name} ×${formatNumber(filled)} at ${formatCoins(px)}; ${formatNumber(resting)} still on the book.`
-          : side === "buy"
+          : orderType === "stop"
+            ? `${side === "buy" ? "Buy" : "Sell"} stop posted at ${formatCoins(px)}.`
+            : side === "buy"
             ? `Bid posted: ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(px)}.`
             : `Ask posted: ${item.emoji} ${item.name} ×${formatNumber(quantity)} at ${formatCoins(px)}.`
   );
@@ -1092,7 +1124,7 @@ type LiveOrder = {
 async function loadLiveOrder(orderId: number) {
   return (await getDb()
     .prepare(
-      "SELECT id, user_id, item_id, side, price, remaining, COALESCE(treasury, 0) AS treasury FROM orders WHERE id = ? AND remaining > 0"
+      "SELECT id, user_id, item_id, side, price, remaining, COALESCE(treasury, 0) AS treasury FROM orders WHERE id = ? AND remaining > 0 AND COALESCE(order_type, 'limit') = 'limit'"
     )
     .get(orderId)) as LiveOrder | undefined;
 }
@@ -1118,6 +1150,7 @@ async function findLiveQuote(
       `SELECT id, user_id, item_id, side, price, remaining, COALESCE(treasury, 0) AS treasury
        FROM orders
        WHERE item_id = ? AND side = ? AND price = ? AND remaining > 0
+         AND COALESCE(order_type, 'limit') = 'limit'
          AND COALESCE(treasury, 0) = ?
          AND user_id != ?
        ORDER BY created_at ASC, id ASC
@@ -2003,6 +2036,7 @@ function mapOrder(row: {
   remaining: number;
   created_at: number;
   is_gov?: number;
+  order_type?: "limit" | "stop";
 }): OrderRow {
   const gov = Boolean(row.is_gov);
   return {
@@ -2015,6 +2049,7 @@ function mapOrder(row: {
     remaining: row.remaining,
     createdAt: row.created_at,
     isGov: gov,
+    orderType: row.order_type ?? "limit",
   };
 }
 
@@ -2551,7 +2586,7 @@ export async function getOrderBook(itemId: string): Promise<OrderBook> {
       `SELECT o.id, o.user_id, u.username, o.item_id, o.side, o.price, o.remaining, o.created_at,
               COALESCE(o.treasury, 0) AS is_gov
        FROM orders o JOIN users u ON u.id = o.user_id
-       WHERE o.item_id = ? AND o.remaining > 0 AND u.username != 'Banker'`
+       WHERE o.item_id = ? AND o.remaining > 0 AND COALESCE(o.order_type, 'limit') = 'limit' AND u.username != 'Banker'`
     )
     .all(itemId) as {
     id: number;
@@ -3672,6 +3707,7 @@ export async function getGameState(
     await getDb()
       .prepare(
       `SELECT o.id, o.user_id, u.username, o.item_id, o.side, o.price, o.remaining, o.created_at,
+              COALESCE(o.order_type, 'limit') AS order_type,
               COALESCE(o.treasury, 0) AS is_gov
          FROM orders o JOIN users u ON u.id = o.user_id
          WHERE o.user_id = ? AND o.remaining > 0
@@ -3691,6 +3727,9 @@ export async function getGameState(
 
   const recentTrades = coalesceTrades(await loadRecentTrades(40)).slice(0, 18);
 
+  if (gamePhase === "live" && !(await readGameOver()).over) {
+    for (const item of items) await triggerStopOrders(item.id);
+  }
   const prices = await priceSheet(timeZone);
   const leaders = await netWorthLeaders(prices);
   const { goal, over } =

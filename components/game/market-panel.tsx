@@ -80,6 +80,45 @@ function TreasuryButton({
   );
 }
 
+function PriceLadder({
+  side,
+  rows,
+  onSelect,
+}: {
+  side: "buy" | "sell";
+  rows: { price: number }[];
+  onSelect: (price: number) => void;
+}) {
+  const prices = [...new Set(rows.map((row) => row.price))].sort((a, b) =>
+    side === "buy" ? b - a : a - b
+  );
+  if (prices.length === 0) return null;
+  return (
+    <div className="mt-2 md:hidden">
+      <p className="mb-1 text-[10px] text-muted-foreground">
+        Phone ladder: tap the left side for a bid limit price or the right side for an ask limit price.
+      </p>
+      <div className="max-h-36 overflow-y-auto rounded-md border border-border/60 bg-background/30">
+        {prices.map((price) => (
+          <button
+            key={price}
+            type="button"
+            className="flex h-8 w-full items-center justify-between border-b border-border/30 px-2 text-xs last:border-0 hover:bg-primary/10"
+            onClick={() => onSelect(price)}
+          >
+            <span className={cn("w-1/2 text-left", side === "buy" ? "text-emerald-300" : "text-muted-foreground")}>
+              {side === "buy" ? `Bid ${formatCoins(price)}` : ""}
+            </span>
+            <span className={cn("w-1/2 text-right", side === "sell" ? "text-rose-300" : "text-muted-foreground")}>
+              {side === "sell" ? `${formatCoins(price)} Ask` : ""}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SortHead({
   label,
   column,
@@ -257,6 +296,7 @@ export function MarketPanel({
     side: OrderSide;
     price: number;
     quantity: number;
+    orderType?: "limit" | "stop";
   }) => Promise<unknown>;
   onTake: (input: TakeQuoteInput) => Promise<unknown>;
   onCancel: (orderId: number) => Promise<unknown>;
@@ -286,6 +326,7 @@ export function MarketPanel({
   const { book, reloadBook } = useOrderBook(selectedItemId);
   const [priceInput, setPriceInput] = useState("");
   const [qtyInput, setQtyInput] = useState("1");
+  const [orderType, setOrderType] = useState<"limit" | "stop">("limit");
   const [nudgeStep, setNudgeStep] = useState(1);
   const [customCandleMinutes, setCustomCandleMinutes] = useState("");
   const [candleChoice, setCandleChoice] = useState<string>(
@@ -323,6 +364,7 @@ export function MarketPanel({
       side: next,
       price: Number(priceInput || suggested),
       quantity: Number(qtyInput),
+      orderType,
     });
     await reloadBook();
   }
@@ -640,7 +682,7 @@ export function MarketPanel({
                   disabled={pending}
                   onClick={() => void place("buy")}
                 >
-                  Buy
+                  {orderType === "stop" ? "Buy STP" : "Buy LMT"} <span className="sr-only">/ Buy</span>
                 </Button>
                 <Button
                   className={cn(
@@ -650,8 +692,20 @@ export function MarketPanel({
                   disabled={pending}
                   onClick={() => void place("sell")}
                 >
-                  Sell
+                  {orderType === "stop" ? "Sell STP" : "Sell LMT"} <span className="sr-only">/ Sell</span>
                 </Button>
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                <span>{orderType === "stop" ? "Stop order triggers at MV; it then takes the best available quote." : "Limit order rests at your chosen price."}</span>
+                <select
+                  value={orderType}
+                  onChange={(event) => setOrderType(event.target.value as "limit" | "stop")}
+                  className="h-7 rounded border border-border bg-background px-1.5 text-foreground"
+                  aria-label="Order type"
+                >
+                  <option value="limit">Limit</option>
+                  <option value="stop">Stop</option>
+                </select>
               </div>
               {draftTotal != null ? (
                 <p className="mt-1 text-center text-[10px] text-muted-foreground">
@@ -777,7 +831,7 @@ export function MarketPanel({
                 ) : null}
               </div>
               <p className="mb-2 text-[11px] text-muted-foreground">
-                Tap a row to sell 1. Tap yours to cancel 1. <kbd className="text-foreground">Q</kbd> takes
+                Tap a row for a <strong>market order</strong> to sell 1. Tap yours to cancel 1. <kbd className="text-foreground">Q</kbd> takes
                 the best traveler bid. <kbd className="text-foreground">R</kbd> sells 1 to the treasury.
               </p>
               <OrderList
@@ -792,6 +846,13 @@ export function MarketPanel({
                   await reloadBook();
                 }}
               />
+              {compact ? (
+                <PriceLadder
+                  side="buy"
+                  rows={playerQuotes(book?.bids ?? [])}
+                  onSelect={(value) => setPriceInput(String(value))}
+                />
+              ) : null}
             </div>
             <div className="rounded-xl bg-rose-950/20 p-3 ring-1 ring-rose-400/20">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -806,7 +867,7 @@ export function MarketPanel({
                 ) : null}
               </div>
               <p className="mb-2 text-[11px] text-muted-foreground">
-                Tap a row to buy 1. Tap yours to cancel 1. <kbd className="text-foreground">E</kbd> takes
+                Tap a row for a <strong>market order</strong> to buy 1. Tap yours to cancel 1. <kbd className="text-foreground">E</kbd> takes
                 the best traveler ask. <kbd className="text-foreground">T</kbd> buys 1 from the treasury.
               </p>
               <OrderList
@@ -821,6 +882,13 @@ export function MarketPanel({
                   await reloadBook();
                 }}
               />
+              {compact ? (
+                <PriceLadder
+                  side="sell"
+                  rows={playerQuotes(book?.asks ?? [])}
+                  onSelect={(value) => setPriceInput(String(value))}
+                />
+              ) : null}
             </div>
           </div>
         </div>
@@ -1148,6 +1216,7 @@ function OrderList({
   if (rows.length === 0) {
     return <p className="text-sm leading-6 text-muted-foreground">{empty}</p>;
   }
+
   const units = stackUnitRows(rows);
   return (
     <ul className="space-y-0.5 pr-0.5">

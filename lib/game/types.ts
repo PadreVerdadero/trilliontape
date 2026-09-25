@@ -56,6 +56,7 @@ export type OrderRow = {
   remaining: number;
   createdAt: number;
   isGov: boolean;
+  orderType?: "limit" | "stop";
 };
 
 export type TakeQuoteInput = {

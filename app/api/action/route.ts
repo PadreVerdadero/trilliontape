@@ -46,7 +46,7 @@ type ActionBody = {
   | { action: "search" }
   | { action: "mine"; itemId?: string }
   | { action: "craft"; outputId: string }
-  | { action: "order"; itemId: string; side: "buy" | "sell"; price: number; quantity: number }
+  | { action: "order"; itemId: string; side: "buy" | "sell"; price: number; quantity: number; orderType?: "limit" | "stop" }
   | { action: "take"; orderId: number; quantity?: number; itemId?: string; side?: "buy" | "sell"; price?: number; treasury?: boolean }
   | { action: "cancel"; orderId?: number; orderIds?: number[] }
   | { action: "use"; itemId: string }
@@ -130,7 +130,8 @@ export async function POST(request: Request) {
           body.itemId,
           body.side,
           Number(body.price),
-          Number(body.quantity)
+          Number(body.quantity),
+          body.orderType === "stop" ? "stop" : "limit"
         );
         deskCue =
           result.resting > 0 && result.filled === 0

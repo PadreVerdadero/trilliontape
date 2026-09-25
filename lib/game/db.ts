@@ -216,6 +216,8 @@ async function migrate(db: GameDb) {
   await ensureColumn(db, "users", "is_gov", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "users", "is_admin", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "orders", "treasury", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "orders", "order_type", "TEXT NOT NULL DEFAULT 'limit'");
+  await ensureColumn(db, "orders", "trigger_price", "INTEGER");
   await ensureColumn(db, "players", "energy", `INTEGER NOT NULL DEFAULT ${ENERGY_MAX}`);
   await ensureColumn(db, "players", "energy_max", `INTEGER NOT NULL DEFAULT ${ENERGY_MAX}`);
   await ensureColumn(db, "players", "vp", "INTEGER NOT NULL DEFAULT 0");
