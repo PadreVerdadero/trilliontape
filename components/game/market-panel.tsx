@@ -133,6 +133,12 @@ function PriceLadder({
   onCancel: (id: number) => void;
 }) {
   const center = Math.max(1, Math.round(marketValue));
+  const [tickInput, setTickInput] = useState("1");
+  const parsedTick = Number(tickInput);
+  const tickSize =
+    Number.isInteger(parsedTick) && parsedTick >= 1 && parsedTick <= 1_000_000
+      ? parsedTick
+      : 1;
   const [min, setMin] = useState(Math.max(1, center - 100));
   const [max, setMax] = useState(center + 100);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -140,12 +146,21 @@ function PriceLadder({
   const bidGroups = groupLadderRows(bids, selfId);
   const askGroups = groupLadderRows(asks, selfId);
   const stopGroups = groupStopRows(myStops);
-  const prices = Array.from({ length: max - min + 1 }, (_, index) => max - index);
+  const ladderPrices = new Set<number>();
+  const firstGridPrice = Math.ceil(min / tickSize) * tickSize;
+  for (let price = firstGridPrice; price <= max; price += tickSize) {
+    ladderPrices.add(price);
+  }
+  ladderPrices.add(center);
+  for (const row of [...bids, ...asks, ...myStops]) {
+    if (row.price >= min && row.price <= max) ladderPrices.add(row.price);
+  }
+  const prices = Array.from(ladderPrices).sort((a, b) => b - a);
 
   useEffect(() => {
-    setMin(Math.max(1, center - 100));
-    setMax(center + 100);
-  }, [center]);
+    setMin(Math.max(1, center - 100 * tickSize));
+    setMax(center + 100 * tickSize);
+  }, [center, tickSize]);
 
   useEffect(() => {
     centerRef.current?.scrollIntoView({ block: "center" });
@@ -192,13 +207,37 @@ function PriceLadder({
         bid/ask (auto Buy/Sell STP beyond the book, auto market at the touch), or a resting quote to take
         it or cancel yours.
       </p>
+      <label className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+        Tick scale
+        <input
+          type="number"
+          min={1}
+          max={1_000_000}
+          step={1}
+          inputMode="numeric"
+          aria-label="Ladder tick scale"
+          className="h-7 w-20 rounded-md border border-border bg-background px-2 text-foreground"
+          value={tickInput}
+          onChange={(event) => {
+            const value = event.target.value;
+            setTickInput(value);
+            const nextTick = Number(value);
+            if (Number.isInteger(nextTick) && nextTick >= 1 && nextTick <= 1_000_000) {
+              setMin(Math.max(1, center - 100 * nextTick));
+              setMax(center + 100 * nextTick);
+            }
+          }}
+        />
+        <span>prices per step (1–1,000,000)</span>
+      </label>
       <div
         ref={scrollRef}
         className="max-h-[min(55dvh,32rem)] overflow-y-auto rounded-md border border-border/60"
         onScroll={(event) => {
           const element = event.currentTarget;
-          if (element.scrollTop < 240 && min > 1) setMin(Math.max(1, min - 200));
-          if (element.scrollHeight - element.scrollTop - element.clientHeight < 240) setMax(max + 200);
+          const extension = 200 * tickSize;
+          if (element.scrollTop < 240 && min > 1) setMin(Math.max(1, min - extension));
+          if (element.scrollHeight - element.scrollTop - element.clientHeight < 240) setMax(max + extension);
         }}
       >
         {prices.map((price) => {
