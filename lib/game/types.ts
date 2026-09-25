@@ -297,6 +297,8 @@ export type GameOverView = {
 
 export type CoinDropState = {
   ladder: number[];
+  dailyAtMin: number | null;
+  timeZone: string;
   loginDays: number;
   lastSlotKey: string | null;
   paidThisSlot: boolean;
@@ -318,6 +320,8 @@ export type GameState = {
   computerCount: number;
   travelerCount: number;
   stipendMs: number;
+  stipendDailyAtMin: number | null;
+  stipendTimeZone: string;
   startingGold: number;
   coinDrop: CoinDropState;
   adminRoster: AdminSeat[];

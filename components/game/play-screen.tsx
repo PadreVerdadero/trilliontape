@@ -86,6 +86,7 @@ export function PlayScreen({
       sort={marketSort.sort}
       sortDir={marketSort.sortDir}
       cycleSort={marketSort.cycleSort}
+      onSetCandle={(ms) => run({ action: "setCandle", ms })}
       onOrder={(input) => run({ action: "order", ...input })}
       onTake={(input) =>
         run({

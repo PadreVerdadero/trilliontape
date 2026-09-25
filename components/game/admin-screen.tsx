@@ -63,6 +63,9 @@ export function AdminScreen({
   const [mvDraft, setMvDraft] = useState<Record<string, string>>({});
   const [nameDraft, setNameDraft] = useState<Record<string, string>>({});
   const [startingDraft, setStartingDraft] = useState(String(initialState.startingGold ?? 1000));
+  const [stipendTimeDraft, setStipendTimeDraft] = useState(
+    minuteInput(initialState.coinDrop?.dailyAtMin ?? undefined)
+  );
   const [startDraft, setStartDraft] = useState(() =>
     toLocalInput(initialState.scheduledStartAt ?? Date.now() + 10 * 60 * 1000)
   );
@@ -105,6 +108,10 @@ export function AdminScreen({
   useEffect(() => {
     setStartingDraft(String(state?.startingGold ?? 1000));
   }, [state?.startingGold]);
+
+  useEffect(() => {
+    if (state?.coinDrop) setStipendTimeDraft(minuteInput(state.coinDrop.dailyAtMin ?? undefined));
+  }, [state?.coinDrop?.dailyAtMin]);
 
   useEffect(() => {
     if (state?.scheduledStartAt) setStartDraft(toLocalInput(state.scheduledStartAt));
@@ -480,6 +487,26 @@ export function AdminScreen({
             Coins and pack qty below apply to {selectedSeat?.username ?? player.username}. Issued is a table rule
             and changes every traveler.
           </p>
+          <div className="space-y-2 border-t border-amber-400/15 pt-3">
+            <h3 className="text-sm font-medium text-amber-100/80">Players in this round</h3>
+            <p className="text-xs text-amber-100/60">Choose who is seated for the current round. A player who is out has orders and pack holdings cleared.</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {roster.filter((row) => !row.bot && row.editable).map((row) => (
+                <div key={row.id} className="flex items-center justify-between rounded-lg border border-amber-400/15 bg-amber-950/40 px-3 py-2 text-sm">
+                  <span>{row.username}{row.id === player.id ? " · you" : ""}</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={pending || row.id === player.id}
+                    className="h-8 border-amber-400/40 bg-transparent text-amber-50 hover:bg-amber-900"
+                    onClick={() => void run({ action: "adminPlayerTable", targetUserId: row.id, seated: !row.seated })}
+                  >
+                    {row.seated ? "Sit out" : "Seat"}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
           <div className="grid gap-3 border-t border-amber-400/15 pt-3 md:grid-cols-2">
             <div className="space-y-1">
               <Label htmlFor="admin-username" className="text-amber-100/80">
@@ -645,6 +672,32 @@ export function AdminScreen({
               <p className="text-xs text-amber-100/60">
                 Travelers who sit at the desk get the next ladder purse every {stipendLabel(state.stipendMs)}.
               </p>
+              {state.stipendMs === 24 * 60 * 60_000 ? (
+                <div className="space-y-1 pt-2">
+                  <Label htmlFor="admin-stipend-time" className="text-amber-100/80">
+                    Daily drop time
+                  </Label>
+                  <div className="flex items-end gap-2">
+                    <Input
+                      id="admin-stipend-time"
+                      type="time"
+                      value={stipendTimeDraft}
+                      onChange={(event) => setStipendTimeDraft(event.target.value)}
+                      className="border-amber-400/30 bg-amber-950/60"
+                    />
+                    <Button
+                      disabled={pending}
+                      className="bg-amber-300 text-amber-950 hover:bg-amber-200"
+                      onClick={() => void run({ action: "adminStipendTime", time: stipendTimeDraft })}
+                    >
+                      Set time
+                    </Button>
+                  </div>
+                  <p className="text-xs text-amber-100/60">
+                    Drops happen daily at this browser-local time ({state.stipendTimeZone}).
+                  </p>
+                </div>
+              ) : null}
               {state.coinDrop ? (
                 <StipendEditor
                   ladder={state.coinDrop.ladder}

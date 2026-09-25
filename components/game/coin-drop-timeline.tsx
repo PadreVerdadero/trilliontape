@@ -36,6 +36,8 @@ export function CoinDropTimeline({
     loginDays: coinDrop.loginDays,
     lastSlotKey: coinDrop.lastSlotKey,
     paidThisSlot: coinDrop.paidThisSlot,
+    dailyAtMin: coinDrop.dailyAtMin,
+    timeZone: coinDrop.timeZone,
   });
   const untilNext = timeline.nextAt - now;
 

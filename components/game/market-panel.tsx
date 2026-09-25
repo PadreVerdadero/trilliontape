@@ -17,6 +17,7 @@ import {
 } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
 import { describeTradingWindow, goodIsOpen } from "@/lib/game/hours";
+import { CANDLE_PRESETS } from "@/lib/game/market";
 import { useOrderBook } from "@/hooks/use-game";
 import { PriceChart } from "@/components/game/price-chart";
 import { SwapPanel } from "@/components/game/swap-panel";
@@ -246,6 +247,7 @@ export function MarketPanel({
   sort,
   sortDir,
   cycleSort,
+  onSetCandle,
   compact = false,
 }: {
   state: GameState;
@@ -275,6 +277,7 @@ export function MarketPanel({
   sort: MarketSort;
   sortDir: SortDir;
   cycleSort: (column: SortColumn) => void;
+  onSetCandle: (ms: number) => Promise<unknown>;
   compact?: boolean;
 }) {
   const catalogById = playItemMap(playItems(state.items));
@@ -284,6 +287,7 @@ export function MarketPanel({
   const [priceInput, setPriceInput] = useState("");
   const [qtyInput, setQtyInput] = useState("1");
   const [nudgeStep, setNudgeStep] = useState(1);
+  const [customCandleMinutes, setCustomCandleMinutes] = useState("");
   const priceRef = useRef<HTMLInputElement>(null);
   const qtyRef = useRef<HTMLInputElement>(null);
   const focusAfter = useRef<"px" | "qty" | null>(null);
@@ -710,6 +714,38 @@ export function MarketPanel({
             now={state.now}
             candleMs={state.candleMs}
           />
+          <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+            <label htmlFor="player-candle">Your candle size</label>
+            <select
+              id="player-candle"
+              className="h-8 rounded-md border border-border bg-background px-2 text-foreground"
+              value={CANDLE_PRESETS.some((row) => row.ms === state.candleMs) ? state.candleMs : "custom"}
+              onChange={(event) => {
+                if (event.target.value !== "custom") void onSetCandle(Number(event.target.value));
+              }}
+            >
+              {CANDLE_PRESETS.filter((row) => row.ms <= 60 * 60_000).map((row) => (
+                <option key={row.ms} value={row.ms}>{row.label}</option>
+              ))}
+              <option value="custom">Custom minutes</option>
+            </select>
+            {!CANDLE_PRESETS.some((row) => row.ms === state.candleMs) ? (
+              <input
+                inputMode="numeric"
+                className="h-8 w-20 rounded-md border border-border bg-background px-2 text-foreground"
+                value={customCandleMinutes}
+                placeholder={String(Math.round(state.candleMs / 60_000))}
+                onChange={(event) => setCustomCandleMinutes(event.target.value)}
+                onBlur={() => {
+                  const minutes = Number(customCandleMinutes);
+                  if (Number.isInteger(minutes) && minutes >= 1 && minutes <= 1440) {
+                    void onSetCandle(minutes * 60_000);
+                  }
+                }}
+                aria-label="Custom candle minutes"
+              />
+            ) : null}
+          </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">

@@ -22,6 +22,7 @@ import {
 import { defaultStipendLadder, normalizeStipendLadder, stipendCatchUp } from "@/lib/game/stipend-ladder";
 import { normalizeCandleMs } from "@/lib/game/market";
 import { emptyTradingBook, normalizeTradingBook, type TradingBook } from "@/lib/game/hours";
+import { safeTimeZone, clampMinute } from "@/lib/game/hours";
 
 export const DESK_USERNAME = "Government";
 
@@ -795,12 +796,36 @@ export async function tablePaidDrops(db: GameDb = getDb(), excludeUserId = 0) {
 }
 
 export async function markStipendSlotPaid(userId: number, db: GameDb = getDb()) {
-  const slot = stipendSlotKey(Date.now(), await stipendMs(db));
+  const schedule = await readStipendSchedule(db);
+  const slot = stipendSlotKey(Date.now(), await stipendMs(db), schedule.dailyAtMin, schedule.timeZone);
   await db.prepare(
     `INSERT INTO player_daily (user_id, day_key, first_trade, special_sold, login_paid)
      VALUES (?, ?, 0, '', 1)
      ON CONFLICT(user_id, day_key) DO UPDATE SET login_paid = 1`
   ).run(userId, slot);
+}
+
+export async function readStipendSchedule(db: GameDb = getDb()) {
+  const at = await db.prepare("SELECT value FROM game_meta WHERE key = 'stipend_daily_at'").get() as { value: string } | undefined;
+  const tz = await db.prepare("SELECT value FROM game_meta WHERE key = 'stipend_time_zone'").get() as { value: string } | undefined;
+  const minute = clampMinute(Number(at?.value));
+  return { dailyAtMin: minute, timeZone: safeTimeZone(tz?.value) };
+}
+
+export async function writeStipendSchedule(dailyAtMin: number | null, timeZone: string, db: GameDb = getDb()) {
+  if (dailyAtMin == null) {
+    await db.prepare("DELETE FROM game_meta WHERE key = 'stipend_daily_at'").run();
+    await db.prepare("DELETE FROM game_meta WHERE key = 'stipend_time_zone'").run();
+    return;
+  }
+  await db.prepare(
+    `INSERT INTO game_meta (key, value) VALUES ('stipend_daily_at', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run(String(dailyAtMin));
+  await db.prepare(
+    `INSERT INTO game_meta (key, value) VALUES ('stipend_time_zone', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run(safeTimeZone(timeZone));
 }
 
 export async function stipendMs(db: GameDb = getDb()) {
@@ -864,6 +889,20 @@ export async function writeCandleMs(ms: number, db: GameDb = getDb()) {
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`
     )
     .run(String(next));
+  return next;
+}
+
+export async function readUserCandleMs(userId: number, db: GameDb = getDb()) {
+  const row = await db.prepare("SELECT value FROM game_meta WHERE key = ?").get(`candle_ms:${userId}`) as { value: string } | undefined;
+  return normalizeCandleMs(row?.value);
+}
+
+export async function writeUserCandleMs(userId: number, ms: number, db: GameDb = getDb()) {
+  const next = normalizeCandleMs(ms);
+  await db.prepare(
+    `INSERT INTO game_meta (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run(`candle_ms:${userId}`, String(next));
   return next;
 }
 

@@ -23,12 +23,15 @@ import {
   adminSetComputerCount,
   adminSitOtherTravelers,
   adminSetStipend,
+  adminSetStipendTime,
   adminSetStartingGold,
   adminSetStipendLadder,
   adminSetIssued,
   adminSetSharePrice,
   adminSetShareName,
   adminSetCandle,
+  setPlayerCandle,
+  adminSetPlayerTable,
   adminSetTradingHours,
   adminSetGoal,
   adminAddShare,
@@ -73,6 +76,8 @@ type ActionBody = {
   | { action: "adminSharePrice"; itemId: string; basePrice: number }
   | { action: "adminShareName"; itemId: string; name: string }
   | { action: "adminCandle"; ms: number }
+  | { action: "setCandle"; ms: number }
+  | { action: "adminPlayerTable"; targetUserId: number; seated: boolean }
   | { action: "adminTradingHours"; hours: Record<string, { openMin: number; closeMin: number } | null>; }
   | { action: "adminShareAdd"; name: string; emoji?: string; image?: string | null }
   | { action: "adminShareRemove"; itemId: string }
@@ -84,6 +89,7 @@ type ActionBody = {
   | { action: "adminComputers"; count?: number; on?: boolean }
   | { action: "adminSitOthers" }
   | { action: "adminStipend"; ms: number }
+  | { action: "adminStipendTime"; time: string }
   | { action: "adminStartingGold"; gold: number }
   | { action: "adminStipendLadder"; amounts: number[] }
   | {
@@ -198,6 +204,12 @@ export async function POST(request: Request) {
       case "adminCandle":
         await adminSetCandle(userId, Number(body.ms));
         break;
+      case "setCandle":
+        await setPlayerCandle(userId, Number(body.ms));
+        break;
+      case "adminPlayerTable":
+        await adminSetPlayerTable(userId, Number(body.targetUserId), Boolean(body.seated));
+        break;
       case "adminTradingHours":
         await adminSetTradingHours(userId, body.hours, tz);
         break;
@@ -237,6 +249,9 @@ export async function POST(request: Request) {
         break;
       case "adminStipend":
         await adminSetStipend(userId, Number(body.ms));
+        break;
+      case "adminStipendTime":
+        await adminSetStipendTime(userId, String(body.time ?? ""), tz);
         break;
       case "adminStartingGold":
         await adminSetStartingGold(userId, Number(body.gold));

@@ -82,8 +82,24 @@ export function parseStipendSlotKey(key: string | null | undefined) {
   return { ms, start };
 }
 
-export function stipendSlotStart(now: number, slotMs: number) {
+export function stipendSlotStart(now: number, slotMs: number, dailyAtMin: number | null = null, timeZone = "UTC") {
   const ms = slotMs > 0 ? slotMs : 5 * 60 * 1000;
+  if (ms === 24 * 60 * 60 * 1000 && dailyAtMin != null) {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(new Date(now));
+    const read = (type: string) => parts.find((part) => part.type === type)?.value ?? "00";
+    const targetUtc = Date.UTC(Number(read("year")), Number(read("month")) - 1, Number(read("day")), Math.floor(dailyAtMin / 60), dailyAtMin % 60);
+    const offset = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "longOffset" })
+      .formatToParts(new Date(targetUtc)).find((part) => part.type === "timeZoneName")?.value ?? "GMT";
+    const match = /GMT([+-])(\d{2}):?(\d{2})/.exec(offset);
+    const offsetMs = match ? (match[1] === "+" ? 1 : -1) * (Number(match[2]) * 60 + Number(match[3])) * 60_000 : 0;
+    const target = targetUtc - offsetMs;
+    return now >= target ? target : target - ms;
+  }
   return Math.floor(now / ms) * ms;
 }
 
@@ -112,12 +128,14 @@ export function buildCoinDropTimeline(input: {
   loginDays: number;
   lastSlotKey?: string | null;
   paidThisSlot: boolean;
+  dailyAtMin?: number | null;
+  timeZone?: string;
   past?: number;
   future?: number;
 }): CoinDropTimeline {
   const ms = input.stipendMs > 0 ? input.stipendMs : 5 * 60 * 1000;
   const loginDays = Math.max(0, Math.floor(input.loginDays));
-  const currentStart = stipendSlotStart(input.now, ms);
+  const currentStart = stipendSlotStart(input.now, ms, input.dailyAtMin, input.timeZone);
   const nextDrop = loginDays + 1;
   const nextAt = input.paidThisSlot ? currentStart + ms : currentStart;
   const nextAmount = stipendAmountAt(input.ladder, nextDrop);

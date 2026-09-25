@@ -1,5 +1,6 @@
 import type { Cosmetic, Item, Location } from "@/lib/game/types";
 import { defaultStipendLadder, stipendAmountAt } from "@/lib/game/stipend-ladder";
+import { stipendSlotStart } from "@/lib/game/stipend-ladder";
 
 export const STARTING_GOLD = 1_000;
 export const TABLE_GOLD = 1_000;
@@ -30,9 +31,9 @@ export function stipendLabel(ms: number) {
   return STIPEND_PRESETS.find((row) => row.ms === ms)?.label ?? `${Math.round(ms / 1000)} seconds`;
 }
 
-export function stipendSlotKey(now = Date.now(), slotMs = STIPEND_SLOT_MS) {
+export function stipendSlotKey(now = Date.now(), slotMs = STIPEND_SLOT_MS, dailyAtMin: number | null = null, timeZone = "UTC") {
   const ms = slotMs > 0 ? slotMs : STIPEND_SLOT_MS;
-  const slot = Math.floor(now / ms) * ms;
+  const slot = stipendSlotStart(now, ms, dailyAtMin, timeZone);
   return `slot:${ms}:${slot}`;
 }
 

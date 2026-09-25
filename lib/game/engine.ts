@@ -37,6 +37,8 @@ import {
   readGameOver,
   readGoal,
   readCandleMs,
+  readUserCandleMs,
+  writeUserCandleMs,
   readTradingHours,
   writeCandleMs,
   writeTradingHours,
@@ -47,6 +49,8 @@ import {
   setStipendMs,
   stipendMs,
   readStipendLadder,
+  readStipendSchedule,
+  writeStipendSchedule,
   writeStipendLadder,
   getItemAuthorized,
   setItemAuthorized,
@@ -664,7 +668,8 @@ async function touchDaily(userId: number, dayKey: string) {
 async function grantDailyLogin(userId: number, _timeZone?: string) {
   const name = (await loadPlayerRow(userId)).username;
   if (name === "Banker" || name === DESK_USERNAME) return null;
-  const slot = stipendSlotKey(Date.now(), await stipendMs());
+  const schedule = await readStipendSchedule();
+  const slot = stipendSlotKey(Date.now(), await stipendMs(), schedule.dailyAtMin, schedule.timeZone);
   await touchDaily(userId, slot);
   const row = await getDb()
     .prepare(
@@ -678,7 +683,7 @@ async function grantDailyLogin(userId: number, _timeZone?: string) {
   const created = await getDb()
     .prepare("SELECT created_at FROM users WHERE id = ?")
     .get(userId) as { created_at: number } | undefined;
-  if (created && stipendSlotKey(created.created_at, await stipendMs()) === slot) {
+  if (created && stipendSlotKey(created.created_at, await stipendMs(), schedule.dailyAtMin, schedule.timeZone) === slot) {
     await getDb()
       .prepare("UPDATE player_daily SET login_paid = 1 WHERE user_id = ? AND day_key = ?")
       .run(userId, slot);
@@ -1349,8 +1354,21 @@ export async function adminSetStipend(userId: number, ms: number) {
   if (!STIPEND_PRESETS.some((row) => row.ms === ms)) {
     throw new Error("Pick a listed coin-drop interval.");
   }
+
   await setStipendMs(ms);
   await setEvent(userId, `Coin drops now every ${stipendLabel(ms)}.`);
+}
+
+export async function adminSetStipendTime(userId: number, value: string, timeZone?: string) {
+  await requireAdmin(userId);
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  const hour = match ? Number(match[1]) : -1;
+  const minute = match ? Number(match[2]) : -1;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    throw new Error("Pick a valid daily drop time.");
+  }
+  await writeStipendSchedule(hour * 60 + minute, timeZone ?? "UTC");
+  await setEvent(userId, `Daily coin drops are set for ${value}.`);
 }
 
 export async function adminSetStipendLadder(userId: number, amounts: number[]) {
@@ -1365,8 +1383,9 @@ export async function adminSetStipendLadder(userId: number, amounts: number[]) {
 
 async function coinDropSnapshot(userId: number) {
   const ms = await stipendMs();
+  const schedule = await readStipendSchedule();
   const now = nowMs();
-  const slot = stipendSlotKey(now, ms);
+  const slot = stipendSlotKey(now, ms, schedule.dailyAtMin, schedule.timeZone);
   const paid = await getDb()
     .prepare("SELECT COALESCE(login_paid, 0) AS login_paid FROM player_daily WHERE user_id = ? AND day_key = ?")
     .get(userId, slot) as { login_paid: number } | undefined;
@@ -1388,6 +1407,8 @@ async function coinDropSnapshot(userId: number) {
   }
   return {
     ladder: await readStipendLadder(),
+    dailyAtMin: schedule.dailyAtMin,
+    timeZone: schedule.timeZone,
     loginDays: days?.login_days ?? 0,
     lastSlotKey,
     paidThisSlot: Boolean(paid?.login_paid),
@@ -1544,8 +1565,41 @@ export async function adminSetCandle(userId: number, ms: number) {
   if (!Number.isFinite(next) || next < 60_000 || next > 24 * 60 * 60_000) {
     throw new Error("Candle size must be between 1 and 1,440 minutes.");
   }
+
   const saved = await writeCandleMs(next);
   await setEvent(userId, `Chart candles are now ${Math.round(saved / 60_000)} minutes.`);
+}
+
+export async function setPlayerCandle(userId: number, ms: number) {
+  const next = Math.floor(Number(ms));
+  if (!Number.isFinite(next) || next < 60_000 || next > 24 * 60 * 60_000) {
+    throw new Error("Candle size must be a whole number from 1 to 1,440 minutes.");
+  }
+  await writeUserCandleMs(userId, next);
+  await setEvent(userId, `Your chart candles are now ${Math.round(next / 60_000)} minutes.`);
+}
+
+export async function adminSetPlayerTable(userId: number, targetUserId: number, seated: boolean) {
+  await requireAdmin(userId);
+  if (!Number.isInteger(targetUserId) || targetUserId < 1) throw new Error("Choose a player.");
+  if (targetUserId === userId && !seated) throw new Error("The admin must remain in the round.");
+  const db = getDb();
+  const target = await db.prepare(
+    `SELECT u.username, COALESCE(u.is_bot, 0) AS is_bot, COALESCE(u.is_gov, 0) AS is_gov
+     FROM users u WHERE u.id = ?`
+  ).get(targetUserId) as { username: string; is_bot: number; is_gov: number } | undefined;
+  if (!target || target.is_bot || target.is_gov || target.username === "Banker") throw new Error("Choose a human traveler.");
+  if (seated) {
+    await db.prepare("UPDATE players SET at_table = 1 WHERE user_id = ?").run(targetUserId);
+  } else {
+    await db.transaction(async () => {
+      await db.prepare("DELETE FROM orders WHERE user_id = ?").run(targetUserId);
+      await db.prepare("DELETE FROM inventory WHERE user_id = ?").run(targetUserId);
+      await db.prepare("UPDATE players SET at_table = 0, gold = 0, last_event = 'Sitting this round out.' WHERE user_id = ?").run(targetUserId);
+    });
+    await alignIssuedToAuthorized(true);
+  }
+  await setEvent(userId, seated ? `${target.username} is playing this round.` : `${target.username} is sitting this round out.`);
 }
 
 export async function adminSetTradingHours(
@@ -1684,7 +1738,8 @@ async function runNewGame(userId: number, count?: number) {
     throw new Error(`Computers must be a whole number from 0 to ${MAX_COMPUTERS}.`);
   }
   const db = getDb();
-  const dayKey = stipendSlotKey(Date.now(), await stipendMs());
+  const schedule = await readStipendSchedule();
+  const dayKey = stipendSlotKey(Date.now(), await stipendMs(), schedule.dailyAtMin, schedule.timeZone);
     await db.transaction(async () => {
     await seedBots(db);
     await setComputerCount(count ?? await computerCount(db), db);
@@ -3702,6 +3757,8 @@ export async function getGameState(
     computerCount: botsSeated,
     travelerCount: await travelerCount(),
     stipendMs: await stipendMs(),
+    stipendDailyAtMin: (await readStipendSchedule()).dailyAtMin,
+    stipendTimeZone: (await readStipendSchedule()).timeZone,
     startingGold: await startingGold(),
     coinDrop: await coinDropSnapshot(userId),
     adminRoster: office ? await listAdminRoster() : [],
@@ -3710,7 +3767,7 @@ export async function getGameState(
     lobbyTravelers: await listLobbyTravelers(),
     inviteCode: office ? await readInviteCode() : null,
     netWorthGoal: goal.score === "netWorth" ? goal.threshold : NET_WORTH_GOAL,
-    candleMs: await readCandleMs(),
+    candleMs: await readUserCandleMs(userId),
     tradingHours: trading.hours,
     tradingTimeZone: trading.timeZone,
     goal: { ...goal, label: describeGoal(goal, timeZone) },
