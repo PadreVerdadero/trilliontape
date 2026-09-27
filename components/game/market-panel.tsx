@@ -141,6 +141,7 @@ function PriceLadder({
       : 1;
   const [min, setMin] = useState(Math.max(1, center - 100));
   const [max, setMax] = useState(center + 100);
+  const [recenterToken, setRecenterToken] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const centerRef = useRef<HTMLDivElement>(null);
   const bidGroups = groupLadderRows(bids, selfId);
@@ -157,14 +158,20 @@ function PriceLadder({
   }
   const prices = Array.from(ladderPrices).sort((a, b) => b - a);
 
-  useEffect(() => {
-    setMin(Math.max(1, center - 100 * tickSize));
-    setMax(center + 100 * tickSize);
-  }, [center, tickSize]);
+  function recenter(nextTick = tickSize) {
+    setMin(Math.max(1, center - 100 * nextTick));
+    setMax(center + 100 * nextTick);
+    setRecenterToken((token) => token + 1);
+  }
 
+  // Only auto-scroll back to the market-value row when we deliberately recenter
+  // (first mount or an explicit tick-scale change) — not on every book refresh or
+  // on the range simply growing as the trader scrolls, which previously snapped
+  // the ladder back and made it look like it was constantly refreshing.
   useEffect(() => {
     centerRef.current?.scrollIntoView({ block: "center" });
-  }, [min, max]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recenterToken]);
 
   function buyAction(price: number): { kind: "stop" | "market" | "limit"; label: string } {
     if (bestAsk != null && price > bestAsk) return { kind: "stop", label: "Buy STP" };
@@ -223,8 +230,7 @@ function PriceLadder({
             setTickInput(value);
             const nextTick = Number(value);
             if (Number.isInteger(nextTick) && nextTick >= 1 && nextTick <= 1_000_000) {
-              setMin(Math.max(1, center - 100 * nextTick));
-              setMax(center + 100 * nextTick);
+              recenter(nextTick);
             }
           }}
         />
@@ -1028,6 +1034,7 @@ export function MarketPanel({
 
           {compact ? (
             <PriceLadder
+              key={selected.id}
               bids={book?.bids ?? []}
               asks={book?.asks ?? []}
               myStops={state.myOrders.filter(
