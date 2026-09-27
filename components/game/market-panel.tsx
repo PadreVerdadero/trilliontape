@@ -821,6 +821,35 @@ export function MarketPanel({
 
   return (
     <div className="space-y-3">
+      {compact ? (
+        <div className="sticky top-0 z-20 -mx-3 overflow-x-auto border-b border-border/60 bg-background/95 px-3 py-1.5 backdrop-blur sm:-mx-4 sm:px-4">
+          <div className="flex w-max gap-1">
+            {rankedItems.map((item) => {
+              const active = item.id === selectedItemId;
+              const rarity = rarityOf(item.id, rarityMap);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  title={item.name}
+                  aria-label={item.name}
+                  aria-current={active}
+                  onClick={() => pick(item.id)}
+                  className={cn(
+                    "flex size-9 shrink-0 items-center justify-center rounded-lg text-xl ring-1 transition-colors",
+                    rarityClass(item.id, rarityMap),
+                    active
+                      ? "bg-primary/25 ring-primary"
+                      : "bg-background/60 ring-foreground/10 hover:bg-background"
+                  )}
+                >
+                  <ItemIcon item={item} />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="font-heading text-xl sm:text-2xl">Player market</p>
