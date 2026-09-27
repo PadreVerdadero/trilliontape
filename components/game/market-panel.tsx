@@ -144,6 +144,7 @@ function PriceLadder({
   const [recenterToken, setRecenterToken] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const centerRef = useRef<HTMLDivElement>(null);
+  const pendingScrollAdjustRef = useRef<{ prevScrollTop: number; prevScrollHeight: number } | null>(null);
   const bidGroups = groupLadderRows(bids, selfId);
   const askGroups = groupLadderRows(asks, selfId);
   const stopGroups = groupStopRows(myStops);
@@ -163,6 +164,22 @@ function PriceLadder({
     setMax(center + 100 * nextTick);
     setRecenterToken((token) => token + 1);
   }
+
+  // Rows with a higher price than the current max are prepended above the
+  // visible viewport, which shifts everything below down; without this the
+  // browser keeps scrollTop fixed and the ladder appears to jump back toward
+  // higher prices. Compensate scrollTop by the height added once React commits
+  // the new rows. Rows appended below the current min (lower prices) need no
+  // compensation since they land after the visible content.
+  useLayoutEffect(() => {
+    const adjust = pendingScrollAdjustRef.current;
+    const element = scrollRef.current;
+    if (adjust && element) {
+      const delta = element.scrollHeight - adjust.prevScrollHeight;
+      element.scrollTop = adjust.prevScrollTop + delta;
+      pendingScrollAdjustRef.current = null;
+    }
+  }, [max]);
 
   // Only auto-scroll back to the market-value row when we deliberately recenter
   // (first mount or an explicit tick-scale change) — not on every book refresh or
@@ -242,8 +259,18 @@ function PriceLadder({
         onScroll={(event) => {
           const element = event.currentTarget;
           const extension = 200 * tickSize;
-          if (element.scrollTop < 240 && min > 1) setMin(Math.max(1, min - extension));
-          if (element.scrollHeight - element.scrollTop - element.clientHeight < 240) setMax(max + extension);
+          // Prices are listed highest-to-lowest, so the top of the list is the
+          // "max" bound and the bottom is the "min" bound.
+          if (element.scrollTop < 240) {
+            pendingScrollAdjustRef.current = {
+              prevScrollTop: element.scrollTop,
+              prevScrollHeight: element.scrollHeight,
+            };
+            setMax(max + extension);
+          }
+          if (element.scrollHeight - element.scrollTop - element.clientHeight < 240 && min > 1) {
+            setMin(Math.max(1, min - extension));
+          }
         }}
       >
         {prices.map((price) => {
