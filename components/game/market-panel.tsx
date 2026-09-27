@@ -305,7 +305,7 @@ function PriceLadder({
                   scrollRef.current?.querySelector<HTMLInputElement>("#px")?.focus();
                 }}
               >
-                {formatCoins(price)}
+                {formatNumber(price)}
                 {price === center ? " · MV" : ""}
               </button>
               <button
