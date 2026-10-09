@@ -91,6 +91,8 @@ export function PriceChart({
   bestAsk,
   bids = [],
   asks = [],
+  myOrders = [],
+  onCancel,
   compact = false,
   now,
   candleMs = MINUTE_MS,
@@ -102,6 +104,8 @@ export function PriceChart({
   bestAsk?: number | null;
   bids?: OrderRow[];
   asks?: OrderRow[];
+  myOrders?: OrderRow[];
+  onCancel?: (id: number) => void;
   compact?: boolean;
   now?: number;
   candleMs?: number;
@@ -206,6 +210,18 @@ export function PriceChart({
         },
       ];
     });
+  const mine = useMemo(() => {
+    const groups = new Map<string, { key: string; price: number; side: string; orderType: string; ids: number[] }>();
+    for (const row of myOrders) {
+      if (row.price < min || row.price > max) continue;
+      const orderType = row.orderType === "stop" ? "stop" : "limit";
+      const key = `${orderType}-${row.side}-${row.price}`;
+      const group = groups.get(key) ?? { key, price: row.price, side: row.side, orderType, ids: [] };
+      group.ids.push(row.id);
+      groups.set(key, group);
+    }
+    return [...groups.values()];
+  }, [myOrders, min, max]);
   const offScale = [...depth.bidLevels, ...depth.askLevels].filter(
     (level) => level.price < min || level.price > max
   ).length;
@@ -223,7 +239,7 @@ export function PriceChart({
             {traded
               ? `Each candle is ${Math.round(candleMs / MINUTE_MS)} minutes. Open is the previous close. Last ${CHART_CANDLES} candles, oldest to newest. Hover for open, high, low, close.`
               : "No trades yet. The candle sits at the starting price."}{" "}
-            Dashed marks on the right are MV, best bid, and best ask. Bars under the candles are volume. Shaded bars beside the price scale are cumulative bid (green) and ask (red) depth.{offScale > 0 ? ` ${offScale} price level${offScale === 1 ? "" : "s"} sit outside this price range.` : ""}
+            Dashed marks on the right are MV, best bid, and best ask. Bars under the candles are volume. Shaded bars beside the price scale are cumulative bid (green) and ask (red) depth, growing leftward. Your own orders are amber lines (limit) and dashed purple lines (stop); tap the ✕ to cancel one.{offScale > 0 ? ` ${offScale} price level${offScale === 1 ? "" : "s"} sit outside this price range.` : ""}
           </p>
         </div>
         <p
@@ -313,7 +329,7 @@ export function PriceChart({
             depthBars(levels, side).map((bar) => (
               <rect
                 key={bar.key}
-                x={endX + 2}
+                x={endX + depthW - 2 - bar.w}
                 y={bar.y}
                 width={bar.w}
                 height={bar.h}
@@ -323,7 +339,48 @@ export function PriceChart({
               </rect>
             ))
           )}
-          <line x1={endX + 2} x2={endX + 2} y1={pad.top} y2={pad.top + candleH} className="stroke-border" />
+          <line
+            x1={endX + depthW - 2}
+            x2={endX + depthW - 2}
+            y1={pad.top}
+            y2={pad.top + candleH}
+            className="stroke-border"
+          />
+          {mine.map((group) => {
+            const y = yFor(group.price);
+            const stop = group.orderType === "stop";
+            const tone = stop ? "stroke-purple-400" : "stroke-amber-300";
+            const fill = stop ? "fill-purple-300" : "fill-amber-200";
+            const label = `${stop ? (group.side === "buy" ? "Buy STP" : "Sell STP") : group.side === "buy" ? "Bid" : "Ask"} ${formatNumber(group.price)}${group.ids.length > 1 ? ` ×${group.ids.length}` : ""}`;
+            return (
+              <g key={group.key}>
+                <line
+                  x1={pad.left}
+                  x2={endX}
+                  y1={y}
+                  y2={y}
+                  strokeWidth="1.5"
+                  strokeDasharray={stop ? "2 3" : undefined}
+                  className={tone}
+                />
+                <text x={pad.left + 4} y={y - 3} fill="currentColor" className={cn(fill, "text-[10px]")}>
+                  {label}
+                </text>
+                {onCancel ? (
+                  <g
+                    style={{ cursor: "pointer" }}
+                    onClick={() => onCancel(group.ids[group.ids.length - 1])}
+                  >
+                    <title>Cancel your {label}</title>
+                    <circle cx={endX - 10} cy={y} r={8} className={cn(stop ? "fill-purple-950" : "fill-amber-950", tone)} />
+                    <text x={endX - 10} y={y + 3.5} textAnchor="middle" fill="currentColor" className={cn(fill, "text-[11px]")}>
+                      ✕
+                    </text>
+                  </g>
+                ) : null}
+              </g>
+            );
+          })}
           {mv != null ? (
             <>
               <line

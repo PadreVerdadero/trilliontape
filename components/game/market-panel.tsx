@@ -1134,6 +1134,13 @@ export function MarketPanel({
             bestAsk={price?.bestAsk}
             bids={book?.bids ?? []}
             asks={book?.asks ?? []}
+            myOrders={state.myOrders.filter((row) => row.itemId === selected.id)}
+            onCancel={(id) => {
+              void (async () => {
+                await onCancel(id);
+                await reloadBook();
+              })();
+            }}
             compact={compact}
             now={state.now}
             candleMs={state.candleMs}
