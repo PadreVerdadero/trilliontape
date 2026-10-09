@@ -20,6 +20,7 @@ import { describeTradingWindow, goodIsOpen } from "@/lib/game/hours";
 import { CANDLE_PRESETS } from "@/lib/game/market";
 import { useOrderBook } from "@/hooks/use-game";
 import { PriceChart } from "@/components/game/price-chart";
+import { DepthChart } from "@/components/game/depth-chart";
 import { SwapPanel } from "@/components/game/swap-panel";
 import type { GameState, Item, OrderRow, OrderSide, TakeQuoteInput } from "@/lib/game/types";
 
@@ -1131,6 +1132,12 @@ export function MarketPanel({
             compact={compact}
             now={state.now}
             candleMs={state.candleMs}
+          />
+          <DepthChart
+            bids={book?.bids ?? []}
+            asks={book?.asks ?? []}
+            mv={price?.vwap ?? selected.basePrice}
+            compact={compact}
           />
           <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
             <label htmlFor="player-candle">Your candle size</label>
