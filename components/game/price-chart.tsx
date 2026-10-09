@@ -147,6 +147,7 @@ export function PriceChart({
     | null
   >(null);
   const [drag, setDrag] = useState<{ group: ChartOrderGroup; price: number } | null>(null);
+  const [depthHover, setDepthHover] = useState<{ side: "bid" | "ask"; level: { price: number; qty: number; orders: number; total: number } } | null>(null);
   const [manual, setManual] = useState<{ lo: number; hi: number } | null>(null);
   const traded = prints.length > 0;
   const shown = traded
@@ -212,15 +213,19 @@ export function PriceChart({
   }
   const depth = useMemo(() => {
     const build = (rows: OrderRow[], side: "bid" | "ask") => {
-      const byPrice = new Map<number, number>();
+      const byPrice = new Map<number, { qty: number; orders: number }>();
       for (const row of rows) {
-        if (row.remaining > 0) byPrice.set(row.price, (byPrice.get(row.price) ?? 0) + row.remaining);
+        if (row.remaining <= 0) continue;
+        const entry = byPrice.get(row.price) ?? { qty: 0, orders: 0 };
+        entry.qty += row.remaining;
+        entry.orders += 1;
+        byPrice.set(row.price, entry);
       }
       const sorted = [...byPrice.entries()].sort((a, b) => (side === "bid" ? b[0] - a[0] : a[0] - b[0]));
       let total = 0;
-      return sorted.map(([price, qty]) => {
-        total += qty;
-        return { price, qty, total };
+      return sorted.map(([price, entry]) => {
+        total += entry.qty;
+        return { price, qty: entry.qty, orders: entry.orders, total };
       });
     };
     const bidLevels = build(bids, "bid");
@@ -326,17 +331,19 @@ export function PriceChart({
     else runAction(action);
   };
   const orderLabel = (group: ChartOrderGroup) =>
-    `${group.orderType === "stop" ? (group.side === "buy" ? "Buy STP" : "Sell STP") : group.side === "buy" ? "Bid" : "Ask"}${group.ids.length > 1 ? ` ×${group.ids.length}` : ""}`;
+    group.orderType === "stop" ? (group.side === "buy" ? "Buy STP" : "Sell STP") : group.side === "buy" ? "Bid" : "Ask";
+  const orderText = (group: ChartOrderGroup, at: number) =>
+    `${orderLabel(group)} @ ${formatNumber(at)}${group.ids.length > 1 ? ` (×${group.ids.length})` : ""}`;
   const previewTarget = armed
     ? armed.kind === "place"
-      ? { side: armed.side, price: armed.price, text: `${describeAt?.(armed.side, armed.price) ?? armed.side} ${formatNumber(armed.price)}` }
+      ? { side: armed.side, price: armed.price, text: `${describeAt?.(armed.side, armed.price) ?? armed.side} @ ${formatNumber(armed.price)}` }
       : {
           side: armed.group.side,
           price: armed.toPrice,
-          text: `Move ${orderLabel(armed.group)} ${formatNumber(armed.group.price)} → ${formatNumber(armed.toPrice)}`,
+          text: `Move ${orderText(armed.group, armed.group.price)} → ${formatNumber(armed.toPrice)}`,
         }
     : ghost && !drag
-      ? { ...ghost, text: `${describeAt?.(ghost.side, ghost.price) ?? ghost.side} ${formatNumber(ghost.price)}` }
+      ? { ...ghost, text: `${describeAt?.(ghost.side, ghost.price) ?? ghost.side} @ ${formatNumber(ghost.price)}` }
       : null;
 
   return (
@@ -484,7 +491,7 @@ export function PriceChart({
                 height={bar.h}
                 className={side === "bid" ? "fill-emerald-400/35" : "fill-rose-400/35"}
               >
-                <title>{`${side === "bid" ? "Bid" : "Ask"} ${formatNumber(bar.level.price)}: ${formatNumber(bar.level.qty)} units (cumulative ${formatNumber(bar.level.total)})`}</title>
+
               </rect>
             ))
           )}
@@ -495,14 +502,45 @@ export function PriceChart({
             y2={pad.top + candleH}
             className="stroke-border"
           />
-          {mine.map((group) => {
+          <rect
+            x={endX}
+            y={pad.top}
+            width={depthW}
+            height={candleH}
+            className="fill-transparent"
+            onPointerMove={(event) => {
+              const point = svgPoint(event.clientX, event.clientY);
+              if (!point) return;
+              const at = min + (1 - (point.y - pad.top) / candleH) * span;
+              const nearest = [
+                ...depth.bidLevels.map((level) => ({ side: "bid" as const, level })),
+                ...depth.askLevels.map((level) => ({ side: "ask" as const, level })),
+              ]
+                .filter((entry) => entry.level.price >= min && entry.level.price <= max)
+                .sort((a, b) => Math.abs(a.level.price - at) - Math.abs(b.level.price - at))[0];
+              setDepthHover(nearest && Math.abs(yFor(nearest.level.price) - point.y) <= 14 ? nearest : null);
+            }}
+            onPointerLeave={() => setDepthHover(null)}
+            onClick={(event) => event.stopPropagation()}
+          />
+          {depthHover ? (
+            <line
+              x1={pad.left}
+              x2={endX + depthW - 2}
+              y1={yFor(depthHover.level.price)}
+              y2={yFor(depthHover.level.price)}
+              strokeWidth="1"
+              className={depthHover.side === "bid" ? "stroke-emerald-200" : "stroke-rose-200"}
+              pointerEvents="none"
+            />
+          ) : null}          {mine.map((group) => {
             const dragging = drag?.group.key === group.key;
             const shownPrice = dragging ? drag.price : group.price;
             const y = yFor(shownPrice);
             const stop = group.orderType === "stop";
             const tone = stop ? "stroke-purple-400" : "stroke-amber-300";
             const fill = stop ? "fill-purple-300" : "fill-amber-200";
-            const label = `${orderLabel(group)} ${formatNumber(shownPrice)}`;
+            const label = orderText(group, shownPrice);
             return (
               <g key={group.key}>
                 <line
@@ -547,7 +585,7 @@ export function PriceChart({
                     }}
                     onPointerCancel={() => setDrag(null)}
                   >
-                    <title>Drag to move your {orderLabel(group)}</title>
+                    <title>Drag to move your {orderText(group, group.price)}</title>
                   </line>
                 ) : null}
                 {onCancel ? (
@@ -592,11 +630,12 @@ export function PriceChart({
                 {previewTarget.text}
               </text>
             </g>
-          ) : null}          {mv != null ? (
+          ) : null}
+          {mv != null ? (
             <>
               <line
-                x1={startX}
-                x2={endX}
+                x1={pad.left}
+                x2={endX + depthW - 2}
                 y1={yFor(mv)}
                 y2={yFor(mv)}
                 strokeWidth="2"
@@ -669,8 +708,8 @@ export function PriceChart({
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/60 px-2 py-1.5 text-xs">
             <span className="font-medium">
               {armed.kind === "place"
-                ? `${describeAt?.(armed.side, armed.price) ?? armed.side} ${formatNumber(armed.price)} × ${formatNumber(quantity)}`
-                : `Move ${orderLabel(armed.group)} ${formatNumber(armed.group.price)} → ${formatNumber(armed.toPrice)} (×${formatNumber(armed.group.qty)})`}
+                ? `${describeAt?.(armed.side, armed.price) ?? armed.side} @ ${formatNumber(armed.price)} · qty ${formatNumber(quantity)}`
+                : `Move ${orderText(armed.group, armed.group.price)} → ${formatNumber(armed.toPrice)} · qty ${formatNumber(armed.group.qty)}`}
             </span>
             <span className="flex gap-1">
               <button
@@ -690,8 +729,24 @@ export function PriceChart({
             </span>
           </div>
         ) : null}
-        {active ? (
+        {depthHover ? (
           <div
+            className="pointer-events-none absolute z-10 -translate-x-full -translate-y-1/2 rounded-md bg-zinc-950/95 px-2 py-1 text-xs shadow-lg ring-1 ring-white/15"
+            style={{
+              left: `${((endX + depthW) / width) * 100 - 1}%`,
+              top: `${(yFor(depthHover.level.price) / height) * 100}%`,
+            }}
+          >
+            <p className={depthHover.side === "bid" ? "font-medium text-emerald-300" : "font-medium text-rose-300"}>
+              {depthHover.side === "bid" ? "Bids" : "Asks"} @ {formatNumber(depthHover.level.price)}
+            </p>
+            <p className="tabular-nums">
+              {formatNumber(depthHover.level.orders)} order{depthHover.level.orders === 1 ? "" : "s"} · {formatNumber(depthHover.level.qty)} unit{depthHover.level.qty === 1 ? "" : "s"}
+            </p>
+            <p className="tabular-nums text-muted-foreground">cumulative {formatNumber(depthHover.level.total)}</p>
+          </div>
+        ) : null}
+        {active ? (          <div
             className={cn(
               "pointer-events-none absolute z-10 -translate-y-full rounded-md bg-zinc-950/95 px-2 py-1 text-xs shadow-lg ring-1 ring-white/15",
               activeX > width * 0.62 ? "-translate-x-full" : "translate-x-1"
