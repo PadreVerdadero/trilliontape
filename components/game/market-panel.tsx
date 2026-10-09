@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { describeTradingWindow, goodIsOpen } from "@/lib/game/hours";
 import { CANDLE_PRESETS } from "@/lib/game/market";
 import { useOrderBook } from "@/hooks/use-game";
+import { useConfirmClick } from "@/hooks/use-confirm-click";
 import { PriceChart } from "@/components/game/price-chart";
 import { DepthChart } from "@/components/game/depth-chart";
 import { SwapPanel } from "@/components/game/swap-panel";
@@ -608,6 +609,8 @@ export function MarketPanel({
   const [qtyInput, setQtyInput] = useState("1");
   const [orderType, setOrderType] = useState<"limit" | "stop">("limit");
   const [nudgeStep, setNudgeStep] = useState(1);
+  const [confirmClick, setConfirmClick] = useConfirmClick(Boolean(compact));
+  const [showDepthBox, setShowDepthBox] = useState(false);
   const [customCandleMinutes, setCustomCandleMinutes] = useState("");
   const [candleChoice, setCandleChoice] = useState<string>(
     CANDLE_PRESETS.some((row) => row.ms === state.candleMs) ? String(state.candleMs) : "custom"
@@ -1129,16 +1132,36 @@ export function MarketPanel({
             mv={price?.vwap ?? selected.basePrice}
             bestBid={price?.bestBid}
             bestAsk={price?.bestAsk}
+            bids={book?.bids ?? []}
+            asks={book?.asks ?? []}
             compact={compact}
             now={state.now}
             candleMs={state.candleMs}
           />
-          <DepthChart
-            bids={book?.bids ?? []}
-            asks={book?.asks ?? []}
-            mv={price?.vwap ?? selected.basePrice}
-            compact={compact}
-          />
+          <label className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={confirmClick}
+              onChange={(event) => setConfirmClick(event.target.checked)}
+            />
+            Confirm chart orders with a second tap (default: on for Phone Layout, off on computer)
+          </label>
+          <label className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={showDepthBox}
+              onChange={(event) => setShowDepthBox(event.target.checked)}
+            />
+            Show separate order depth chart
+          </label>
+          {showDepthBox ? (
+            <DepthChart
+              bids={book?.bids ?? []}
+              asks={book?.asks ?? []}
+              mv={price?.vwap ?? selected.basePrice}
+              compact={compact}
+            />
+          ) : null}
           <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
             <label htmlFor="player-candle">Your candle size</label>
             <select

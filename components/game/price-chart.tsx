@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { formatCoins, formatCompact, formatMilitaryTime, formatNumber } from "@/lib/game/format";
 import { CHART_CANDLES, MINUTE_MS } from "@/lib/game/market";
 import { cn } from "@/lib/utils";
-import type { TradeRow } from "@/lib/game/types";
+import type { OrderRow, TradeRow } from "@/lib/game/types";
 
 type Candle = {
   open: number;
@@ -89,6 +89,8 @@ export function PriceChart({
   mv,
   bestBid,
   bestAsk,
+  bids = [],
+  asks = [],
   compact = false,
   now,
   candleMs = MINUTE_MS,
@@ -98,6 +100,8 @@ export function PriceChart({
   mv?: number | null;
   bestBid?: number | null;
   bestAsk?: number | null;
+  bids?: OrderRow[];
+  asks?: OrderRow[];
   compact?: boolean;
   now?: number;
   candleMs?: number;
@@ -131,8 +135,9 @@ export function PriceChart({
   const min = Math.min(...shown.flatMap((candle) => [candle.low, candle.high]), ...extras);
   const max = Math.max(...shown.flatMap((candle) => [candle.low, candle.high]), ...extras);
   const span = Math.max(1, max - min);
-  const pad = { top: 14, right: 78, bottom: 6, left: 36 };
-  const width = 640;
+  const depthW = 64;
+  const pad = { top: 14, right: 78 + depthW, bottom: 6, left: 36 };
+  const width = 640 + depthW;
   const height = compact ? 168 : 200;
   const volH = 32;
   const gap = 8;
@@ -167,6 +172,43 @@ export function PriceChart({
   if (mv != null && bestAsk != null) {
     [mvLabelY, askLabelY] = nudge(mvLabelY, askLabelY);
   }
+  const depth = useMemo(() => {
+    const build = (rows: OrderRow[], side: "bid" | "ask") => {
+      const byPrice = new Map<number, number>();
+      for (const row of rows) {
+        if (row.remaining > 0) byPrice.set(row.price, (byPrice.get(row.price) ?? 0) + row.remaining);
+      }
+      const sorted = [...byPrice.entries()].sort((a, b) => (side === "bid" ? b[0] - a[0] : a[0] - b[0]));
+      let total = 0;
+      return sorted.map(([price, qty]) => {
+        total += qty;
+        return { price, qty, total };
+      });
+    };
+    const bidLevels = build(bids, "bid");
+    const askLevels = build(asks, "ask");
+    const maxTotal = Math.max(1, bidLevels.at(-1)?.total ?? 0, askLevels.at(-1)?.total ?? 0);
+    return { bidLevels, askLevels, maxTotal };
+  }, [bids, asks]);
+  const depthBars = (levels: typeof depth.bidLevels, side: "bid" | "ask") =>
+    levels.flatMap((level, index) => {
+      if (level.price < min || level.price > max) return [];
+      const next = levels[index + 1];
+      const y0 = yFor(level.price);
+      const y1 = next ? yFor(Math.min(max, Math.max(min, next.price))) : y0 + (side === "bid" ? 3 : -3);
+      return [
+        {
+          key: `${side}-${level.price}`,
+          y: Math.min(y0, y1),
+          h: Math.max(2, Math.abs(y1 - y0)),
+          w: Math.max(2, (level.total / depth.maxTotal) * (depthW - 6)),
+          level,
+        },
+      ];
+    });
+  const offScale = [...depth.bidLevels, ...depth.askLevels].filter(
+    (level) => level.price < min || level.price > max
+  ).length;
   const maxVol = Math.max(1, ...shown.map((candle) => candle.volume));
   const active = hover != null ? shown[hover] : null;
   const activeX = hover != null ? xMid(hover) : 0;
@@ -181,7 +223,7 @@ export function PriceChart({
             {traded
               ? `Each candle is ${Math.round(candleMs / MINUTE_MS)} minutes. Open is the previous close. Last ${CHART_CANDLES} candles, oldest to newest. Hover for open, high, low, close.`
               : "No trades yet. The candle sits at the starting price."}{" "}
-            Dashed marks on the right are MV, best bid, and best ask. Bars under the candles are volume.
+            Dashed marks on the right are MV, best bid, and best ask. Bars under the candles are volume. Shaded bars beside the price scale are cumulative bid (green) and ask (red) depth.{offScale > 0 ? ` ${offScale} price level${offScale === 1 ? "" : "s"} sit outside this price range.` : ""}
           </p>
         </div>
         <p
@@ -267,6 +309,21 @@ export function PriceChart({
               </g>
             );
           })}
+          {([["bid", depth.bidLevels], ["ask", depth.askLevels]] as const).flatMap(([side, levels]) =>
+            depthBars(levels, side).map((bar) => (
+              <rect
+                key={bar.key}
+                x={endX + 2}
+                y={bar.y}
+                width={bar.w}
+                height={bar.h}
+                className={side === "bid" ? "fill-emerald-400/35" : "fill-rose-400/35"}
+              >
+                <title>{`${side === "bid" ? "Bid" : "Ask"} ${formatNumber(bar.level.price)}: ${formatNumber(bar.level.qty)} units (cumulative ${formatNumber(bar.level.total)})`}</title>
+              </rect>
+            ))
+          )}
+          <line x1={endX + 2} x2={endX + 2} y1={pad.top} y2={pad.top + candleH} className="stroke-border" />
           {mv != null ? (
             <>
               <line
