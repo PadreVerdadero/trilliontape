@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatCoins, formatCompact, formatMilitaryTime, formatNumber } from "@/lib/game/format";
 import { CHART_CANDLES, MINUTE_MS } from "@/lib/game/market";
 import { cn } from "@/lib/utils";
@@ -147,6 +147,7 @@ export function PriceChart({
     | null
   >(null);
   const [drag, setDrag] = useState<{ group: ChartOrderGroup; price: number } | null>(null);
+  const [manual, setManual] = useState<{ lo: number; hi: number } | null>(null);
   const traded = prints.length > 0;
   const shown = traded
     ? candles
@@ -167,13 +168,15 @@ export function PriceChart({
   const rawMax = Math.max(...shown.flatMap((candle) => [candle.low, candle.high]), ...extras);
   // Headroom so stop orders and far bids/asks can be placed just beyond the book.
   const headroom = Math.max(1, Math.ceil(Math.max(1, rawMax - rawMin) * 0.2));
-  const min = Math.max(1, Math.floor(rawMin - headroom));
-  const max = Math.ceil(rawMax + headroom);
+  const autoMin = Math.max(1, Math.floor(rawMin - headroom));
+  const autoMax = Math.ceil(rawMax + headroom);
+  const min = manual?.lo ?? autoMin;
+  const max = manual?.hi ?? autoMax;
   const span = Math.max(1, max - min);
   const depthW = 64;
   const pad = { top: 14, right: 78 + depthW, bottom: 6, left: 36 };
   const width = 640 + depthW;
-  const height = compact ? 168 : 200;
+  const height = compact ? 300 : 440;
   const volH = 32;
   const gap = 8;
   const innerW = width - pad.left - pad.right;
@@ -264,6 +267,33 @@ export function PriceChart({
   const activeY = active ? yFor((active.high + active.low) / 2) : 0;
 
   const interactive = Boolean(onPlaceAt);
+  const panBy = (fraction: number) => {
+    const lo = manual?.lo ?? autoMin;
+    const hi = manual?.hi ?? autoMax;
+    const shift = Math.round((hi - lo) * fraction) || Math.sign(fraction);
+    const nextLo = Math.max(1, lo + shift);
+    setManual({ lo: nextLo, hi: nextLo + (hi - lo) });
+  };
+  const zoomBy = (factor: number) => {
+    const lo = manual?.lo ?? autoMin;
+    const hi = manual?.hi ?? autoMax;
+    const mid = (lo + hi) / 2;
+    const half = Math.max(3, ((hi - lo) / 2) * factor);
+    const nextLo = Math.max(1, Math.round(mid - half));
+    setManual({ lo: nextLo, hi: Math.max(nextLo + 5, Math.round(mid + half)) });
+  };
+  const panRef = useRef(panBy);
+  panRef.current = panBy;
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      panRef.current(event.deltaY > 0 ? -0.12 : 0.12);
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, []);
   const svgPoint = (clientX: number, clientY: number) => {
     const svg = svgRef.current;
     const ctm = svg?.getScreenCTM();
@@ -337,11 +367,40 @@ export function PriceChart({
           {traded ? `${up ? "▲" : down ? "▼" : "▬"} ${formatCoins(Math.abs(delta))}` : null}
         </p>
       </div>
+      <div className="mb-1 flex flex-wrap items-center justify-end gap-1 text-xs">
+        <span className="mr-auto text-muted-foreground">
+          Price range {formatNumber(min)}–{formatNumber(max)}{manual ? "" : " (auto)"} · mouse wheel over the chart scrolls
+        </span>
+        {([
+          ["▲ Up", () => panBy(0.25)],
+          ["▼ Down", () => panBy(-0.25)],
+          ["＋ Zoom in", () => zoomBy(0.7)],
+          ["－ Zoom out", () => zoomBy(1.4)],
+        ] as const).map(([label, run]) => (
+          <button
+            key={label}
+            type="button"
+            onClick={run}
+            className="rounded-md bg-background px-2 py-1 ring-1 ring-foreground/20 hover:bg-muted"
+          >
+            {label}
+          </button>
+        ))}
+        {manual ? (
+          <button
+            type="button"
+            onClick={() => setManual(null)}
+            className="rounded-md bg-primary/20 px-2 py-1 ring-1 ring-primary hover:bg-primary/30"
+          >
+            Auto-fit
+          </button>
+        ) : null}
+      </div>
       <div className="relative" onMouseLeave={() => setHover(null)}>
         <svg
           ref={svgRef}
           viewBox={`0 0 ${width} ${height}`}
-          className={cn(compact ? "h-36 w-full" : "h-48 w-full", interactive && "cursor-crosshair")}
+          className={cn("h-auto w-full", interactive && "cursor-crosshair")}
           role="img"
           aria-label="One-minute candlestick chart"
           onPointerMove={(event) => {
