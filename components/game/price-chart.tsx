@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { formatCoins, formatCompact, formatMilitaryTime, formatNumber } from "@/lib/game/format";
 import { CHART_CANDLES, MINUTE_MS } from "@/lib/game/market";
 import { cn } from "@/lib/utils";
@@ -83,6 +83,15 @@ function candleTone(candle: Candle) {
   return "flat" as const;
 }
 
+export type ChartOrderGroup = {
+  key: string;
+  price: number;
+  side: "buy" | "sell";
+  orderType: "limit" | "stop";
+  ids: number[];
+  qty: number;
+};
+
 export function PriceChart({
   trades,
   basePrice,
@@ -93,6 +102,11 @@ export function PriceChart({
   asks = [],
   myOrders = [],
   onCancel,
+  quantity = 1,
+  confirm = false,
+  onPlaceAt,
+  describeAt,
+  onMoveOrder,
   compact = false,
   now,
   candleMs = MINUTE_MS,
@@ -106,6 +120,11 @@ export function PriceChart({
   asks?: OrderRow[];
   myOrders?: OrderRow[];
   onCancel?: (id: number) => void;
+  quantity?: number;
+  confirm?: boolean;
+  onPlaceAt?: (side: "buy" | "sell", price: number) => void;
+  describeAt?: (side: "buy" | "sell", price: number) => string;
+  onMoveOrder?: (group: ChartOrderGroup, toPrice: number) => void;
   compact?: boolean;
   now?: number;
   candleMs?: number;
@@ -120,6 +139,14 @@ export function PriceChart({
     [prints, clock, basePrice, candleMs]
   );
   const [hover, setHover] = useState<number | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [ghost, setGhost] = useState<{ side: "buy" | "sell"; price: number } | null>(null);
+  const [armed, setArmed] = useState<
+    | { kind: "place"; side: "buy" | "sell"; price: number }
+    | { kind: "move"; group: ChartOrderGroup; toPrice: number }
+    | null
+  >(null);
+  const [drag, setDrag] = useState<{ group: ChartOrderGroup; price: number } | null>(null);
   const traded = prints.length > 0;
   const shown = traded
     ? candles
@@ -136,8 +163,12 @@ export function PriceChart({
         },
       ];
   const extras = [bestBid, bestAsk, mv].filter((value): value is number => value != null);
-  const min = Math.min(...shown.flatMap((candle) => [candle.low, candle.high]), ...extras);
-  const max = Math.max(...shown.flatMap((candle) => [candle.low, candle.high]), ...extras);
+  const rawMin = Math.min(...shown.flatMap((candle) => [candle.low, candle.high]), ...extras);
+  const rawMax = Math.max(...shown.flatMap((candle) => [candle.low, candle.high]), ...extras);
+  // Headroom so stop orders and far bids/asks can be placed just beyond the book.
+  const headroom = Math.max(1, Math.ceil(Math.max(1, rawMax - rawMin) * 0.2));
+  const min = Math.max(1, Math.floor(rawMin - headroom));
+  const max = Math.ceil(rawMax + headroom);
   const span = Math.max(1, max - min);
   const depthW = 64;
   const pad = { top: 14, right: 78 + depthW, bottom: 6, left: 36 };
@@ -211,13 +242,15 @@ export function PriceChart({
       ];
     });
   const mine = useMemo(() => {
-    const groups = new Map<string, { key: string; price: number; side: string; orderType: string; ids: number[] }>();
+    const groups = new Map<string, ChartOrderGroup>();
     for (const row of myOrders) {
       if (row.price < min || row.price > max) continue;
       const orderType = row.orderType === "stop" ? "stop" : "limit";
-      const key = `${orderType}-${row.side}-${row.price}`;
-      const group = groups.get(key) ?? { key, price: row.price, side: row.side, orderType, ids: [] };
+      const side = row.side === "buy" ? "buy" : "sell";
+      const key = `${orderType}-${side}-${row.price}`;
+      const group = groups.get(key) ?? { key, price: row.price, side, orderType, ids: [], qty: 0 };
       group.ids.push(row.id);
+      group.qty += row.remaining;
       groups.set(key, group);
     }
     return [...groups.values()];
@@ -230,6 +263,52 @@ export function PriceChart({
   const activeX = hover != null ? xMid(hover) : 0;
   const activeY = active ? yFor((active.high + active.low) / 2) : 0;
 
+  const interactive = Boolean(onPlaceAt);
+  const svgPoint = (clientX: number, clientY: number) => {
+    const svg = svgRef.current;
+    const ctm = svg?.getScreenCTM();
+    if (!svg || !ctm) return null;
+    const point = svg.createSVGPoint();
+    point.x = clientX;
+    point.y = clientY;
+    const mapped = point.matrixTransform(ctm.inverse());
+    return { x: mapped.x, y: mapped.y };
+  };
+  const priceAtY = (y: number) =>
+    Math.min(max, Math.max(1, Math.round(min + (1 - (y - pad.top) / candleH) * span)));
+  const targetAt = (clientX: number, clientY: number) => {
+    const point = svgPoint(clientX, clientY);
+    if (!point) return null;
+    if (point.x < pad.left || point.x > endX || point.y < pad.top || point.y > pad.top + candleH) return null;
+    return {
+      side: (point.x < pad.left + innerW / 2 ? "buy" : "sell") as "buy" | "sell",
+      price: priceAtY(point.y),
+    };
+  };
+  const runAction = (action: NonNullable<typeof armed>) => {
+    setArmed(null);
+    setGhost(null);
+    if (action.kind === "place") onPlaceAt?.(action.side, action.price);
+    else onMoveOrder?.(action.group, action.toPrice);
+  };
+  const request = (action: NonNullable<typeof armed>) => {
+    if (confirm) setArmed(action);
+    else runAction(action);
+  };
+  const orderLabel = (group: ChartOrderGroup) =>
+    `${group.orderType === "stop" ? (group.side === "buy" ? "Buy STP" : "Sell STP") : group.side === "buy" ? "Bid" : "Ask"}${group.ids.length > 1 ? ` ×${group.ids.length}` : ""}`;
+  const previewTarget = armed
+    ? armed.kind === "place"
+      ? { side: armed.side, price: armed.price, text: `${describeAt?.(armed.side, armed.price) ?? armed.side} ${formatNumber(armed.price)}` }
+      : {
+          side: armed.group.side,
+          price: armed.toPrice,
+          text: `Move ${orderLabel(armed.group)} ${formatNumber(armed.group.price)} → ${formatNumber(armed.toPrice)}`,
+        }
+    : ghost && !drag
+      ? { ...ghost, text: `${describeAt?.(ghost.side, ghost.price) ?? ghost.side} ${formatNumber(ghost.price)}` }
+      : null;
+
   return (
     <div className="rounded-xl bg-background/40 p-3 ring-1 ring-foreground/10">
       <div className="mb-2 flex items-end justify-between gap-3">
@@ -239,7 +318,7 @@ export function PriceChart({
             {traded
               ? `Each candle is ${Math.round(candleMs / MINUTE_MS)} minutes. Open is the previous close. Last ${CHART_CANDLES} candles, oldest to newest. Hover for open, high, low, close.`
               : "No trades yet. The candle sits at the starting price."}{" "}
-            Dashed marks on the right are MV, best bid, and best ask. Bars under the candles are volume. Shaded bars beside the price scale are cumulative bid (green) and ask (red) depth, growing leftward. Your own orders are amber lines (limit) and dashed purple lines (stop); tap the ✕ to cancel one.{offScale > 0 ? ` ${offScale} price level${offScale === 1 ? "" : "s"} sit outside this price range.` : ""}
+            Dashed marks on the right are MV, best bid, and best ask. Bars under the candles are volume. Shaded bars beside the price scale are cumulative bid (green) and ask (red) depth, growing leftward. Your own orders are amber lines (limit) and dashed purple lines (stop); drag one up or down to move it, or tap its ✕ to cancel. Click the left half of the chart to buy and the right half to sell at that price: above the best ask is a Buy STP, at it a market buy, below it a Bid (mirrored for sells).{offScale > 0 ? ` ${offScale} price level${offScale === 1 ? "" : "s"} sit outside this price range.` : ""}
           </p>
         </div>
         <p
@@ -260,10 +339,21 @@ export function PriceChart({
       </div>
       <div className="relative" onMouseLeave={() => setHover(null)}>
         <svg
+          ref={svgRef}
           viewBox={`0 0 ${width} ${height}`}
-          className={compact ? "h-36 w-full" : "h-48 w-full"}
+          className={cn(compact ? "h-36 w-full" : "h-48 w-full", interactive && "cursor-crosshair")}
           role="img"
           aria-label="One-minute candlestick chart"
+          onPointerMove={(event) => {
+            if (!interactive || drag || armed || event.pointerType !== "mouse") return;
+            setGhost(targetAt(event.clientX, event.clientY));
+          }}
+          onPointerLeave={() => setGhost(null)}
+          onClick={(event) => {
+            if (!interactive || drag) return;
+            const target = targetAt(event.clientX, event.clientY);
+            if (target) request({ kind: "place", ...target });
+          }}
         >
           {shown.map((candle, index) => {
             const tone = candleTone(candle);
@@ -347,11 +437,13 @@ export function PriceChart({
             className="stroke-border"
           />
           {mine.map((group) => {
-            const y = yFor(group.price);
+            const dragging = drag?.group.key === group.key;
+            const shownPrice = dragging ? drag.price : group.price;
+            const y = yFor(shownPrice);
             const stop = group.orderType === "stop";
             const tone = stop ? "stroke-purple-400" : "stroke-amber-300";
             const fill = stop ? "fill-purple-300" : "fill-amber-200";
-            const label = `${stop ? (group.side === "buy" ? "Buy STP" : "Sell STP") : group.side === "buy" ? "Bid" : "Ask"} ${formatNumber(group.price)}${group.ids.length > 1 ? ` ×${group.ids.length}` : ""}`;
+            const label = `${orderLabel(group)} ${formatNumber(shownPrice)}`;
             return (
               <g key={group.key}>
                 <line
@@ -359,17 +451,53 @@ export function PriceChart({
                   x2={endX}
                   y1={y}
                   y2={y}
-                  strokeWidth="1.5"
+                  strokeWidth={dragging ? 2.5 : 1.5}
                   strokeDasharray={stop ? "2 3" : undefined}
                   className={tone}
                 />
                 <text x={pad.left + 4} y={y - 3} fill="currentColor" className={cn(fill, "text-[10px]")}>
                   {label}
                 </text>
+                {onMoveOrder ? (
+                  <line
+                    x1={pad.left}
+                    x2={endX - 22}
+                    y1={y}
+                    y2={y}
+                    stroke="transparent"
+                    strokeWidth={14}
+                    style={{ cursor: "ns-resize", touchAction: "none" }}
+                    onClick={(event) => event.stopPropagation()}
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                      setGhost(null);
+                      setArmed(null);
+                      setDrag({ group, price: group.price });
+                    }}
+                    onPointerMove={(event) => {
+                      if (!dragging) return;
+                      const point = svgPoint(event.clientX, event.clientY);
+                      if (point) setDrag({ group, price: priceAtY(point.y) });
+                    }}
+                    onPointerUp={() => {
+                      if (!dragging) return;
+                      const toPrice = drag.price;
+                      setDrag(null);
+                      if (toPrice !== group.price) request({ kind: "move", group, toPrice });
+                    }}
+                    onPointerCancel={() => setDrag(null)}
+                  >
+                    <title>Drag to move your {orderLabel(group)}</title>
+                  </line>
+                ) : null}
                 {onCancel ? (
                   <g
                     style={{ cursor: "pointer" }}
-                    onClick={() => onCancel(group.ids[group.ids.length - 1])}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onCancel(group.ids[group.ids.length - 1]);
+                    }}
                   >
                     <title>Cancel your {label}</title>
                     <circle cx={endX - 10} cy={y} r={8} className={cn(stop ? "fill-purple-950" : "fill-amber-950", tone)} />
@@ -381,7 +509,31 @@ export function PriceChart({
               </g>
             );
           })}
-          {mv != null ? (
+          {previewTarget ? (
+            <g className="pointer-events-none">
+              <line
+                x1={pad.left}
+                x2={endX}
+                y1={yFor(previewTarget.price)}
+                y2={yFor(previewTarget.price)}
+                strokeWidth="1.5"
+                strokeDasharray="6 4"
+                className={previewTarget.side === "buy" ? "stroke-emerald-300" : "stroke-rose-300"}
+              />
+              <text
+                x={previewTarget.side === "buy" ? pad.left + 4 : endX - 4}
+                y={Math.max(pad.top + 10, yFor(previewTarget.price) - 4)}
+                textAnchor={previewTarget.side === "buy" ? "start" : "end"}
+                fill="currentColor"
+                className={cn(
+                  "text-[11px] font-medium",
+                  previewTarget.side === "buy" ? "fill-emerald-200" : "fill-rose-200"
+                )}
+              >
+                {previewTarget.text}
+              </text>
+            </g>
+          ) : null}          {mv != null ? (
             <>
               <line
                 x1={startX}
@@ -454,6 +606,31 @@ export function PriceChart({
             {formatCoins(min)}
           </text>
         </svg>
+        {armed ? (
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/60 px-2 py-1.5 text-xs">
+            <span className="font-medium">
+              {armed.kind === "place"
+                ? `${describeAt?.(armed.side, armed.price) ?? armed.side} ${formatNumber(armed.price)} × ${formatNumber(quantity)}`
+                : `Move ${orderLabel(armed.group)} ${formatNumber(armed.group.price)} → ${formatNumber(armed.toPrice)} (×${formatNumber(armed.group.qty)})`}
+            </span>
+            <span className="flex gap-1">
+              <button
+                type="button"
+                className="rounded-md bg-primary px-3 py-1 font-medium text-primary-foreground"
+                onClick={() => runAction(armed)}
+              >
+                Confirm
+              </button>
+              <button
+                type="button"
+                className="rounded-md bg-background px-3 py-1 ring-1 ring-foreground/20"
+                onClick={() => setArmed(null)}
+              >
+                Cancel
+              </button>
+            </span>
+          </div>
+        ) : null}
         {active ? (
           <div
             className={cn(

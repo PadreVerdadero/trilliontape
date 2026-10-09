@@ -20,7 +20,7 @@ import { describeTradingWindow, goodIsOpen } from "@/lib/game/hours";
 import { CANDLE_PRESETS } from "@/lib/game/market";
 import { useOrderBook } from "@/hooks/use-game";
 import { useConfirmClick } from "@/hooks/use-confirm-click";
-import { PriceChart } from "@/components/game/price-chart";
+import { PriceChart, type ChartOrderGroup } from "@/components/game/price-chart";
 import { DepthChart } from "@/components/game/depth-chart";
 import { SwapPanel } from "@/components/game/swap-panel";
 import type { GameState, Item, OrderRow, OrderSide, TakeQuoteInput } from "@/lib/game/types";
@@ -665,6 +665,73 @@ export function MarketPanel({
     await reloadBook();
   }
 
+  function chartKind(side: "buy" | "sell", at: number): "stop" | "market" | "limit" {
+    if (side === "buy") {
+      if (price?.bestAsk != null && at > price.bestAsk) return "stop";
+      if (price?.bestAsk != null && at === price.bestAsk) return "market";
+      return "limit";
+    }
+    if (price?.bestBid != null && at < price.bestBid) return "stop";
+    if (price?.bestBid != null && at === price.bestBid) return "market";
+    return "limit";
+  }
+
+  function describeChart(side: "buy" | "sell", at: number) {
+    const kind = chartKind(side, at);
+    if (kind === "stop") return side === "buy" ? "Buy STP" : "Sell STP";
+    if (kind === "market") return side === "buy" ? "Buy MKT" : "Sell MKT";
+    return side === "buy" ? "Bid" : "Ask";
+  }
+
+  async function chartPlace(side: "buy" | "sell", at: number) {
+    if (!selected || pending) return;
+    const kind = chartKind(side, at);
+    if (kind === "market") {
+      const rows = side === "buy" ? book?.asks ?? [] : book?.bids ?? [];
+      const row = rows.find(
+        (entry) => entry.price === at && (entry.isGov || entry.playerId !== state.player.id)
+      );
+      if (!row) return;
+      await takeQuote({
+        orderId: row.id,
+        itemId: row.itemId,
+        side: row.side,
+        price: row.price,
+        treasury: row.isGov,
+      });
+      return;
+    }
+    await placeAt(side, at, kind);
+  }
+
+  async function chartMove(group: ChartOrderGroup, toPrice: number) {
+    if (!selected || pending) return;
+    for (const id of group.ids) {
+      if ((await onCancel(id)) === null) {
+        await reloadBook();
+        return;
+      }
+    }
+    const placed = await onOrder({
+      itemId: selected.id,
+      side: group.side,
+      price: toPrice,
+      quantity: group.qty,
+      orderType: group.orderType,
+    });
+    if (placed === null) {
+      // The new price was rejected; put the order back where it was.
+      await onOrder({
+        itemId: selected.id,
+        side: group.side,
+        price: group.price,
+        quantity: group.qty,
+        orderType: group.orderType,
+      });
+    }
+    await reloadBook();
+  }
+
   function pick(id: string) {
     onSelectItem(id);
     setPriceInput("");
@@ -1127,6 +1194,7 @@ export function MarketPanel({
           ) : null}
 
           <PriceChart
+            key={selected.id}
             trades={book?.chartTrades ?? book?.trades ?? []}
             basePrice={selected.basePrice}
             mv={price?.vwap ?? selected.basePrice}
@@ -1135,6 +1203,11 @@ export function MarketPanel({
             bids={book?.bids ?? []}
             asks={book?.asks ?? []}
             myOrders={state.myOrders.filter((row) => row.itemId === selected.id)}
+            quantity={Math.max(1, Number(qtyInput) || 1)}
+            confirm={confirmClick}
+            onPlaceAt={(side, at) => void chartPlace(side, at)}
+            describeAt={describeChart}
+            onMoveOrder={(group, to) => void chartMove(group, to)}
             onCancel={(id) => {
               void (async () => {
                 await onCancel(id);
@@ -1152,6 +1225,19 @@ export function MarketPanel({
               onChange={(event) => setConfirmClick(event.target.checked)}
             />
             Confirm chart orders with a second tap (default: on for Phone Layout, off on computer)
+          </label>
+          <label className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
+            Chart quantity
+            <input
+              type="number"
+              min={1}
+              inputMode="numeric"
+              className="h-7 w-20 rounded-md border border-border bg-background px-2 text-foreground"
+              value={qtyInput}
+              onChange={(event) => setQtyInput(event.target.value)}
+              aria-label="Chart order quantity"
+            />
+            <span>(market orders take 1)</span>
           </label>
           <label className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
             <input
