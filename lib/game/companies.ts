@@ -243,12 +243,18 @@ export type Balance = {
   apic: number;
   treasuryStock: number;
   retainedEarnings: number;
+  /** Contra-equity: cumulative dividends declared. Reduces equity; never paid out of paid-in capital. */
+  dividends: number;
 };
+
+export function availableEarnings(balance: Balance) {
+  return balance.retainedEarnings - balance.dividends;
+}
 
 export function totals(balance: Balance) {
   const assets = balance.cash;
   const liabilities = balance.loan;
-  const equity = balance.commonStock + balance.apic - balance.treasuryStock + balance.retainedEarnings;
+  const equity = balance.commonStock + balance.apic - balance.treasuryStock + balance.retainedEarnings - balance.dividends;
   return { assets, liabilities, equity };
 }
 
@@ -262,12 +268,13 @@ export function initialBalance(issuedShares: number, issuePrice: number, par: nu
     apic: issuedShares * (price - parValue),
     treasuryStock: 0,
     retainedEarnings: 0,
+    dividends: 0,
   };
 }
 
 export function isBankrupt(balance: Balance, rule: BankruptcyRule) {
   if (rule === "equity") return totals(balance).equity < 0;
-  return balance.retainedEarnings < 0;
+  return availableEarnings(balance) < 0;
 }
 
 export type LoanTerms = {
@@ -342,15 +349,13 @@ export function settleCompanyDay(input: SettleInput): SettleResult {
   const voted = weightedDividend(input.votes, input.outstanding);
   let dps = voted ?? defaultDividendPerShare(netIncome, input.payoutPct, input.issued);
   const source: SettleResult["dividendSource"] = voted != null ? "vote" : "default";
-  // Paid from retained earnings first, then returned capital; never beyond cash on hand.
-  const cap = Math.max(0, Math.min(balance.cash, balance.retainedEarnings + balance.apic));
+  // Declared to the contra-equity Dividends account; capped by cash and by undistributed earnings.
+  const cap = Math.max(0, Math.min(balance.cash, availableEarnings(balance)));
   dps = Math.max(0, Math.min(dps, Math.floor(cap / input.outstanding)));
   const total = dps * input.outstanding;
   if (dps > 0) {
-    const fromRetained = Math.min(total, Math.max(0, balance.retainedEarnings));
     balance.cash -= total;
-    balance.retainedEarnings -= fromRetained;
-    balance.apic -= total - fromRetained;
+    balance.dividends += total;
   }
   result.dividendPerShare = dps;
   result.dividendTotal = total;

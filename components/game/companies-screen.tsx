@@ -173,6 +173,7 @@ function CompanyDetail({
           <Row label="Additional paid-in capital" value={formatCoins(company.apic)} />
           <Row label="Treasury stock" value={`−${formatCoins(company.treasuryStock)}`} note="bought back" />
           <Row label="Retained earnings" value={formatCoins(company.retainedEarnings)} />
+          <Row label="Dividends declared" value={`−${formatCoins(company.dividendsDeclared)}`} note="contra equity" />
           <Row label="Total equity" value={formatCoins(company.equity)} strong />
           <p className="pt-1 text-[11px] text-muted-foreground">
             Assets {formatNumber(company.assets)} = liabilities {formatNumber(company.liabilities)} + equity{" "}

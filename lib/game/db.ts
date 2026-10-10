@@ -220,6 +220,7 @@ async function migrate(db: GameDb) {
       apic INTEGER NOT NULL,
       treasury_stock INTEGER NOT NULL DEFAULT 0,
       retained INTEGER NOT NULL DEFAULT 0,
+      dividends INTEGER NOT NULL DEFAULT 0,
       booked_shares INTEGER NOT NULL,
       bankrupt INTEGER NOT NULL DEFAULT 0,
       bankrupt_at INTEGER
@@ -329,6 +330,7 @@ async function migrate(db: GameDb) {
   await ensureColumn(db, "player_daily", "login_paid", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "players", "login_days", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "players", "at_table", "INTEGER NOT NULL DEFAULT 1");
+  await ensureColumn(db, "companies", "dividends", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "players", "dividends_received", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "trades", "buy_treasury", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "trades", "sell_treasury", "INTEGER NOT NULL DEFAULT 0");

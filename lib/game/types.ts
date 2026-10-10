@@ -362,6 +362,7 @@ export type CompanyView = {
   apic: number;
   treasuryStock: number;
   retainedEarnings: number;
+  dividendsDeclared: number;
   assets: number;
   liabilities: number;
   equity: number;

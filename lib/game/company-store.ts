@@ -48,6 +48,7 @@ type CompanyRow = {
   apic: number;
   treasury_stock: number;
   retained: number;
+  dividends: number;
   booked_shares: number;
   bankrupt: number;
 };
@@ -60,13 +61,14 @@ function balanceOf(row: CompanyRow): Balance {
     apic: row.apic,
     treasuryStock: row.treasury_stock,
     retainedEarnings: row.retained,
+    dividends: row.dividends ?? 0,
   };
 }
 
 async function writeBalance(itemId: string, balance: Balance) {
   await getDb()
     .prepare(
-      `UPDATE companies SET cash = ?, loan = ?, common_stock = ?, apic = ?, treasury_stock = ?, retained = ?
+      `UPDATE companies SET cash = ?, loan = ?, common_stock = ?, apic = ?, treasury_stock = ?, retained = ?, dividends = ?
        WHERE item_id = ?`
     )
     .run(
@@ -76,6 +78,7 @@ async function writeBalance(itemId: string, balance: Balance) {
       balance.apic,
       balance.treasuryStock,
       balance.retainedEarnings,
+      balance.dividends,
       itemId
     );
 }
@@ -845,6 +848,7 @@ export async function buildCompaniesState(
       apic: balance.apic,
       treasuryStock: balance.treasuryStock,
       retainedEarnings: balance.retainedEarnings,
+      dividendsDeclared: balance.dividends,
       assets: sums.assets,
       liabilities: sums.liabilities,
       equity: sums.equity,
