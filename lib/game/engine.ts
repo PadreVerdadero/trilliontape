@@ -11,7 +11,6 @@ import {
   SEARCH_COOLDOWN_MS,
   NET_WORTH_GOAL,
   MAX_STARTING_GOLD,
-  dailyDeposit,
   stipendLabel,
   stipendSlotKey,
   STIPEND_PRESETS,
@@ -61,8 +60,6 @@ import {
   hydrateShareCatalog,
   startingGold,
   setStartingGold,
-  tablePaidDrops,
-  markStipendSlotPaid,
   readGamePhase,
   writeGamePhase,
   readScheduledStartAt,
@@ -72,7 +69,7 @@ import {
 } from "@/lib/game/db";
 import bcrypt from "bcryptjs";
 import { normalizeUsername, validatePassword, validateUsername } from "@/lib/game/auth";
-import { parseStipendSlotKey, stipendCatchUp, validateStipendLadder } from "@/lib/game/stipend-ladder";
+import { parseStipendSlotKey, validateStipendLadder } from "@/lib/game/stipend-ladder";
 import {
   MAX_SHARE_TYPES,
   MIN_SHARE_TYPES,
@@ -97,6 +94,26 @@ import {
   type BotProfile,
 } from "@/lib/game/bots";
 import { isOfficeUsername, OFFICE_USERNAME } from "@/lib/game/office";
+import {
+  applyBuyback,
+  applyIssue,
+  applyLoan,
+  assignCompanyEvent,
+  bankruptItemIds,
+  buildCompaniesState,
+  castDividendVote,
+  castProposalVote,
+  companyCash,
+  createProposal,
+  ensureCompanies,
+  resetCompanies,
+  runCompanyClock,
+  setProposalNote,
+  writeCompanyEvents,
+  writeCompanySettings,
+  type ProposalOutcome,
+} from "@/lib/game/company-store";
+import { describeProposal, type CompanySettings, type ProposalKind } from "@/lib/game/companies";
 import { describeGoal, meetsGoal, sortByGoal, validateGoalDraft, type GoalConfig } from "@/lib/game/goal";
 import { computeFairValue, CHART_CANDLES, MV_PRINTS } from "@/lib/game/market";
 import { coalesceTrades, lastTapeQty } from "@/lib/game/prints";
@@ -692,42 +709,9 @@ async function touchDaily(userId: number, dayKey: string) {
     .run(userId, dayKey);
 }
 
-async function grantDailyLogin(userId: number, _timeZone?: string) {
-  const name = (await loadPlayerRow(userId)).username;
-  if (name === "Banker" || name === DESK_USERNAME) return null;
-  const schedule = await readStipendSchedule();
-  const slot = stipendSlotKey(Date.now(), await stipendMs(), schedule.dailyAtMin, schedule.timeZone);
-  await touchDaily(userId, slot);
-  const row = await getDb()
-    .prepare(
-      "SELECT COALESCE(login_paid, 0) AS login_paid FROM player_daily WHERE user_id = ? AND day_key = ?"
-    )
-    .get(userId, slot) as { login_paid: number } | undefined;
-  const paidDays = await getDb()
-    .prepare("SELECT COALESCE(login_days, 0) AS login_days FROM players WHERE user_id = ?")
-    .get(userId) as { login_days: number } | undefined;
-  if (row?.login_paid) return null;
-  const created = await getDb()
-    .prepare("SELECT created_at FROM users WHERE id = ?")
-    .get(userId) as { created_at: number } | undefined;
-  if (created && stipendSlotKey(created.created_at, await stipendMs(), schedule.dailyAtMin, schedule.timeZone) === slot) {
-    await getDb()
-      .prepare("UPDATE player_daily SET login_paid = 1 WHERE user_id = ? AND day_key = ?")
-      .run(userId, slot);
-    return null;
-  }
-  const next = (paidDays?.login_days ?? 0) + 1;
-  const amount = dailyDeposit(next, await readStipendLadder());
-  await getDb()
-    .prepare("UPDATE players SET gold = gold + ?, login_days = ? WHERE user_id = ?")
-    .run(amount, next, userId);
-  await getDb()
-    .prepare("UPDATE player_daily SET login_paid = 1 WHERE user_id = ? AND day_key = ?")
-    .run(userId, slot);
-  if (!await isBot(userId)) {
-    await setEvent(userId, `Coin drop: +${formatCoins(amount)} (drop ${formatNumber(next)}).`);
-  }
-  return { amount, day: next, justPaid: !await isBot(userId) };
+// Coin drops are retired: company dividends replace them.
+async function grantDailyLogin(_userId: number, _timeZone?: string): Promise<{ amount: number; day: number; justPaid: boolean } | null> {
+  return null;
 }
 
 async function seatedBotUsernames(db: ReturnType<typeof getDb> = getDb()) {
@@ -767,15 +751,6 @@ async function tableSeatIds() {
   return await getDb()
     .prepare(`SELECT id FROM users WHERE ${sql} ORDER BY username COLLATE NOCASE`)
     .all(...params) as { id: number }[];
-}
-
-async function payTableStipends(viewerId: number, timeZone?: string) {
-  let mine: { amount: number; day: number; justPaid: boolean } | null = null;
-  for (const row of await tableSeatIds()) {
-    const notice = await grantDailyLogin(row.id, timeZone);
-    if (row.id === viewerId) mine = notice;
-  }
-  return mine;
 }
 
 async function awardVp(userId: number, amount: number) {
@@ -1030,7 +1005,17 @@ async function requireOpenGame() {
   if ((await readGameOver()).over) throw new Error("The game is over. Jesse can start a new game from Admin.");
 }
 
+async function companyClockActive() {
+  if ((await readGamePhase()) !== "live") return false;
+  if ((await readGameOver()).over) return false;
+  const goal = await readGoal();
+  return !(goal.mode === "timed" && goal.endsAt != null && nowMs() >= goal.endsAt);
+}
+
 async function requireItemOpen(itemId: string) {
+  if ((await bankruptItemIds()).has(itemId)) {
+    throw new Error(`${itemById[itemId]?.name ?? "That company"} is bankrupt. Its shares are worthless.`);
+  }
   const trading = await readTradingHours();
   if (!goodIsOpen(trading.hours[itemId], nowMs(), trading.timeZone)) {
     const item = itemById[itemId];
@@ -1330,20 +1315,11 @@ export async function enterDesk(userId: number) {
     .get(userId) as { at_table: number; gold: number; login_days: number } | undefined;
   if (!row || row.at_table) return;
   const start = await startingGold(db);
-  const tablePaid = await tablePaidDrops(db, userId);
-  const extra = stipendCatchUp(await readStipendLadder(db), row.login_days, tablePaid);
-  const gold = Math.max(row.gold, start) + extra;
-  const loginDays = Math.max(row.login_days, tablePaid);
-  const note =
-    extra > 0
-      ? `You sat down with ${formatCoins(start)} plus ${formatNumber(tablePaid - row.login_days)} coin drop${
-          tablePaid - row.login_days === 1 ? "" : "s"
-        } the table already had (${formatCoins(extra)}). The opening split already went out.`
-      : `You sat down with ${formatCoins(Math.max(row.gold, start))} and an empty pack. The opening split already went out.`;
+  const gold = Math.max(row.gold, start);
+  const note = `You sat down with ${formatCoins(gold)} and an empty pack. The opening split already went out.`;
   await db.prepare(
-    "UPDATE players SET at_table = 1, gold = ?, login_days = ?, last_event = ? WHERE user_id = ?"
-  ).run(gold, loginDays, note, userId);
-  await markStipendSlotPaid(userId, db);
+    "UPDATE players SET at_table = 1, gold = ?, last_event = ? WHERE user_id = ?"
+  ).run(gold, note, userId);
 }
 
 export async function enterAdmin(userId: number) {
@@ -1854,6 +1830,7 @@ async function runNewGame(userId: number, count?: number) {
     for (const row of seats) await mark.run(row.id, dayKey);
   });
   deskClock.bazaarDeskFloat = 0;
+  await resetCompanies();
   await alignIssuedToAuthorized(true);
   const bots = await computerCount();
   const leftoverNote =
@@ -2790,7 +2767,13 @@ async function clampFloatedToAuthorized(itemId: string, authorized: number) {
 
 async function alignIssuedToAuthorized(force = false) {
   const deskId = await ensureDeskUser();
+  const bankrupt = await bankruptItemIds();
   for (const item of items) {
+    if (bankrupt.has(item.id)) {
+      await clearDeskBook(deskId, item.id, "buy");
+      await clearDeskBook(deskId, item.id, "sell");
+      continue;
+    }
     const authorized = await authorizedOf(item.id);
     await clampFloatedToAuthorized(item.id, authorized);
     await noteIssuedCap(item.id);
@@ -2854,11 +2837,11 @@ async function netWorthLeaders(prices: MarketPrice[]): Promise<LeaderRow[]> {
   const { sql, params } = await tableSeatWhere(db);
   const purses = await db
     .prepare(
-      `SELECT u.id, u.username, p.gold
+      `SELECT u.id, u.username, p.gold, COALESCE(p.dividends_received, 0) AS dividends
        FROM players p JOIN users u ON u.id = p.user_id
        WHERE ${sql}`
     )
-    .all(...params) as { id: number; username: string; gold: number }[];
+    .all(...params) as { id: number; username: string; gold: number; dividends: number }[];
   const stacks = await db
     .prepare("SELECT user_id, item_id, quantity FROM inventory WHERE quantity > 0")
     .all() as { user_id: number; item_id: string; quantity: number }[];
@@ -2880,6 +2863,7 @@ async function netWorthLeaders(prices: MarketPrice[]): Promise<LeaderRow[]> {
         goods: itemValue,
         holdings: holdings.get(row.id) ?? {},
         netWorth: row.gold + itemValue,
+        dividends: row.dividends,
       };
     })
     .sort((a, b) => b.netWorth - a.netWorth || a.username.localeCompare(b.username))
@@ -2890,6 +2874,7 @@ async function netWorthLeaders(prices: MarketPrice[]): Promise<LeaderRow[]> {
       goods: row.goods,
       holdings: row.holdings,
       netWorth: row.netWorth,
+      dividends: row.dividends,
     }));
 }
 
@@ -2920,7 +2905,7 @@ async function resolveGoal(leaders: LeaderRow[], viewerId: number) {
     await writeGameOver(over);
     if (winner) await markWinnerName(winner, now);
     if (winner === (await loadPlayerRow(viewerId)).username) {
-      await setEvent(viewerId, `Game over. You had the most ${goal.score === "gold" ? "coins" : goal.score === "items" ? "of those goods" : "net worth"}.`);
+      await setEvent(viewerId, `Game over. You had the most ${goal.score === "gold" ? "coins" : goal.score === "items" ? "of those goods" : goal.score === "dividends" ? "dividends" : "net worth"}.`);
     }
     return { goal, over };
   }
@@ -3318,9 +3303,7 @@ async function runDeskWork() {
     if (!humanOnDesk()) return;
     await tickBots();
     await alignIssuedToAuthorized();
-    for (const row of await tableSeatIds()) {
-      await grantDailyLogin(row.id);
-    }
+    if (await companyClockActive()) await runCompanyClock();
   } catch {
     // Keep serving the desk even if a background tick fails.
   } finally {
@@ -3646,6 +3629,8 @@ export async function getGameState(
   await hydrateShareCatalog();
   await maybeStartScheduledGame();
   const gamePhase = await readGamePhase();
+  if (gamePhase === "live" && await companyClockActive()) await runCompanyClock();
+  else await ensureCompanies();
   if (options?.tick !== false && gamePhase === "live") {
     void runDeskWork();
   }
@@ -3820,5 +3805,142 @@ export async function getGameState(
       depositNotice?.justPaid
         ? { amount: depositNotice.amount, day: depositNotice.day, gold: player.gold }
         : null,
+    companies: await buildCompaniesState(
+      userId,
+      office,
+      Object.fromEntries(prices.map((row) => [row.itemId, row.vwap]))
+    ),
   };
+}
+
+// ---- Companies ----
+
+async function executeBuyback(itemId: string, shares: number) {
+  const db = getDb();
+  let cash = await companyCash(itemId);
+  const deskId = await ensureDeskUser();
+  const asks = await db
+    .prepare(
+      `SELECT id, user_id, price, remaining FROM orders
+       WHERE item_id = ? AND side = 'sell' AND remaining > 0 AND COALESCE(treasury, 0) = 0
+         AND COALESCE(order_type, 'limit') = 'limit'
+         AND user_id NOT IN (SELECT id FROM users WHERE username IN ('Banker', ?))
+       ORDER BY price ASC, created_at ASC, id ASC`
+    )
+    .all(itemId, DESK_USERNAME) as { id: number; user_id: number; price: number; remaining: number }[];
+  let bought = 0;
+  let cost = 0;
+  for (const ask of asks) {
+    if (bought >= shares) break;
+    const affordable = Math.floor(cash / ask.price);
+    if (affordable < 1) break;
+    const held = (await inventoryMap(ask.user_id)).get(itemId) ?? 0;
+    const qty = Math.min(ask.remaining, shares - bought, affordable, held);
+    if (qty < 1) continue;
+    await db.prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?").run(ask.price * qty, ask.user_id);
+    await removeItem(ask.user_id, itemId, qty);
+    if (qty >= ask.remaining) await db.prepare("DELETE FROM orders WHERE id = ?").run(ask.id);
+    else await db.prepare("UPDATE orders SET remaining = remaining - ? WHERE id = ?").run(qty, ask.id);
+    await recordTrade(itemId, ask.price, qty, deskId, ask.user_id, true, false);
+    bought += qty;
+    cost += ask.price * qty;
+    cash -= ask.price * qty;
+  }
+  await applyBuyback(itemId, cost);
+  bustPriceSheet();
+  return { bought, cost };
+}
+
+async function finishProposal(outcome: ProposalOutcome) {
+  if (outcome.status !== "passed") return outcome.status;
+  const mv = Math.max(1, Math.round(await marketPrice(outcome.itemId)));
+  if (outcome.kind === "loan") {
+    await applyLoan(outcome.itemId, outcome.amount);
+    await setProposalNote(outcome.id, `Bank loan of ${formatCoins(outcome.amount)} drawn.`);
+  } else if (outcome.kind === "issue") {
+    const result = await applyIssue(outcome.itemId, outcome.amount, mv);
+    await alignIssuedToAuthorized(true);
+    await setProposalNote(
+      outcome.id,
+      `Issued ${formatNumber(outcome.amount)} new shares at ${formatCoins(result.price)}.`
+    );
+  } else {
+    const result = await executeBuyback(outcome.itemId, outcome.amount);
+    await setProposalNote(
+      outcome.id,
+      result.bought > 0
+        ? `Bought back ${formatNumber(result.bought)} of ${formatNumber(outcome.amount)} shares for ${formatCoins(result.cost)}.`
+        : "Passed, but no shares were offered for sale."
+    );
+  }
+  return "passed" as const;
+}
+
+export async function companyAssignEvent(userId: number, eventId: string, itemId: string) {
+  await resolveBusy(userId);
+  await requireOpenGame();
+  await ensureCompanies();
+  const result = await assignCompanyEvent(userId, String(eventId), String(itemId));
+  const sign = result.event.amount > 0 ? "+" : "−";
+  await setEvent(
+    userId,
+    `${result.event.name} filed against ${result.name}: ${sign}${formatCoins(Math.abs(result.event.amount))} (counts at the next 00:00 settlement).`
+  );
+}
+
+export async function companyDividendVote(userId: number, itemId: string, dps: number) {
+  await resolveBusy(userId);
+  await requireOpenGame();
+  await castDividendVote(userId, String(itemId), Number(dps));
+  await setEvent(
+    userId,
+    `Dividend vote recorded for ${itemById[itemId]?.name ?? itemId}: ${formatCoins(Number(dps))} per share.`
+  );
+}
+
+export async function companyPropose(userId: number, itemId: string, kind: ProposalKind, amount: number) {
+  await resolveBusy(userId);
+  await requireOpenGame();
+  const mv = Math.max(1, Math.round(await marketPrice(itemId)));
+  const outcome = await createProposal(userId, String(itemId), kind, Number(amount), mv);
+  const status = await finishProposal(outcome);
+  const label = describeProposal(kind, Number(amount));
+  await setEvent(
+    userId,
+    status === "passed"
+      ? `${label}: passed on your votes.`
+      : status === "failed"
+        ? `${label}: failed.`
+        : `${label}: proposed. Shareholders can vote now.`
+  );
+}
+
+export async function companyVote(userId: number, proposalId: number, yes: boolean) {
+  await resolveBusy(userId);
+  await requireOpenGame();
+  const outcome = await castProposalVote(userId, Number(proposalId), Boolean(yes));
+  const status = await finishProposal(outcome);
+  await setEvent(
+    userId,
+    status === "passed"
+      ? "Your vote carried the motion."
+      : status === "failed"
+        ? "The motion failed."
+        : `Vote recorded: ${yes ? "yes" : "no"}.`
+  );
+}
+
+export async function adminSetCompanySettings(userId: number, raw: Partial<CompanySettings>) {
+  await requireAdmin(userId);
+  const next = await writeCompanySettings(raw);
+  await setEvent(
+    userId,
+    `Company rules saved: ${next.interestPct}% loan interest over ${next.loanTermDays} days, ${next.voteHours}h dividend vote, default payout ${next.defaultPayoutPct}% of prior-day net income.`
+  );
+}
+
+export async function adminSetCompanyEvents(userId: number, raw: unknown) {
+  await requireAdmin(userId);
+  const events = await writeCompanyEvents(raw);
+  await setEvent(userId, `Company event list saved (${events.length} events).`);
 }

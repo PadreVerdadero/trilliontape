@@ -13,7 +13,7 @@ import { useGame } from "@/hooks/use-game";
 import { useMobileLayout } from "@/hooks/use-mobile-layout";
 import { useSelectedItem } from "@/hooks/use-selected-item";
 import { useMarketSort } from "@/hooks/use-market-sort";
-import { DepositDialog } from "@/components/game/deposit-dialog";
+import { CompaniesScreen } from "@/components/game/companies-screen";
 import { GameOverBanner, GameOverScreen, GoalClock } from "@/components/game/game-over-screen";
 import { LobbyScreen } from "@/components/game/lobby-screen";
 import { GAME_NAME, GAME_PITCH } from "@/lib/game/brand";
@@ -21,7 +21,7 @@ import { playItems } from "@/lib/game/shares";
 import { cn } from "@/lib/utils";
 import type { GameState } from "@/lib/game/types";
 
-type PhoneTab = "pack" | "book" | "orders";
+type PhoneTab = "pack" | "book" | "orders" | "firms";
 
 export function PlayScreen({
   initialState,
@@ -39,6 +39,7 @@ export function PlayScreen({
   const marketSort = useMarketSort(state?.prices ?? [], catalog);
   const [mobile, setMobile] = useMobileLayout();
   const [tab, setTab] = useState<PhoneTab>("book");
+  const [view, setView] = useState<"market" | "companies">("market");
 
   if (loading) {
     return (
@@ -118,10 +119,17 @@ export function PlayScreen({
       rankedItemIds={marketSort.rankedItems.map((item) => item.id)}
       coinVolume={state.coinVolume}
       goalLabel={state.goal?.label}
-      now={state.now}
-      stipendMs={state.stipendMs}
-      coinDrop={state.coinDrop}
       catalog={catalog}
+    />
+  );
+
+  const firms = (
+    <CompaniesScreen
+      state={state}
+      pending={pending}
+      run={run}
+      selectedItemId={itemId}
+      onSelectItem={setItemId}
     />
   );
 
@@ -138,7 +146,6 @@ export function PlayScreen({
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden pb-[env(safe-area-inset-bottom)]">
-      <DepositDialog deposit={state.deposit} stipendMs={state.stipendMs} />
       {state.goal && state.gameOver ? (
         <GameOverScreen
           goal={state.goal}
@@ -170,6 +177,28 @@ export function PlayScreen({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            {!mobile ? (
+              <div className="flex overflow-hidden rounded-lg border border-border/80 text-sm">
+                {(
+                  [
+                    ["market", "Market"],
+                    ["companies", "Companies"],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setView(id)}
+                    className={cn(
+                      "h-9 px-3",
+                      view === id ? "bg-primary text-primary-foreground" : "bg-muted/50 text-muted-foreground"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <SoundToggle />
             <MobileToggle checked={mobile} onChange={setMobile} />
             {player.canOffice ? (
@@ -234,13 +263,15 @@ export function PlayScreen({
             <div className={cn(tab !== "pack" && "hidden")}>{pack}</div>
             <div className={cn(tab !== "book" && "hidden")}>{market}</div>
             <div className={cn(tab !== "orders" && "hidden")}>{orders}</div>
+            <div className={cn(tab !== "firms" && "hidden")}>{firms}</div>
           </div>
-          <nav className="grid shrink-0 grid-cols-3 gap-1 border-t border-border/80 bg-background/95 px-2 py-2">
+          <nav className="grid shrink-0 grid-cols-4 gap-1 border-t border-border/80 bg-background/95 px-2 py-2">
             {(
               [
                 ["pack", "Pack"],
                 ["book", "Book"],
                 ["orders", "Orders"],
+                ["firms", "Firms"],
               ] as const
             ).map(([id, label]) => (
               <button
@@ -257,6 +288,10 @@ export function PlayScreen({
             ))}
           </nav>
         </>
+      ) : view === "companies" ? (
+        <div className="min-h-0 w-full flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4" data-keep-scroll>
+          {firms}
+        </div>
       ) : (
         <div className="flex min-h-0 w-full flex-1 overflow-hidden">
           <aside className="flex w-[13.5rem] shrink-0 flex-col overflow-hidden border-r border-border/70 bg-card/40 sm:w-[17.5rem] lg:w-[20.5rem]">

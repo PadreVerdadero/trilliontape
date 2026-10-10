@@ -36,6 +36,12 @@ import {
   adminSetGoal,
   adminAddShare,
   adminRemoveShare,
+  companyAssignEvent,
+  companyDividendVote,
+  companyPropose,
+  companyVote,
+  adminSetCompanySettings,
+  adminSetCompanyEvents,
 } from "@/lib/game/engine";
 
 type ActionBody = {
@@ -92,10 +98,28 @@ type ActionBody = {
   | { action: "adminStipendTime"; time: string }
   | { action: "adminStartingGold"; gold: number }
   | { action: "adminStipendLadder"; amounts: number[] }
+  | { action: "companyEvent"; eventId: string; itemId: string }
+  | { action: "companyDividendVote"; itemId: string; dps: number }
+  | { action: "companyPropose"; itemId: string; kind: "loan" | "buyback" | "issue"; amount: number }
+  | { action: "companyVote"; proposalId: number; yes: boolean }
+  | {
+      action: "adminCompanySettings";
+      settings: {
+        interestPct?: number;
+        loanTermDays?: number;
+        voteHours?: number;
+        defaultPayoutPct?: number;
+        defaultCloseMin?: number;
+        parValue?: number;
+        bankruptcyRule?: "retained" | "equity";
+        randomEvents?: boolean;
+      };
+    }
+  | { action: "adminCompanyEvents"; events: { id?: string; name: string; amount: number; random?: boolean }[] }
   | {
       action: "adminGoal";
       mode: "threshold" | "timed";
-      score: "netWorth" | "gold" | "items";
+      score: "netWorth" | "gold" | "items" | "dividends";
       threshold?: number;
       durationMs?: number;
       startsAt?: number | null;
@@ -256,6 +280,24 @@ export async function POST(request: Request) {
         break;
       case "adminStartingGold":
         await adminSetStartingGold(userId, Number(body.gold));
+        break;
+      case "companyEvent":
+        await companyAssignEvent(userId, body.eventId, body.itemId);
+        break;
+      case "companyDividendVote":
+        await companyDividendVote(userId, body.itemId, Number(body.dps));
+        break;
+      case "companyPropose":
+        await companyPropose(userId, body.itemId, body.kind, Number(body.amount));
+        break;
+      case "companyVote":
+        await companyVote(userId, Number(body.proposalId), Boolean(body.yes));
+        break;
+      case "adminCompanySettings":
+        await adminSetCompanySettings(userId, body.settings ?? {});
+        break;
+      case "adminCompanyEvents":
+        await adminSetCompanyEvents(userId, body.events);
         break;
       case "adminStipendLadder":
         await adminSetStipendLadder(userId, body.amounts);

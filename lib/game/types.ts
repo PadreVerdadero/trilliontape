@@ -266,6 +266,7 @@ export type LeaderRow = {
   goods: number;
   holdings: Record<string, number>;
   netWorth: number;
+  dividends: number;
 };
 
 export type GoalNeed = {
@@ -275,7 +276,7 @@ export type GoalNeed = {
 
 export type GoalView = {
   mode: "threshold" | "timed";
-  score: "netWorth" | "gold" | "items";
+  score: "netWorth" | "gold" | "items" | "dividends";
   threshold: number;
   durationMs: number;
   startsAt: number | null;
@@ -303,6 +304,118 @@ export type CoinDropState = {
   loginDays: number;
   lastSlotKey: string | null;
   paidThisSlot: boolean;
+};
+
+export type CompanyEventView = {
+  id: string;
+  name: string;
+  amount: number;
+  random: boolean;
+};
+
+export type CompanyEntryView = {
+  id: number;
+  label: string;
+  amount: number;
+  source: "player" | "random";
+  username: string | null;
+  createdAt: number;
+};
+
+export type CompanyDayView = {
+  dayKey: string;
+  revenue: number;
+  expenses: number;
+  interest: number;
+  principalPaid: number;
+  netIncome: number;
+  dividendPerShare: number;
+  dividendTotal: number;
+  source: "vote" | "default" | "none";
+  bankrupt: boolean;
+};
+
+export type ProposalView = {
+  id: number;
+  kind: "loan" | "buyback" | "issue";
+  amount: number;
+  description: string;
+  status: "open" | "passed" | "failed" | "expired";
+  proposedBy: string;
+  createdAt: number;
+  closesAt: number;
+  yesPct: number;
+  noPct: number;
+  myVote: boolean | null;
+  note: string | null;
+};
+
+export type CompanyView = {
+  itemId: string;
+  name: string;
+  emoji: string;
+  image: string | null;
+  mv: number;
+  cash: number;
+  loan: number;
+  commonStock: number;
+  apic: number;
+  treasuryStock: number;
+  retainedEarnings: number;
+  assets: number;
+  liabilities: number;
+  equity: number;
+  bankrupt: boolean;
+  issued: number;
+  outstanding: number;
+  treasuryShares: number;
+  myShares: number;
+  myPct: number;
+  myTier: "Minority" | "Significant" | "Majority" | null;
+  todayRevenue: number;
+  todayExpenses: number;
+  todayEntries: CompanyEntryView[];
+  lastDay: CompanyDayView | null;
+  history: CompanyDayView[];
+  vote: {
+    open: boolean;
+    startMin: number;
+    endMin: number;
+    myDps: number | null;
+    votedPct: number;
+    defaultDps: number;
+  };
+  proposals: ProposalView[];
+  loans: { principalLeft: number; dailyPayment: number }[];
+  maxLoan: number;
+};
+
+export type CompanyPayoutView = {
+  dayKey: string;
+  mine: { itemId: string; shares: number; dps: number; amount: number }[];
+  myTotal: number;
+  players: { username: string; amount: number }[];
+};
+
+export type CompaniesState = {
+  timeZone: string;
+  dayKey: string;
+  nextSettleAt: number;
+  settings: {
+    interestPct: number;
+    loanTermDays: number;
+    voteHours: number;
+    defaultPayoutPct: number;
+    defaultCloseMin: number;
+    parValue: number;
+    bankruptcyRule: "retained" | "equity";
+    randomEvents: boolean;
+  };
+  myEvents: { id: string; name: string; amount: number; usedItemId: string | null }[];
+  companies: CompanyView[];
+  payouts: CompanyPayoutView | null;
+  myDividendsTotal: number;
+  allEvents: CompanyEventView[];
 };
 
 export type GameState = {
@@ -339,6 +452,7 @@ export type GameState = {
   leaders: LeaderRow[];
   items: Item[];
   deposit: { amount: number; day: number; gold: number } | null;
+  companies: CompaniesState;
 };
 
 export type PricePoint = {

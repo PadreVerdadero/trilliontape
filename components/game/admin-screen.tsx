@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MAX_STARTING_GOLD, STIPEND_PRESETS, stipendLabel } from "@/lib/game/catalog";
+import { MAX_STARTING_GOLD } from "@/lib/game/catalog";
 import { ItemIcon } from "@/components/game/item-icon";
 import { ShareEditor } from "@/components/game/share-editor";
 import { MIN_SHARE_TYPES, playItemMap, playItems } from "@/lib/game/shares";
@@ -13,7 +13,7 @@ import { formatCoins, formatNumber } from "@/lib/game/format";
 import { SoundToggle } from "@/components/game/sound-toggle";
 import { MobileToggle } from "@/components/game/mobile-toggle";
 import { GoalEditor } from "@/components/game/goal-editor";
-import { StipendEditor } from "@/components/game/stipend-editor";
+import { CompanyAdmin } from "@/components/game/company-admin";
 import { useGame } from "@/hooks/use-game";
 import { useMobileLayout } from "@/hooks/use-mobile-layout";
 import { useSelectedItem } from "@/hooks/use-selected-item";
@@ -63,9 +63,6 @@ export function AdminScreen({
   const [mvDraft, setMvDraft] = useState<Record<string, string>>({});
   const [nameDraft, setNameDraft] = useState<Record<string, string>>({});
   const [startingDraft, setStartingDraft] = useState(String(initialState.startingGold ?? 1000));
-  const [stipendTimeDraft, setStipendTimeDraft] = useState(
-    minuteInput(initialState.coinDrop?.dailyAtMin ?? undefined)
-  );
   const [startDraft, setStartDraft] = useState(() =>
     toLocalInput(initialState.scheduledStartAt ?? Date.now() + 10 * 60 * 1000)
   );
@@ -108,10 +105,6 @@ export function AdminScreen({
   useEffect(() => {
     setStartingDraft(String(state?.startingGold ?? 1000));
   }, [state?.startingGold]);
-
-  useEffect(() => {
-    if (state?.coinDrop) setStipendTimeDraft(minuteInput(state.coinDrop.dailyAtMin ?? undefined));
-  }, [state?.coinDrop?.dailyAtMin]);
 
   useEffect(() => {
     if (state?.scheduledStartAt) setStartDraft(toLocalInput(state.scheduledStartAt));
@@ -653,58 +646,6 @@ export function AdminScreen({
           <h2 className="font-heading text-lg">Table rules</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1">
-              <Label htmlFor="admin-stipend" className="text-amber-100/80">
-                Coin drop every
-              </Label>
-              <select
-                id="admin-stipend"
-                className="h-11 w-full rounded-lg border border-amber-400/30 bg-amber-950/60 px-3 text-sm text-amber-50"
-                value={state.stipendMs}
-                disabled={pending}
-                onChange={(event) => void run({ action: "adminStipend", ms: Number(event.target.value) })}
-              >
-                {STIPEND_PRESETS.map((row) => (
-                  <option key={row.ms} value={row.ms}>
-                    {row.label}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-amber-100/60">
-                Travelers who sit at the desk get the next ladder purse every {stipendLabel(state.stipendMs)}.
-              </p>
-              {state.stipendMs === 24 * 60 * 60_000 ? (
-                <div className="space-y-1 pt-2">
-                  <Label htmlFor="admin-stipend-time" className="text-amber-100/80">
-                    Daily drop time
-                  </Label>
-                  <div className="flex items-end gap-2">
-                    <Input
-                      id="admin-stipend-time"
-                      type="time"
-                      value={stipendTimeDraft}
-                      onChange={(event) => setStipendTimeDraft(event.target.value)}
-                      className="border-amber-400/30 bg-amber-950/60"
-                    />
-                    <Button
-                      disabled={pending}
-                      className="bg-amber-300 text-amber-950 hover:bg-amber-200"
-                      onClick={() => void run({ action: "adminStipendTime", time: stipendTimeDraft })}
-                    >
-                      Set time
-                    </Button>
-                  </div>
-                  <p className="text-xs text-amber-100/60">
-                    Drops happen daily at this browser-local time ({state.stipendTimeZone}).
-                  </p>
-                </div>
-              ) : null}
-              {state.coinDrop ? (
-                <StipendEditor
-                  ladder={state.coinDrop.ladder}
-                  pending={pending}
-                  onSave={(amounts) => run({ action: "adminStipendLadder", amounts })}
-                />
-              ) : null}
               <div className="space-y-1 pt-2">
                 <Label htmlFor="admin-starting-gold" className="text-amber-100/80">
                   Starting purse
@@ -734,7 +675,7 @@ export function AdminScreen({
                 </div>
                 <p className="text-xs text-amber-100/60">
                   New travelers (and New game) start with {formatCoins(state.startingGold ?? 1000)}.
-                  Someone who joins late also gets every coin drop the table has already been paid.
+                  Coin drops are retired; company dividends pay out at 00:00 Central.
                 </p>
               </div>
             </div>
@@ -797,6 +738,8 @@ export function AdminScreen({
             </div>
           </div>
         </section>
+
+        <CompanyAdmin state={state} pending={pending} run={run} />
 
         <section className="space-y-3 rounded-xl border border-amber-400/25 bg-amber-900/30 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">

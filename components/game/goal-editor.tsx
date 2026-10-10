@@ -103,6 +103,7 @@ export function GoalEditor({
                 <option value="netWorth">Net worth</option>
                 <option value="gold">Coins</option>
                 <option value="items">Goods</option>
+                <option value="dividends">Dividends received</option>
               </select>
             </div>
             {score !== "items" && mode === "threshold" ? (

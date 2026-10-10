@@ -3,7 +3,7 @@ import { formatCoins, formatCompact, formatNumber } from "@/lib/game/format";
 import type { LeaderRow } from "@/lib/game/types";
 
 export type GoalMode = "threshold" | "timed";
-export type GoalScore = "netWorth" | "gold" | "items";
+export type GoalScore = "netWorth" | "gold" | "items" | "dividends";
 
 export type GoalNeed = {
   itemId: string;
@@ -64,7 +64,8 @@ function clampNeed(row: { itemId?: string; quantity?: number }): GoalNeed | null
 export function normalizeGoal(raw: Partial<GoalConfig> | null | undefined, now = Date.now()): GoalConfig {
   const base = defaultGoal();
   const mode = raw?.mode === "timed" ? "timed" : "threshold";
-  const score = raw?.score === "gold" || raw?.score === "items" ? raw.score : "netWorth";
+  const score =
+    raw?.score === "gold" || raw?.score === "items" || raw?.score === "dividends" ? raw.score : "netWorth";
   const threshold = Math.floor(Number(raw?.threshold ?? base.threshold));
   const durationMs = Math.floor(Number(raw?.durationMs ?? base.durationMs));
   const needs = (raw?.needs ?? []).map(clampNeed).filter((row): row is GoalNeed => Boolean(row));
@@ -116,6 +117,7 @@ export function validateGoalDraft(raw: Partial<GoalConfig>, now = Date.now()) {
 
 export function goalScore(row: LeaderRow, goal: GoalConfig) {
   if (goal.score === "gold") return row.gold;
+  if (goal.score === "dividends") return row.dividends ?? 0;
   if (goal.score === "items") {
     const ids = goal.needs.length > 0 ? goal.needs.map((need) => need.itemId) : items.map((item) => item.id);
     return ids.reduce((sum, id) => sum + (row.holdings[id] ?? 0), 0);
@@ -128,6 +130,7 @@ export function meetsGoal(row: LeaderRow, goal: GoalConfig) {
     return goal.needs.length > 0 && goal.needs.every((need) => (row.holdings[need.itemId] ?? 0) >= need.quantity);
   }
   if (goal.score === "gold") return row.gold >= goal.threshold;
+  if (goal.score === "dividends") return (row.dividends ?? 0) >= goal.threshold;
   return row.netWorth >= goal.threshold;
 }
 
@@ -150,6 +153,7 @@ export function describeNeeds(needs: GoalNeed[]) {
 
 export function describeScore(goal: GoalConfig) {
   if (goal.score === "gold") return "coins";
+  if (goal.score === "dividends") return "dividends received";
   if (goal.score === "items") {
     if (goal.needs.length === 0) return "goods";
     if (goal.mode === "timed") {
@@ -192,6 +196,7 @@ export function describeGoal(goal: GoalConfig, timeZone?: string) {
   }
   if (goal.score === "items") return `First to hold ${describeNeeds(goal.needs)}.`;
   if (goal.score === "gold") return `First to ${formatCoins(goal.threshold)}.`;
+  if (goal.score === "dividends") return `First to ${formatCoins(goal.threshold)} in dividends.`;
   return `First to ${formatCompact(goal.threshold)} net worth.`;
 }
 
@@ -228,5 +233,6 @@ export function describeGameOver(over: GameOverState, goal: GoalConfig) {
   if (over.reason === "time") return `${over.winner} had the most ${describeScore(goal)} when the clock ran out.`;
   if (goal.score === "items") return `${over.winner} was first to hold ${describeNeeds(goal.needs)}.`;
   if (goal.score === "gold") return `${over.winner} was first to ${formatCoins(goal.threshold)}.`;
+  if (goal.score === "dividends") return `${over.winner} was first to ${formatCoins(goal.threshold)} in dividends.`;
   return `${over.winner} was first to ${formatCompact(goal.threshold)} net worth.`;
 }

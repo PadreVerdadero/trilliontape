@@ -1,11 +1,10 @@
-import { CoinDropTimeline } from "@/components/game/coin-drop-timeline";
 import { ItemIcon } from "@/components/game/item-icon";
 import { items as defaultItems, NET_WORTH_GOAL } from "@/lib/game/catalog";
 import { formatCoins, formatCompact, formatNetWorth, formatNumber } from "@/lib/game/format";
 import { playItemMap, playItems } from "@/lib/game/shares";
 import { rarityClass, rarityMapFromPrices } from "@/lib/game/rarity";
 import { cn } from "@/lib/utils";
-import type { CoinDropState, InventoryRow, Item, MarketPrice, PlayerState } from "@/lib/game/types";
+import type { InventoryRow, Item, MarketPrice, PlayerState } from "@/lib/game/types";
 
 const PACK_PAD = "px-1.5 sm:px-2";
 const PACK_GRID =
@@ -42,9 +41,6 @@ export function InventoryPanel({
   rankedItemIds,
   coinVolume,
   goalLabel,
-  now,
-  stipendMs,
-  coinDrop,
   catalog,
 }: {
   player: PlayerState;
@@ -54,9 +50,6 @@ export function InventoryPanel({
   rankedItemIds: string[];
   coinVolume: number;
   goalLabel?: string;
-  now?: number;
-  stipendMs?: number;
-  coinDrop?: CoinDropState;
   catalog?: Item[];
 }) {
   const catalogRows = playItems(catalog ?? defaultItems);
@@ -186,9 +179,6 @@ export function InventoryPanel({
           </span>
         </span>
       </div>
-      {coinDrop && now != null && stipendMs != null ? (
-        <CoinDropTimeline now={now} stipendMs={stipendMs} coinDrop={coinDrop} />
-      ) : null}
     </div>
   );
 }

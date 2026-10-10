@@ -19,7 +19,7 @@ import {
   type GameOverState,
   type GoalConfig,
 } from "@/lib/game/goal";
-import { defaultStipendLadder, normalizeStipendLadder, stipendCatchUp } from "@/lib/game/stipend-ladder";
+import { defaultStipendLadder, normalizeStipendLadder } from "@/lib/game/stipend-ladder";
 import { normalizeCandleMs } from "@/lib/game/market";
 import { emptyTradingBook, normalizeTradingBook, type TradingBook } from "@/lib/game/hours";
 import { safeTimeZone, clampMinute } from "@/lib/game/hours";
@@ -28,7 +28,7 @@ export const DESK_USERNAME = "Government";
 
 export type GamePhase = "lobby" | "live";
 
-const BOOTSTRAP_REV = 20;
+const BOOTSTRAP_REV = 21;
 const INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 const globalForDb = globalThis as unknown as {
@@ -210,6 +210,103 @@ async function migrate(db: GameDb) {
       item_id TEXT PRIMARY KEY,
       authorized INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS companies (
+      item_id TEXT PRIMARY KEY,
+      cash INTEGER NOT NULL,
+      loan INTEGER NOT NULL DEFAULT 0,
+      par INTEGER NOT NULL DEFAULT 1,
+      common_stock INTEGER NOT NULL,
+      apic INTEGER NOT NULL,
+      treasury_stock INTEGER NOT NULL DEFAULT 0,
+      retained INTEGER NOT NULL DEFAULT 0,
+      booked_shares INTEGER NOT NULL,
+      bankrupt INTEGER NOT NULL DEFAULT 0,
+      bankrupt_at INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS company_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id TEXT NOT NULL,
+      day_key TEXT NOT NULL,
+      label TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      user_id INTEGER,
+      source TEXT NOT NULL DEFAULT 'player',
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS company_event_uses (
+      user_id INTEGER NOT NULL,
+      event_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, event_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS company_dividend_votes (
+      item_id TEXT NOT NULL,
+      day_key TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      dps INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (item_id, day_key, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS company_proposals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_by INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      closes_at INTEGER NOT NULL,
+      decided_at INTEGER,
+      note TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS company_proposal_votes (
+      proposal_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      yes INTEGER NOT NULL,
+      PRIMARY KEY (proposal_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS company_loans (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id TEXT NOT NULL,
+      principal INTEGER NOT NULL,
+      principal_left INTEGER NOT NULL,
+      daily_principal INTEGER NOT NULL,
+      daily_interest INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS company_days (
+      item_id TEXT NOT NULL,
+      day_key TEXT NOT NULL,
+      revenue INTEGER NOT NULL,
+      expenses INTEGER NOT NULL,
+      interest INTEGER NOT NULL,
+      principal_paid INTEGER NOT NULL,
+      net_income INTEGER NOT NULL,
+      dividend_per_share INTEGER NOT NULL,
+      dividend_total INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      bankrupt INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (item_id, day_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS company_payouts (
+      day_key TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      shares INTEGER NOT NULL,
+      dps INTEGER NOT NULL,
+      amount INTEGER NOT NULL,
+      PRIMARY KEY (day_key, item_id, user_id)
+    );
   `);
   await db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=2500;");
   await ensureColumn(db, "users", "is_bot", "INTEGER NOT NULL DEFAULT 0");
@@ -232,6 +329,7 @@ async function migrate(db: GameDb) {
   await ensureColumn(db, "player_daily", "login_paid", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "players", "login_days", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "players", "at_table", "INTEGER NOT NULL DEFAULT 1");
+  await ensureColumn(db, "players", "dividends_received", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "trades", "buy_treasury", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "trades", "sell_treasury", "INTEGER NOT NULL DEFAULT 0");
   await seedInventoryCostBasis(db);
@@ -497,19 +595,10 @@ export async function writeScheduledStartAt(at: number | null, db: GameDb = getD
 
 async function createPlayerWithDb(db: GameDb, userId: number) {
   const start = await startingGold(db);
-  const tablePaid = await tablePaidDrops(db, userId);
-  const extra = stipendCatchUp(await readStipendLadder(db), 0, tablePaid);
-  const gold = start + extra;
-  const note =
-    tablePaid > 0
-      ? `You arrive with ${start.toLocaleString("en-US")} coins plus ${tablePaid} coin drop${
-          tablePaid === 1 ? "" : "s"
-        } the table already had (${extra.toLocaleString("en-US")}).`
-      : `You arrive with ${start.toLocaleString("en-US")} coins and a place at the desk.`;
+  const note = `You arrive with ${start.toLocaleString("en-US")} coins and a place at the desk. Dividends from the companies replace coin drops.`;
   await db.prepare(
     "INSERT INTO players (user_id, gold, location_id, energy, energy_max, login_days, last_event) VALUES (?, ?, 'town', ?, ?, ?, ?)"
-  ).run(userId, gold, STARTING_ENERGY, ENERGY_MAX, tablePaid, note);
-  await markStipendSlotPaid(userId, db);
+  ).run(userId, start, STARTING_ENERGY, ENERGY_MAX, 0, note);
 }
 
 async function purgeItemIds(db: GameDb, ids: string[]) {
