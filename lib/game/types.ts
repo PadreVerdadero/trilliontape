@@ -411,6 +411,7 @@ export type CompaniesState = {
     parValue: number;
     bankruptcyRule: "retained" | "equity";
     randomEvents: boolean;
+    dealOpeningShares: boolean;
   };
   myEvents: { id: string; name: string; amount: number; usedItemId: string | null }[];
   companies: CompanyView[];

@@ -728,7 +728,7 @@ export function AdminScreen({
                 onClick={() => {
                   const travelers = state.travelerCount ?? 1;
                   const ok = window.confirm(
-                    `Start a new game? ${travelers} traveler${travelers === 1 ? "" : "s"} will each get ${formatNumber(state.startingGold ?? 1000)} coins and an equal opening pack.`
+                    `Start a new game? ${travelers} traveler${travelers === 1 ? "" : "s"} will each get ${formatNumber(state.startingGold ?? 1000)} coins${state.companies.settings.dealOpeningShares ? " and an equal opening pack" : " and no shares (they buy from the treasury)"}.`
                   );
                   if (ok) void run({ action: "adminNewGame" });
                 }}

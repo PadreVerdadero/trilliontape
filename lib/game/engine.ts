@@ -107,6 +107,7 @@ import {
   createProposal,
   ensureCompanies,
   resetCompanies,
+  readCompanySettings,
   runCompanyClock,
   setProposalNote,
   writeCompanyEvents,
@@ -1790,7 +1791,7 @@ async function runNewGame(userId: number, count?: number) {
       await startingGold(db),
       ENERGY_MAX,
       ENERGY_MAX,
-      `A new game. ${formatNumber(await startingGold(db))} coins and an even opening pack for every traveler and seated computer.`,
+      `A new game. ${formatNumber(await startingGold(db))} coins. Buy shares from the treasury or other travelers.`,
       ...params
     );
     const seatedNames = await seatedBotUsernames(db);
@@ -1821,7 +1822,7 @@ async function runNewGame(userId: number, count?: number) {
       `UPDATE players SET gold = 0, last_event = 'The treasury desk is open.'
        WHERE user_id IN (SELECT id FROM users WHERE username IN ('Banker', 'Government'))`
     ).run();
-    await dealOpeningShares(db, seatIds);
+    if ((await readCompanySettings()).dealOpeningShares) await dealOpeningShares(db, seatIds);
     const mark = db.prepare(
       `INSERT INTO player_daily (user_id, day_key, first_trade, special_sold, login_paid)
        VALUES (?, ?, 0, '', 1)
@@ -1835,6 +1836,13 @@ async function runNewGame(userId: number, count?: number) {
   const bots = await computerCount();
   const leftoverNote =
     " Leftover units stay in the treasury for the government to sell at MV.";
+  if (!(await readCompanySettings()).dealOpeningShares) {
+    await setEvent(
+      userId,
+      `New game started. Every traveler got ${formatNumber(await startingGold())} coins and no shares: all of each good sits in the treasury, sold at MV.`
+    );
+    return;
+  }
   await setEvent(
     userId,
     bots > 0
@@ -3936,6 +3944,37 @@ export async function adminSetCompanySettings(userId: number, raw: Partial<Compa
   await setEvent(
     userId,
     `Company rules saved: ${next.interestPct}% loan interest over ${next.loanTermDays} days, ${next.voteHours}h dividend vote, default payout ${next.defaultPayoutPct}% of prior-day net income.`
+  );
+}
+
+/** Deals each good's unsold treasury shares evenly to seated travelers right now. */
+export async function adminDealSharesNow(userId: number) {
+  await requireAdmin(userId);
+  await requireOpenGame();
+  const db = getDb();
+  const seatIds = (await tableSeatIds()).map((row) => row.id);
+  if (seatIds.length === 0) throw new Error("No travelers are seated.");
+  const bankrupt = await bankruptItemIds();
+  let dealt = 0;
+  await db.transaction(async () => {
+    for (const item of items) {
+      if (bankrupt.has(item.id)) continue;
+      const room = await remainingToIssue(item.id);
+      const each = Math.floor(room / seatIds.length);
+      if (each < 1) continue;
+      const unit = Math.max(1, Math.round(await marketPrice(item.id)));
+      for (const travelerId of seatIds) {
+        await addItem(travelerId, item.id, each, unit);
+        dealt += each;
+      }
+    }
+  });
+  if (dealt < 1) throw new Error("Nothing to deal: the treasury has fewer shares than there are travelers.");
+  bustPriceSheet();
+  await alignIssuedToAuthorized(true);
+  await setEvent(
+    userId,
+    `Dealt ${formatNumber(dealt)} shares from the treasury evenly to ${formatNumber(seatIds.length)} traveler${seatIds.length === 1 ? "" : "s"}. Leftovers stay in the treasury.`
   );
 }
 

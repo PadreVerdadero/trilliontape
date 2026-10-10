@@ -16,6 +16,7 @@ export type CompanySettings = {
   parValue: number;
   bankruptcyRule: BankruptcyRule;
   randomEvents: boolean;
+  dealOpeningShares: boolean;
 };
 
 export type CompanyEvent = {
@@ -35,6 +36,7 @@ export function defaultCompanySettings(): CompanySettings {
     parValue: 1,
     bankruptcyRule: "retained",
     randomEvents: true,
+    dealOpeningShares: false,
   };
 }
 
@@ -81,6 +83,7 @@ export function validateCompanySettings(raw: Partial<CompanySettings>, base = de
     next.bankruptcyRule = raw.bankruptcyRule;
   }
   if (raw.randomEvents != null) next.randomEvents = Boolean(raw.randomEvents);
+  if (raw.dealOpeningShares != null) next.dealOpeningShares = Boolean(raw.dealOpeningShares);
   return next;
 }
 

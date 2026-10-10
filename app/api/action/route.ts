@@ -42,6 +42,7 @@ import {
   companyVote,
   adminSetCompanySettings,
   adminSetCompanyEvents,
+  adminDealSharesNow,
 } from "@/lib/game/engine";
 
 type ActionBody = {
@@ -98,6 +99,7 @@ type ActionBody = {
   | { action: "adminStipendTime"; time: string }
   | { action: "adminStartingGold"; gold: number }
   | { action: "adminStipendLadder"; amounts: number[] }
+  | { action: "adminDealShares" }
   | { action: "companyEvent"; eventId: string; itemId: string }
   | { action: "companyDividendVote"; itemId: string; dps: number }
   | { action: "companyPropose"; itemId: string; kind: "loan" | "buyback" | "issue"; amount: number }
@@ -113,6 +115,7 @@ type ActionBody = {
         parValue?: number;
         bankruptcyRule?: "retained" | "equity";
         randomEvents?: boolean;
+        dealOpeningShares?: boolean;
       };
     }
   | { action: "adminCompanyEvents"; events: { id?: string; name: string; amount: number; random?: boolean }[] }
@@ -280,6 +283,9 @@ export async function POST(request: Request) {
         break;
       case "adminStartingGold":
         await adminSetStartingGold(userId, Number(body.gold));
+        break;
+      case "adminDealShares":
+        await adminDealSharesNow(userId);
         break;
       case "companyEvent":
         await companyAssignEvent(userId, body.eventId, body.itemId);

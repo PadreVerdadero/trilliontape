@@ -38,6 +38,7 @@ export function CompanyAdmin({ state, pending, run }: { state: GameState; pendin
     parValue: String(settings.parValue),
     bankruptcyRule: settings.bankruptcyRule,
     randomEvents: settings.randomEvents,
+    dealOpeningShares: settings.dealOpeningShares,
   }));
   const [events, setEvents] = useState<EventDraft[]>(() => toDrafts(state.companies.allEvents));
   const [message, setMessage] = useState<string | null>(null);
@@ -57,6 +58,7 @@ export function CompanyAdmin({ state, pending, run }: { state: GameState; pendin
       parValue: String(settings.parValue),
       bankruptcyRule: settings.bankruptcyRule,
       randomEvents: settings.randomEvents,
+      dealOpeningShares: settings.dealOpeningShares,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsKey]);
@@ -90,6 +92,7 @@ export function CompanyAdmin({ state, pending, run }: { state: GameState; pendin
         parValue: Number(draft.parValue),
         bankruptcyRule: draft.bankruptcyRule,
         randomEvents: draft.randomEvents,
+        dealOpeningShares: draft.dealOpeningShares,
       },
     });
     settingsDirty.current = false;
@@ -169,6 +172,14 @@ export function CompanyAdmin({ state, pending, run }: { state: GameState; pendin
           />
           One random event a day
         </label>
+        <label className="flex items-end gap-2 pb-2 text-sm text-amber-100/80">
+          <input
+            type="checkbox"
+            checked={draft.dealOpeningShares}
+            onChange={(e) => edit("dealOpeningShares", e.target.checked)}
+          />
+          New game deals shares to travelers (off = they buy from the treasury)
+        </label>
       </div>
       <div className="flex flex-wrap gap-2">
         <Button disabled={pending} className="bg-amber-300 text-amber-950 hover:bg-amber-200" onClick={() => void saveSettings()}>
@@ -190,10 +201,24 @@ export function CompanyAdmin({ state, pending, run }: { state: GameState; pendin
               parValue: String(base.parValue),
               bankruptcyRule: base.bankruptcyRule,
               randomEvents: base.randomEvents,
+              dealOpeningShares: base.dealOpeningShares,
             });
           }}
         >
           Reset to defaults
+        </Button>
+        <Button
+          variant="outline"
+          disabled={pending}
+          className="border-amber-400/50 bg-transparent text-amber-50 hover:bg-amber-900"
+          onClick={() => {
+            const ok = window.confirm(
+              "Deal the treasury's unsold shares evenly to every seated traveler right now? This works on the game in progress and cannot be undone."
+            );
+            if (ok) void run({ action: "adminDealShares" });
+          }}
+        >
+          Deal shares to travelers now
         </Button>
       </div>
 
