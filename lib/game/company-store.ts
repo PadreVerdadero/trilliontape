@@ -2,7 +2,18 @@ import { itemById, items } from "@/lib/game/catalog";
 import { DESK_USERNAME, getDb, getItemAuthorized, readTradingHours, setItemAuthorized } from "@/lib/game/db";
 import {
   COMPANY_TIME_ZONE,
+  INDUSTRIES,
   PROPOSAL_KINDS,
+  TRAITS,
+  asIndustry,
+  centralMs,
+  parseTraits,
+  payoutPctFor,
+  pickProfile,
+  planNews,
+  recordPassed,
+  shockOf,
+  swingOf,
   addDaysToKey,
   defaultCompanyEvents,
   defaultCompanySettings,
@@ -25,11 +36,13 @@ import {
   type CompanyEvent,
   type CompanySettings,
   type ProposalKind,
+  type Trait,
 } from "@/lib/game/companies";
 import type {
   CompaniesState,
   CompanyDayView,
   CompanyEntryView,
+  CompanyNewsView,
   CompanyView,
   ProposalView,
 } from "@/lib/game/types";
@@ -49,6 +62,8 @@ type CompanyRow = {
   treasury_stock: number;
   retained: number;
   dividends: number;
+  industry: string;
+  traits: string;
   booked_shares: number;
   bankrupt: number;
 };
@@ -164,17 +179,38 @@ export async function ensureCompanies(now = Date.now()) {
   const rows = (await db.prepare("SELECT * FROM companies").all()) as CompanyRow[];
   const byId = new Map(rows.map((row) => [row.item_id, row]));
   const authorizedOf = await authorizedLookup();
-  for (const item of items) {
+  let seed = await readMeta("company_seed");
+  if (!seed) {
+    seed = String(now);
+    await writeMeta("company_seed", seed);
+  }
+  for (const [index, item] of items.entries()) {
     const issued = authorizedOf(item.id);
     const existing = byId.get(item.id);
+    if (existing && !asIndustry(existing.industry)) {
+      const profile = pickProfile(seed, item.id, index);
+      await db
+        .prepare("UPDATE companies SET industry = ?, traits = ? WHERE item_id = ?")
+        .run(profile.industry, JSON.stringify(profile.traits), item.id);
+    }
     if (!existing) {
+      const profile = pickProfile(seed, item.id, index);
       const start = initialBalance(issued, item.basePrice, settings.parValue);
       await db
         .prepare(
-          `INSERT INTO companies (item_id, cash, loan, par, common_stock, apic, treasury_stock, retained, booked_shares)
-           VALUES (?, ?, 0, ?, ?, ?, 0, 0, ?)`
+          `INSERT INTO companies (item_id, cash, loan, par, common_stock, apic, treasury_stock, retained, booked_shares, industry, traits)
+           VALUES (?, ?, 0, ?, ?, ?, 0, 0, ?, ?, ?)`
         )
-        .run(item.id, start.cash, Math.min(settings.parValue, item.basePrice), start.commonStock, start.apic, issued);
+        .run(
+          item.id,
+          start.cash,
+          Math.min(settings.parValue, item.basePrice),
+          start.commonStock,
+          start.apic,
+          issued,
+          profile.industry,
+          JSON.stringify(profile.traits)
+        );
       continue;
     }
     if (existing.bankrupt || existing.booked_shares === issued) continue;
@@ -208,6 +244,8 @@ async function removeCompanyData(itemId: string) {
     "company_loans",
     "company_days",
     "company_payouts",
+    "company_news",
+    "company_records",
   ]) {
     await db.prepare(`DELETE FROM ${table} WHERE item_id = ?`).run(itemId);
   }
@@ -233,8 +271,11 @@ export async function resetCompanies(now = Date.now()) {
     DELETE FROM company_loans;
     DELETE FROM company_days;
     DELETE FROM company_payouts;
+    DELETE FROM company_news;
+    DELETE FROM company_records;
     UPDATE players SET dividends_received = 0;
   `);
+  await writeMeta("company_seed", String(now));
   await writeMeta("company_day_cursor", dayKeyIn(now));
   await ensureCompanies(now);
 }
@@ -303,11 +344,13 @@ export async function castDividendVote(userId: number, itemId: string, dps: numb
   if (!Number.isInteger(dps) || dps < 0 || dps > 1_000_000) {
     throw new Error("Dividend per share must be a whole number of coins from 0 to 1,000,000.");
   }
-  if ((await sharesHeld(userId, itemId)) < 1) throw new Error("Only shareholders can vote.");
   const settings = await readCompanySettings();
   const book = await readTradingHours();
   const window = dividendVoteWindow(book.hours[itemId], book.timeZone, settings, now);
   if (!voteOpenNow(window, now)) throw new Error("Dividend voting is closed. It opens when trading closes.");
+  await snapshotIfNeeded(itemId, dayKeyIn(now));
+  const atRecord = (await recordRows(dayKeyIn(now), itemId)).find((row) => row.user_id === userId)?.shares ?? 0;
+  if (atRecord < 1) throw new Error("Only holders at the record time can vote on today's dividend.");
   await getDb()
     .prepare(
       `INSERT INTO company_dividend_votes (item_id, day_key, user_id, dps, created_at)
@@ -481,6 +524,129 @@ export async function companyCash(itemId: string) {
   return row?.cash ?? 0;
 }
 
+// ---- Record date snapshots and news ----
+
+async function recordMarker(day: string, itemId: string) {
+  const row = await getDb()
+    .prepare("SELECT 1 AS x FROM company_records WHERE day_key = ? AND item_id = ? AND user_id = 0")
+    .get(day, itemId);
+  return Boolean(row);
+}
+
+async function recordRows(day: string, itemId: string) {
+  return (await getDb()
+    .prepare("SELECT user_id, shares FROM company_records WHERE day_key = ? AND item_id = ? AND user_id > 0")
+    .all(day, itemId)) as { user_id: number; shares: number }[];
+}
+
+/** Freezes who holds each company at the record time (when dividend voting opens). */
+async function snapshotIfNeeded(itemId: string, day: string) {
+  if (await recordMarker(day, itemId)) return;
+  const db = getDb();
+  const holders = (await holdingRows()).filter((row) => row.item_id === itemId);
+  await db.transaction(async () => {
+    await db
+      .prepare("INSERT INTO company_records (day_key, item_id, user_id, shares) VALUES (?, ?, 0, 0) ON CONFLICT DO NOTHING")
+      .run(day, itemId);
+    for (const holder of holders) {
+      await db
+        .prepare("INSERT INTO company_records (day_key, item_id, user_id, shares) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING")
+        .run(day, itemId, holder.user_id, holder.quantity);
+    }
+  });
+}
+
+async function takeSnapshots(now: number, settings: CompanySettings) {
+  const today = dayKeyIn(now);
+  const book = await readTradingHours();
+  const rows = (await getDb().prepare("SELECT item_id FROM companies WHERE bankrupt = 0").all()) as { item_id: string }[];
+  for (const row of rows) {
+    const window = dividendVoteWindow(book.hours[row.item_id], book.timeZone, settings, now);
+    if (recordPassed(window, now)) await snapshotIfNeeded(row.item_id, today);
+  }
+}
+
+function profileOf(row: CompanyRow) {
+  return { industry: asIndustry(row.industry) ?? "retailer", traits: parseTraits(row.traits) };
+}
+
+async function ensureNews(now: number, settings: CompanySettings) {
+  const db = getDb();
+  const today = dayKeyIn(now);
+  if (settings.newsPerDay < 1) return;
+  const has = await db.prepare("SELECT 1 AS x FROM company_news WHERE day_key = ? LIMIT 1").get(today);
+  if (has) return;
+  const rows = (await db.prepare("SELECT * FROM companies WHERE bankrupt = 0").all()) as CompanyRow[];
+  if (rows.length === 0) return;
+  const plans = planNews({
+    companies: rows.map((row) => ({
+      itemId: row.item_id,
+      name: itemById[row.item_id]?.name ?? row.item_id,
+      ...profileOf(row),
+    })),
+    count: settings.newsPerDay,
+    reliabilityPct: settings.rumorReliabilityPct,
+    rand: Math.random,
+  });
+  const dayEnd = centralMs(addDaysToKey(today, 1), 0);
+  await db.transaction(async () => {
+    let late = 0;
+    for (const plan of plans) {
+      let rumorAt = centralMs(today, plan.rumorMin);
+      let confirmAt = centralMs(today, plan.confirmMin);
+      if (rumorAt < now) {
+        // A game that starts mid-day gets its news rolled out from now instead of all at once.
+        const length = confirmAt - rumorAt;
+        rumorAt = now + 60_000 + late * 10 * 60_000;
+        confirmAt = rumorAt + length;
+        late += 1;
+      }
+      if (confirmAt > dayEnd - 5 * 60_000) continue;
+      await db
+        .prepare(
+          `INSERT INTO company_news (item_id, day_key, rumor_text, confirm_text, amount, rumor_at, confirm_at, reliable, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'rumor')`
+        )
+        .run(plan.itemId, today, plan.rumor, plan.confirm, plan.amount, rumorAt, confirmAt, plan.reliable ? 1 : 0);
+    }
+  });
+}
+
+async function processNews(now: number) {
+  const db = getDb();
+  const due = (await db
+    .prepare("SELECT * FROM company_news WHERE status = 'rumor' AND confirm_at <= ? ORDER BY id")
+    .all(now)) as {
+    id: number;
+    item_id: string;
+    confirm_text: string;
+    amount: number;
+    reliable: number;
+  }[];
+  for (const news of due) {
+    const company = (await db.prepare("SELECT bankrupt FROM companies WHERE item_id = ?").get(news.item_id)) as
+      | { bankrupt: number }
+      | undefined;
+    const confirmed = Boolean(news.reliable) && company != null && !company.bankrupt;
+    const info = await db
+      .prepare("UPDATE company_news SET status = ? WHERE id = ? AND status = 'rumor'")
+      .run(confirmed ? "confirmed" : "fizzled", news.id);
+    if (info.changes < 1 || !confirmed) continue;
+    await db
+      .prepare(
+        `INSERT INTO company_entries (item_id, day_key, label, amount, user_id, source, created_at)
+         VALUES (?, ?, ?, ?, NULL, 'news', ?)`
+      )
+      .run(news.item_id, dayKeyIn(now), `News: ${news.confirm_text}`, news.amount, now);
+  }
+}
+
+async function companyTick(now: number, settings: CompanySettings) {
+  await ensureNews(now, settings);
+  await processNews(now);
+  await takeSnapshots(now, settings);
+}
+
 // ---- Daily settlement ----
 
 const clock = globalThis as unknown as { bazaarCompanyClock?: Promise<boolean> };
@@ -490,6 +656,7 @@ export async function runCompanyClock(now = Date.now()) {
   if (clock.bazaarCompanyClock) return clock.bazaarCompanyClock;
   const run = (async () => {
     await ensureCompanies(now);
+    await companyTick(now, await readCompanySettings());
     const today = dayKeyIn(now);
     let cursor = (await readMeta("company_day_cursor")) ?? today;
     if (cursor >= today) return false;
@@ -532,16 +699,19 @@ async function settleDay(day: string, settings: CompanySettings, now: number) {
       const event = choices[Math.floor(Math.random() * choices.length)];
       const target = companies[Math.floor(Math.random() * companies.length)];
       if (event && target) {
+        const profile = profileOf(target);
+        const scaled = Math.round((event.amount * swingOf(profile.industry, profile.traits) * shockOf(profile.industry, profile.traits)) / 10) * 10;
+        const amount = scaled === 0 ? Math.sign(event.amount) * 10 : scaled;
         await db
           .prepare(
             `INSERT INTO company_entries (item_id, day_key, label, amount, user_id, source, created_at)
              VALUES (?, ?, ?, ?, NULL, 'random', ?)`
           )
-          .run(target.item_id, day, `Random event: ${event.name}`, event.amount, now);
+          .run(target.item_id, day, `Random event: ${event.name}`, amount, now);
       }
     }
 
-    const holders = await holdingRows();
+    const current = await holdingRows();
     const authorizedOf = await authorizedLookup();
     const paid = new Map<number, { total: number; parts: string[] }>();
 
@@ -561,7 +731,12 @@ async function settleDay(day: string, settings: CompanySettings, now: number) {
         daily_principal: number;
         daily_interest: number;
       }[];
-      const mine = holders.filter((row) => row.item_id === company.item_id);
+      const currentMine = current.filter((row) => row.item_id === company.item_id);
+      // Holders at the record time are paid and vote; without a snapshot, fall back to today's holders.
+      const mine: { user_id: number; quantity: number }[] = (await recordMarker(day, company.item_id))
+        ? (await recordRows(day, company.item_id)).map((row) => ({ user_id: row.user_id, quantity: row.shares }))
+        : currentMine.map((row) => ({ user_id: row.user_id, quantity: row.quantity }));
+      const profile = profileOf(company);
       const outstanding = mine.reduce((sum, row) => sum + row.quantity, 0);
       const issued = authorizedOf(company.item_id);
       const voteRows = (await db
@@ -587,7 +762,7 @@ async function settleDay(day: string, settings: CompanySettings, now: number) {
         outstanding,
         issued,
         votes,
-        payoutPct: settings.defaultPayoutPct,
+        payoutPct: payoutPctFor(settings.defaultPayoutPct, profile.industry, profile.traits),
       });
 
       await writeBalance(company.item_id, result.balance);
@@ -625,7 +800,7 @@ async function settleDay(day: string, settings: CompanySettings, now: number) {
         await db
           .prepare("UPDATE companies SET bankrupt = 1, bankrupt_at = ? WHERE item_id = ?")
           .run(now, company.item_id);
-        for (const holder of mine) {
+        for (const holder of currentMine) {
           const note = `${name} went bankrupt. Your ${holder.quantity.toLocaleString("en-US")} share${holder.quantity === 1 ? "" : "s"} are wiped out.`;
           await db.prepare("UPDATE players SET last_event = ? WHERE user_id = ?").run(note, holder.user_id);
         }
@@ -661,6 +836,11 @@ async function settleDay(day: string, settings: CompanySettings, now: number) {
 }
 
 // ---- View model ----
+
+function pickIndustryView(id: keyof typeof INDUSTRIES) {
+  const { label, emoji, blurb, chip } = INDUSTRIES[id];
+  return { label, emoji, blurb, chip };
+}
 
 function toDayView(row: {
   day_key: string;
@@ -720,7 +900,7 @@ export async function buildCompaniesState(
     db.prepare("SELECT * FROM companies").all() as Promise<CompanyRow[]>,
     holdingRows(),
   ]);
-  const [entryRows, dayRows, proposalRows, voteRows, dividendVotes, loanRows, uses, payoutDayRow, totalRow] =
+  const [entryRows, dayRows, proposalRows, voteRows, dividendVotes, loanRows, uses, payoutDayRow, totalRow, recordAll, newsRows] =
     await Promise.all([
       db
         .prepare(
@@ -776,6 +956,23 @@ export async function buildCompaniesState(
       db
         .prepare("SELECT COALESCE(dividends_received, 0) AS total FROM players WHERE user_id = ?")
         .get(userId) as Promise<{ total: number } | undefined>,
+      db
+        .prepare("SELECT item_id, user_id, shares FROM company_records WHERE day_key = ?")
+        .all(today) as Promise<{ item_id: string; user_id: number; shares: number }[]>,
+      db
+        .prepare("SELECT * FROM company_news WHERE day_key >= ? AND rumor_at <= ? ORDER BY rumor_at DESC, id DESC LIMIT 40")
+        .all(addDaysToKey(today, -1), now) as Promise<
+        {
+          id: number;
+          item_id: string;
+          rumor_text: string;
+          confirm_text: string;
+          amount: number;
+          rumor_at: number;
+          confirm_at: number;
+          status: string;
+        }[]
+      >,
     ]);
 
   const shareOf = new Map<string, Map<number, number>>();
@@ -802,7 +999,7 @@ export async function buildCompaniesState(
         id: entry.id,
         label: entry.label,
         amount: entry.amount,
-        source: entry.source === "random" ? "random" : "player",
+        source: entry.source === "random" ? "random" : entry.source === "news" ? "news" : "player",
         username: entry.username,
         createdAt: entry.created_at,
       }));
@@ -813,7 +1010,14 @@ export async function buildCompaniesState(
     const history = dayRows.filter((day) => day.item_id === item.id).map(toDayView);
     const window = dividendVoteWindow(book.hours[item.id], book.timeZone, settings, now);
     const votesToday = dividendVotes.filter((vote) => vote.item_id === item.id);
-    const votedShares = votesToday.reduce((sum, vote) => sum + (bag.get(vote.user_id) ?? 0), 0);
+    const recordHere = recordAll.filter((rec) => rec.item_id === item.id);
+    const recorded = recordHere.some((rec) => rec.user_id === 0);
+    const recBag = new Map(recordHere.filter((rec) => rec.user_id > 0).map((rec) => [rec.user_id, rec.shares]));
+    const voteBag = recorded ? recBag : bag;
+    const voteTotal = [...voteBag.values()].reduce((sum, qty) => sum + qty, 0);
+    const votedShares = votesToday.reduce((sum, vote) => sum + (voteBag.get(vote.user_id) ?? 0), 0);
+    const profile = profileOf(row);
+    const myRecorded = recBag.get(userId) ?? 0;
     const proposals: ProposalView[] = proposalRows
       .filter((proposal) => proposal.item_id === item.id)
       .map((proposal) => {
@@ -838,6 +1042,14 @@ export async function buildCompaniesState(
       });
     companies.push({
       itemId: item.id,
+      industry: { id: profile.industry, ...pickIndustryView(profile.industry) },
+      traits: profile.traits.map((trait: Trait) => ({ id: trait, ...TRAITS[trait] })),
+      record: {
+        startMin: window.startMin,
+        passed: recorded || recordPassed(window, now),
+        myShares: recorded ? myRecorded : myShares,
+        paysMe: (recorded ? myRecorded : myShares) > 0,
+      },
       name: item.name,
       emoji: item.emoji,
       image: item.image ?? null,
@@ -869,10 +1081,10 @@ export async function buildCompaniesState(
         startMin: window.startMin,
         endMin: window.endMin,
         myDps: votesToday.find((vote) => vote.user_id === userId)?.dps ?? null,
-        votedPct: outstanding > 0 ? (votedShares / outstanding) * 100 : 0,
+        votedPct: voteTotal > 0 ? (votedShares / voteTotal) * 100 : 0,
         defaultDps: defaultDividendPerShare(
           todayRevenue - todayExpenses - scheduledInterest,
-          settings.defaultPayoutPct,
+          payoutPctFor(settings.defaultPayoutPct, profile.industry, profile.traits),
           issued
         ),
       },
@@ -930,6 +1142,18 @@ export async function buildCompaniesState(
         usedItemId: usedBy.get(event.id) ?? null,
       })),
     companies,
+    news: newsRows.map(
+      (news): CompanyNewsView => ({
+        id: news.id,
+        itemId: news.item_id,
+        status: news.status === "confirmed" ? "confirmed" : news.status === "fizzled" ? "fizzled" : "rumor",
+        headline: news.status === "confirmed" ? news.confirm_text : news.rumor_text,
+        positive: news.amount > 0,
+        rumorAt: news.rumor_at,
+        confirmAt: news.confirm_at,
+        amount: news.status === "confirmed" ? news.amount : null,
+      })
+    ),
     payouts,
     myDividendsTotal: totalRow?.total ?? 0,
     allEvents: isAdmin ? events : [],

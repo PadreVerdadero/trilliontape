@@ -317,7 +317,7 @@ export type CompanyEntryView = {
   id: number;
   label: string;
   amount: number;
-  source: "player" | "random";
+  source: "player" | "random" | "news";
   username: string | null;
   createdAt: number;
 };
@@ -350,8 +350,22 @@ export type ProposalView = {
   note: string | null;
 };
 
+export type CompanyNewsView = {
+  id: number;
+  itemId: string;
+  status: "rumor" | "confirmed" | "fizzled";
+  headline: string;
+  positive: boolean;
+  rumorAt: number;
+  confirmAt: number;
+  amount: number | null;
+};
+
 export type CompanyView = {
   itemId: string;
+  industry: { id: string; label: string; emoji: string; blurb: string; chip: string };
+  traits: { id: string; label: string; blurb: string }[];
+  record: { startMin: number; passed: boolean; myShares: number; paysMe: boolean };
   name: string;
   emoji: string;
   image: string | null;
@@ -412,7 +426,10 @@ export type CompaniesState = {
     bankruptcyRule: "retained" | "equity";
     randomEvents: boolean;
     dealOpeningShares: boolean;
+    newsPerDay: number;
+    rumorReliabilityPct: number;
   };
+  news: CompanyNewsView[];
   myEvents: { id: string; name: string; amount: number; usedItemId: string | null }[];
   companies: CompanyView[];
   payouts: CompanyPayoutView | null;

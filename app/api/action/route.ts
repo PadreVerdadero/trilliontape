@@ -116,6 +116,8 @@ type ActionBody = {
         bankruptcyRule?: "retained" | "equity";
         randomEvents?: boolean;
         dealOpeningShares?: boolean;
+        newsPerDay?: number;
+        rumorReliabilityPct?: number;
       };
     }
   | { action: "adminCompanyEvents"; events: { id?: string; name: string; amount: number; random?: boolean }[] }

@@ -17,6 +17,8 @@ export type CompanySettings = {
   bankruptcyRule: BankruptcyRule;
   randomEvents: boolean;
   dealOpeningShares: boolean;
+  newsPerDay: number;
+  rumorReliabilityPct: number;
 };
 
 export type CompanyEvent = {
@@ -37,6 +39,8 @@ export function defaultCompanySettings(): CompanySettings {
     bankruptcyRule: "retained",
     randomEvents: true,
     dealOpeningShares: false,
+    newsPerDay: 3,
+    rumorReliabilityPct: 70,
   };
 }
 
@@ -84,6 +88,10 @@ export function validateCompanySettings(raw: Partial<CompanySettings>, base = de
   }
   if (raw.randomEvents != null) next.randomEvents = Boolean(raw.randomEvents);
   if (raw.dealOpeningShares != null) next.dealOpeningShares = Boolean(raw.dealOpeningShares);
+  if (raw.newsPerDay != null) next.newsPerDay = wholeInRange(raw.newsPerDay, 0, 10, "News stories per day");
+  if (raw.rumorReliabilityPct != null) {
+    next.rumorReliabilityPct = wholeInRange(raw.rumorReliabilityPct, 0, 100, "Rumor reliability");
+  }
   return next;
 }
 
@@ -373,4 +381,242 @@ export function describeProposal(kind: ProposalKind, amount: number) {
   if (kind === "loan") return `Take a bank loan of ${amount.toLocaleString("en-US")} coins`;
   if (kind === "buyback") return `Buy back ${amount.toLocaleString("en-US")} share${amount === 1 ? "" : "s"} from the market`;
   return `Issue ${amount.toLocaleString("en-US")} new share${amount === 1 ? "" : "s"} to the treasury`;
+}
+
+
+// ---- Industries, traits, news and record date ----
+
+export type Industry = "utility" | "tech" | "bank" | "retailer" | "startup" | "commodity";
+export type Trait = "steady" | "volatile" | "shockProof" | "generous" | "thrifty" | "rumorMill";
+
+export const INDUSTRY_IDS: Industry[] = ["utility", "tech", "bank", "retailer", "startup", "commodity"];
+
+export const INDUSTRIES: Record<
+  Industry,
+  { label: string; emoji: string; swing: number; shock: number; payoutDelta: number; blurb: string; chip: string }
+> = {
+  utility: { label: "Utility", emoji: "💡", swing: 0.5, shock: 0.3, payoutDelta: 15, blurb: "Steady income, shrugs off random shocks, pays out more.", chip: "bg-sky-400/20 text-sky-200" },
+  tech: { label: "Tech", emoji: "💻", swing: 1.5, shock: 1, payoutDelta: -15, blurb: "News hits hard. Reinvests, so the default payout is lower.", chip: "bg-violet-400/20 text-violet-200" },
+  bank: { label: "Bank", emoji: "🏦", swing: 1, shock: 1, payoutDelta: 5, blurb: "Middle of the road, a little more generous.", chip: "bg-emerald-400/20 text-emerald-200" },
+  retailer: { label: "Retailer", emoji: "🛒", swing: 1, shock: 1, payoutDelta: 0, blurb: "Everyday swings in both directions.", chip: "bg-amber-400/20 text-amber-200" },
+  startup: { label: "Startup", emoji: "🚀", swing: 2, shock: 1.2, payoutDelta: -25, blurb: "Wild swings, rarely pays out by default.", chip: "bg-rose-400/20 text-rose-200" },
+  commodity: { label: "Commodity", emoji: "⛏️", swing: 1.25, shock: 1, payoutDelta: 0, blurb: "Moves a bit more than average on news.", chip: "bg-orange-400/20 text-orange-200" },
+};
+
+export const TRAIT_IDS: Trait[] = ["steady", "volatile", "shockProof", "generous", "thrifty", "rumorMill"];
+
+export const TRAITS: Record<Trait, { label: string; blurb: string }> = {
+  steady: { label: "Steady", blurb: "News and events move income 30% less." },
+  volatile: { label: "Volatile", blurb: "News and events move income 40% more." },
+  shockProof: { label: "Shock-proof", blurb: "Random daily events hit it 60% less." },
+  generous: { label: "Generous", blurb: "Default payout is 20 points higher." },
+  thrifty: { label: "Thrifty", blurb: "Default payout is 20 points lower." },
+  rumorMill: { label: "Rumor mill", blurb: "Rumors about it come true 10 points more often." },
+};
+
+const TRAIT_CONFLICTS: [Trait, Trait][] = [
+  ["steady", "volatile"],
+  ["generous", "thrifty"],
+];
+
+export function hashSeed(text: string) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+export function seededRandom(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffled<T>(list: T[], rand: () => number) {
+  const out = [...list];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/** Balanced, game-seeded profile: industries cycle through a shuffled order so each appears evenly. */
+export function pickProfile(seed: string, itemId: string, index: number): { industry: Industry; traits: Trait[] } {
+  const order = shuffled(INDUSTRY_IDS, seededRandom(hashSeed(`${seed}:industries`)));
+  const industry = order[((index % order.length) + order.length) % order.length];
+  const pool = shuffled(TRAIT_IDS, seededRandom(hashSeed(`${seed}:${itemId}`)));
+  const traits: Trait[] = [];
+  for (const trait of pool) {
+    if (traits.length >= 2) break;
+    if (TRAIT_CONFLICTS.some(([a, b]) => (trait === a && traits.includes(b)) || (trait === b && traits.includes(a)))) continue;
+    traits.push(trait);
+  }
+  return { industry, traits };
+}
+
+export function parseTraits(raw: string | null | undefined): Trait[] {
+  try {
+    const list = JSON.parse(raw || "[]") as unknown;
+    return Array.isArray(list) ? (list.filter((t) => TRAIT_IDS.includes(t as Trait)) as Trait[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function asIndustry(value: string | null | undefined): Industry | null {
+  return INDUSTRY_IDS.includes(value as Industry) ? (value as Industry) : null;
+}
+
+export function swingOf(industry: Industry, traits: Trait[]) {
+  let m = INDUSTRIES[industry].swing;
+  if (traits.includes("steady")) m *= 0.7;
+  if (traits.includes("volatile")) m *= 1.4;
+  return m;
+}
+
+export function shockOf(industry: Industry, traits: Trait[]) {
+  let m = INDUSTRIES[industry].shock;
+  if (traits.includes("shockProof")) m *= 0.4;
+  return m;
+}
+
+export function payoutPctFor(base: number, industry: Industry, traits: Trait[]) {
+  let pct = base + INDUSTRIES[industry].payoutDelta;
+  if (traits.includes("generous")) pct += 20;
+  if (traits.includes("thrifty")) pct -= 20;
+  return Math.max(0, Math.min(100, pct));
+}
+
+type NewsTemplate = { rumor: string; confirm: string };
+
+const NEWS: Record<Industry, { pos: NewsTemplate[]; neg: NewsTemplate[] }> = {
+  utility: {
+    pos: [
+      { rumor: "is said to be winning a long grid contract", confirm: "signed the long grid contract" },
+      { rumor: "may get a rate increase approved", confirm: "got its rate increase approved" },
+    ],
+    neg: [
+      { rumor: "is rumored to face storm repair bills", confirm: "paid for storm repairs" },
+      { rumor: "may be fined by regulators", confirm: "was fined by regulators" },
+    ],
+  },
+  tech: {
+    pos: [
+      { rumor: "is rumored to be launching a hit product", confirm: "launched a hit product" },
+      { rumor: "may be about to sign a huge licensing deal", confirm: "signed a huge licensing deal" },
+    ],
+    neg: [
+      { rumor: "is said to be hit by a data breach", confirm: "was hit by a data breach" },
+      { rumor: "may be losing its star engineers", confirm: "lost its star engineers" },
+    ],
+  },
+  bank: {
+    pos: [
+      { rumor: "is said to be booking record lending profits", confirm: "booked record lending profits" },
+      { rumor: "may be winning a big fund-management mandate", confirm: "won a big fund-management mandate" },
+    ],
+    neg: [
+      { rumor: "is rumored to be sitting on bad loans", confirm: "wrote off a pile of bad loans" },
+      { rumor: "may face a compliance penalty", confirm: "paid a compliance penalty" },
+    ],
+  },
+  retailer: {
+    pos: [
+      { rumor: "is rumored to have a blockbuster sales weekend", confirm: "had a blockbuster sales weekend" },
+      { rumor: "may be opening a profitable new chain of stores", confirm: "opened a profitable chain of stores" },
+    ],
+    neg: [
+      { rumor: "is said to be stuck with unsold stock", confirm: "was stuck with unsold stock" },
+      { rumor: "may be hit by a supplier strike", confirm: "was hit by a supplier strike" },
+    ],
+  },
+  startup: {
+    pos: [
+      { rumor: "is rumored to be landing a surprise investor", confirm: "landed a surprise investor" },
+      { rumor: "may be about to go viral", confirm: "went viral" },
+    ],
+    neg: [
+      { rumor: "is said to be burning cash faster than planned", confirm: "burned through cash faster than planned" },
+      { rumor: "may lose its biggest customer", confirm: "lost its biggest customer" },
+    ],
+  },
+  commodity: {
+    pos: [
+      { rumor: "is said to have found a richer seam", confirm: "found a richer seam" },
+      { rumor: "may be benefiting from a price spike", confirm: "cashed in on a price spike" },
+    ],
+    neg: [
+      { rumor: "is rumored to face a supply glut", confirm: "was caught in a supply glut" },
+      { rumor: "may be slowed by an equipment failure", confirm: "was slowed by an equipment failure" },
+    ],
+  },
+};
+
+export type NewsPlan = {
+  itemId: string;
+  positive: boolean;
+  rumor: string;
+  confirm: string;
+  amount: number;
+  rumorMin: number;
+  confirmMin: number;
+  reliable: boolean;
+};
+
+export const NEWS_FIRST_MIN = 9 * 60;
+export const NEWS_LAST_CONFIRM_MIN = 20 * 60;
+
+/** Plans a day of news: staggered rumors through the morning and early afternoon, each confirmed hours later. */
+export function planNews(input: {
+  companies: { itemId: string; name: string; industry: Industry; traits: Trait[] }[];
+  count: number;
+  reliabilityPct: number;
+  rand: () => number;
+}): NewsPlan[] {
+  const { rand } = input;
+  const count = Math.max(0, Math.min(input.count, input.companies.length));
+  if (count === 0) return [];
+  const picks = shuffled(input.companies, rand).slice(0, count);
+  const span = 360 / count;
+  return picks.map((company, index) => {
+    const positive = rand() < 0.55;
+    const templates = NEWS[company.industry][positive ? "pos" : "neg"];
+    const template = templates[Math.floor(rand() * templates.length)];
+    const rumorMin = NEWS_FIRST_MIN + Math.floor((index + rand() * 0.8) * span);
+    const confirmMin = Math.min(NEWS_LAST_CONFIRM_MIN, rumorMin + 120 + Math.floor(rand() * 180));
+    const base = 400 + rand() * 800;
+    const magnitude = Math.max(50, Math.round((base * swingOf(company.industry, company.traits)) / 10) * 10);
+    const reliability = input.reliabilityPct + (company.traits.includes("rumorMill") ? 10 : 0);
+    return {
+      itemId: company.itemId,
+      positive,
+      rumor: `${company.name} ${template.rumor}`,
+      confirm: `${company.name} ${template.confirm}`,
+      amount: positive ? magnitude : -magnitude,
+      rumorMin,
+      confirmMin,
+      reliable: rand() * 100 < reliability,
+    };
+  });
+}
+
+/** UTC milliseconds for a minute-of-day on a Central-time calendar day. */
+export function centralMs(dayKey: string, minute: number, timeZone = COMPANY_TIME_ZONE) {
+  const [y, m, d] = dayKey.split("-").map(Number);
+  const noon = Date.UTC(y, (m || 1) - 1, d || 1, 12);
+  const offset = tzOffsetMinutes(noon, timeZone);
+  return Date.UTC(y, (m || 1) - 1, d || 1, 0, minute) - offset * 60_000;
+}
+
+/** The record time is when voting opens: holders at that moment are paid and vote on the day's dividend. */
+export function recordPassed(window: VoteWindow, now: number) {
+  return minuteOfDayIn(now) >= window.startMin;
 }

@@ -28,7 +28,7 @@ export const DESK_USERNAME = "Government";
 
 export type GamePhase = "lobby" | "live";
 
-const BOOTSTRAP_REV = 21;
+const BOOTSTRAP_REV = 22;
 const INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 const globalForDb = globalThis as unknown as {
@@ -299,6 +299,27 @@ async function migrate(db: GameDb) {
       PRIMARY KEY (item_id, day_key)
     );
 
+    CREATE TABLE IF NOT EXISTS company_news (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id TEXT NOT NULL,
+      day_key TEXT NOT NULL,
+      rumor_text TEXT NOT NULL,
+      confirm_text TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      rumor_at INTEGER NOT NULL,
+      confirm_at INTEGER NOT NULL,
+      reliable INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'rumor'
+    );
+
+    CREATE TABLE IF NOT EXISTS company_records (
+      day_key TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      shares INTEGER NOT NULL,
+      PRIMARY KEY (day_key, item_id, user_id)
+    );
+
     CREATE TABLE IF NOT EXISTS company_payouts (
       day_key TEXT NOT NULL,
       item_id TEXT NOT NULL,
@@ -331,6 +352,8 @@ async function migrate(db: GameDb) {
   await ensureColumn(db, "players", "login_days", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "players", "at_table", "INTEGER NOT NULL DEFAULT 1");
   await ensureColumn(db, "companies", "dividends", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "companies", "industry", "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(db, "companies", "traits", "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn(db, "players", "dividends_received", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "trades", "buy_treasury", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "trades", "sell_treasury", "INTEGER NOT NULL DEFAULT 0");

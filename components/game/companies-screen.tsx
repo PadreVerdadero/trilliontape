@@ -22,6 +22,40 @@ function tone(value: number) {
   return value > 0 ? "text-emerald-300" : value < 0 ? "text-rose-300" : "text-muted-foreground";
 }
 
+function centralHm(ms: number, timeZone: string) {
+  return new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(
+    new Date(ms)
+  );
+}
+
+function IndustryChip({ company }: { company: CompanyView }) {
+  return (
+    <span
+      title={company.industry.blurb}
+      className={cn("inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px]", company.industry.chip)}
+    >
+      <span aria-hidden>{company.industry.emoji}</span>
+      {company.industry.label}
+    </span>
+  );
+}
+
+function TraitChips({ company }: { company: CompanyView }) {
+  return (
+    <>
+      {company.traits.map((trait) => (
+        <span
+          key={trait.id}
+          title={trait.blurb}
+          className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+        >
+          {trait.label}
+        </span>
+      ))}
+    </>
+  );
+}
+
 function centralClock(ms: number, timeZone: string) {
   return new Intl.DateTimeFormat("en-GB", {
     timeZone,
@@ -193,6 +227,10 @@ function CompanyDetail({
           <Row label="Outstanding (can vote)" value={formatNumber(company.outstanding)} />
           <Row label="Treasury shares" value={formatNumber(company.treasuryShares)} note={treasuryNote} />
           <Row label="Market value" value={formatCoins(company.mv)} />
+          <div className="flex flex-wrap items-center gap-1 pb-1 pt-0.5">
+            <IndustryChip company={company} />
+            <TraitChips company={company} />
+          </div>
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <span className="tabular-nums">
               You hold {formatNumber(company.myShares)} ({company.myPct.toFixed(1)}%)
@@ -230,7 +268,7 @@ function CompanyDetail({
                 <li key={entry.id} className="flex justify-between gap-2">
                   <span className="min-w-0 truncate">
                     {entry.label}
-                    <span className="text-muted-foreground"> · {entry.username ?? "random"}</span>
+                    <span className="text-muted-foreground"> · {entry.username ?? (entry.source === "news" ? "news" : "random")}</span>
                   </span>
                   <span className={cn("tabular-nums", tone(entry.amount))}>{signed(entry.amount)}</span>
                 </li>
@@ -244,9 +282,19 @@ function CompanyDetail({
 <Panel title="Dividend vote">
           <p className="text-xs text-muted-foreground">
             Voting is open {win} {TZ_LABEL} (after trading closes). The weighted average of votes pays at 00:00 if
-            voters hold over half the shares; otherwise {state.companies.settings.defaultPayoutPct}% of the net
-            income ÷ issued shares (now {formatCoins(company.vote.defaultDps)} per share). Capped at the company&apos;s
-            cash.
+            voters hold over half the shares; otherwise a default share of the net income ÷ issued shares (now{" "}
+            {formatCoins(company.vote.defaultDps)} per share; the industry and traits move the default). Capped at
+            the company&apos;s cash.
+          </p>
+          <p className="text-xs">
+            <span className="font-medium">Record time {minutesToTimeInput(company.record.startMin)} Central.</span>{" "}
+            {company.record.passed
+              ? company.record.paysMe
+                ? `You were on the record with ${formatNumber(company.record.myShares)} shares, so today's dividend is yours even if you sell.`
+                : "The record has passed: shares bought now miss today's dividend (and its vote)."
+              : company.record.paysMe
+                ? "Hold your shares until then to be paid and to vote today."
+                : "Hold shares at this time to be paid and to vote today."}
           </p>
           <p className="text-xs">
             {company.vote.open ? (
@@ -408,7 +456,7 @@ export function CompaniesScreen({
 }) {
   const { companies } = state;
   const now = useLiveNow(state.now);
-  const [rightTab, setRightTab] = useState<"today" | "vote" | "proposals" | "days" | "events" | "payments">("today");
+  const [rightTab, setRightTab] = useState<"today" | "news" | "vote" | "proposals" | "days" | "events" | "payments">("today");
   const [eventPick, setEventPick] = useState<Record<string, string>>({});
   const selected =
     companies.companies.find((row) => row.itemId === selectedItemId) ?? companies.companies[0] ?? null;
@@ -433,10 +481,11 @@ export function CompaniesScreen({
   );
   const tableEl = (
       <div className="overflow-x-auto rounded-xl bg-card ring-1 ring-foreground/10">
-        <table className={cn("w-full text-left text-xs", desk ? "min-w-[40rem]" : "min-w-[56rem]")}>
+        <table className={cn("w-full text-left text-xs", desk ? "min-w-[46rem]" : "min-w-[62rem]")}>
           <thead className="bg-muted/40 text-muted-foreground">
             <tr>
               <th className="px-3 py-2 font-medium">Company</th>
+              <th className="px-2 py-2 font-medium">Type</th>
               <th className="px-2 py-2 font-medium">Assets</th>
               <th className="px-2 py-2 font-medium">Liabilities</th>
               <th className="px-2 py-2 font-medium">Equity</th>
@@ -463,6 +512,12 @@ export function CompaniesScreen({
                   </span>
                   {company.name}
                   {company.bankrupt ? <span className="ml-1 rounded bg-rose-400/20 px-1 text-rose-200">bankrupt</span> : null}
+                </td>
+                <td className="px-2 py-2">
+                  <div className="flex flex-wrap items-center gap-1">
+                    <IndustryChip company={company} />
+                    <TraitChips company={company} />
+                  </div>
                 </td>
                 <td className="px-2 py-2">{formatNumber(company.assets)}</td>
                 <td className="px-2 py-2">{formatNumber(company.liabilities)}</td>
@@ -510,6 +565,61 @@ export function CompaniesScreen({
           <CompanyDetail key={selected.itemId} company={selected} state={state} pending={pending} run={run} now={now} />
         </div>
   ) : null;
+  const newsEl = (
+    <Panel title="News">
+      <p className="text-xs text-muted-foreground">
+        Rumors land through the morning and early afternoon; about {companies.settings.rumorReliabilityPct}% come true
+        and add revenue or expenses to that company at the next 00:00 settlement. The rest fizzle. Times are Central.
+      </p>
+      {companies.news.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No news yet today.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {companies.news.map((item) => {
+            const company = companies.companies.find((row) => row.itemId === item.itemId);
+            return (
+              <li
+                key={item.id}
+                onClick={() => onSelectItem(item.itemId)}
+                className={cn(
+                  "cursor-pointer rounded-lg bg-background/50 p-2 text-xs ring-1 ring-foreground/10",
+                  selected?.itemId === item.itemId && "ring-primary"
+                )}
+              >
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span
+                    className={cn(
+                      "rounded px-1.5 py-0.5 text-[10px] uppercase",
+                      item.status === "rumor" && "bg-amber-400/20 text-amber-200",
+                      item.status === "confirmed" && "bg-emerald-400/20 text-emerald-200",
+                      item.status === "fizzled" && "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {item.status === "rumor" ? "Rumor" : item.status === "confirmed" ? "Confirmed" : "Fizzled"}
+                  </span>
+                  <span className="tabular-nums text-muted-foreground">
+                    {centralHm(item.rumorAt, companies.timeZone)}
+                  </span>
+                  {company ? <ItemIcon item={company} /> : null}
+                </div>
+                <p className="pt-0.5 font-medium">
+                  {item.status === "fizzled" ? `Did not pan out: ${item.headline}` : item.headline}
+                </p>
+                {item.status === "rumor" ? (
+                  <p className="text-muted-foreground">
+                    {item.positive ? "Good news if true" : "Bad news if true"} · decided around{" "}
+                    {centralHm(item.confirmAt, companies.timeZone)}
+                  </p>
+                ) : item.status === "confirmed" && item.amount != null ? (
+                  <p className={tone(item.amount)}>{signed(item.amount)} coins for the day</p>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Panel>
+  );
   const eventsEl = (
       <Panel title="Your events (each one can be used once per game)">
         <p className="text-xs text-muted-foreground">
@@ -610,6 +720,7 @@ export function CompaniesScreen({
   if (desk) {
     const tabs = [
       ["today", "Today"],
+      ["news", "News"],
       ["vote", "Dividend vote"],
       ["proposals", "Votes"],
       ["days", "History"],
@@ -652,6 +763,8 @@ export function CompaniesScreen({
           <div className="min-h-0 flex-1 overflow-y-auto">
             {rightTab === "events" ? (
               eventsEl
+            ) : rightTab === "news" ? (
+              newsEl
             ) : rightTab === "payments" ? (
               payoutsEl
             ) : selected ? (
@@ -672,6 +785,8 @@ export function CompaniesScreen({
       {desk ? null : stripEl}
 
       {desk ? null : detailEl}
+
+      {desk ? null : newsEl}
 
       {desk ? null : eventsEl}
 
