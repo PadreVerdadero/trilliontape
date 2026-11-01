@@ -34,11 +34,13 @@ export function DepthChart({
   asks,
   mv,
   compact = false,
+  heightClass,
 }: {
   bids: OrderRow[];
   asks: OrderRow[];
   mv: number;
   compact?: boolean;
+  heightClass?: string;
 }) {
   const data = useMemo(() => {
     const bidLevels = cumulative(bids, "bid");
@@ -80,7 +82,7 @@ export function DepthChart({
       </div>
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className={compact ? "h-32 w-full" : "h-40 w-full"}
+        className={heightClass ?? (compact ? "h-32 w-full" : "h-40 w-full")}
         role="img"
         aria-label="Cumulative order book depth"
         preserveAspectRatio="none"

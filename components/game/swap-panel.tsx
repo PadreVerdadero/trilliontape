@@ -40,6 +40,7 @@ function pickLeg(rows: LegDraft[], itemId: string) {
 }
 
 export function SwapPanel({
+  wide = false,
   inventory,
   gold,
   swaps,
@@ -53,6 +54,7 @@ export function SwapPanel({
   onCancel,
   onDecline,
 }: {
+  wide?: boolean;
   inventory: InventoryRow[];
   gold: number;
   swaps: SwapOffer[];
@@ -127,7 +129,8 @@ export function SwapPanel({
   );
 
   return (
-    <div className="space-y-4 rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
+    <div className={cn("space-y-4 rounded-2xl bg-card p-4 ring-1 ring-foreground/10", wide && "grid h-full min-h-0 gap-4 space-y-0 overflow-y-auto lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]")}>
+      <div className="space-y-4">
       <div>
         <p className="font-heading text-lg">Direct deals</p>
         <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
@@ -200,7 +203,9 @@ export function SwapPanel({
       <Button className="h-11 w-full sm:w-auto" disabled={pending} onClick={() => void propose()}>
         Post deal
       </Button>
+      </div>
 
+      <div className="space-y-4">
       <OfferList
         title="Inbox"
         empty="No named deals waiting on you."
@@ -226,6 +231,7 @@ export function SwapPanel({
         prices={prices}
         onAccept={onAccept}
       />
+      </div>
     </div>
   );
 }

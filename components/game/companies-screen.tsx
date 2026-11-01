@@ -141,7 +141,9 @@ function CompanyDetail({
   pending,
   run,
   now,
+  part = "all",
 }: {
+  part?: "all" | "mid" | "balance" | "shares" | "today" | "vote" | "proposals" | "days";
   company: CompanyView;
   state: GameState;
   pending: boolean;
@@ -155,16 +157,19 @@ function CompanyDetail({
   const netToday = company.todayRevenue - company.todayExpenses;
   const win = `${minutesToTimeInput(company.vote.startMin)}–${minutesToTimeInput(company.vote.endMin)}`;
   const treasuryNote = "Counted in dividends, not in votes";
+  const has = (name: "balance" | "shares" | "today" | "vote" | "proposals" | "days") =>
+    part === "all" ? true : part === "mid" ? name === "balance" || name === "shares" : part === name;
 
   return (
     <div className="space-y-3">
-      {company.bankrupt ? (
+      {company.bankrupt && (part === "all" || part === "mid") ? (
         <p className="rounded-lg bg-rose-950/60 px-3 py-2 text-sm text-rose-100 ring-1 ring-rose-400/40">
           {company.name} is bankrupt. Shares were wiped out and trading is closed.
         </p>
       ) : null}
-      <div className="grid gap-3 lg:grid-cols-2">
-        <Panel title="Balance sheet">
+      <div className={cn("grid gap-3", part === "all" && "lg:grid-cols-2")}>
+        {has("balance") ? (
+<Panel title="Balance sheet">
           <Row label="Cash" value={formatCoins(company.cash)} />
           <Row label="Total assets" value={formatCoins(company.assets)} strong />
           <Row label="Loan balance" value={formatCoins(company.loan)} />
@@ -180,8 +185,10 @@ function CompanyDetail({
             {formatNumber(company.equity)}.
           </p>
         </Panel>
+) : null}
 
-        <Panel title="Shares and your vote">
+        {has("shares") ? (
+<Panel title="Shares and your vote">
           <Row label="Issued" value={formatNumber(company.issued)} />
           <Row label="Outstanding (can vote)" value={formatNumber(company.outstanding)} />
           <Row label="Treasury shares" value={formatNumber(company.treasuryShares)} note={treasuryNote} />
@@ -202,8 +209,10 @@ function CompanyDetail({
             1 vote per share. Minority under 20%, Significant 20–50%, Majority over 50%.
           </p>
         </Panel>
+) : null}
 
-        <Panel title="Today (counts at 00:00 settlement)">
+        {has("today") ? (
+<Panel title="Today (counts at 00:00 settlement)">
           <Row label="Revenue" value={formatCoins(company.todayRevenue)} />
           <Row label="Expenses" value={formatCoins(company.todayExpenses)} />
           <Row label="Net so far" value={signed(netToday)} strong />
@@ -229,8 +238,10 @@ function CompanyDetail({
             </ul>
           )}
         </Panel>
+) : null}
 
-        <Panel title="Dividend vote">
+        {has("vote") ? (
+<Panel title="Dividend vote">
           <p className="text-xs text-muted-foreground">
             Voting is open {win} {TZ_LABEL} (after trading closes). The weighted average of votes pays at 00:00 if
             voters hold over half the shares; otherwise {state.companies.settings.defaultPayoutPct}% of the net
@@ -267,9 +278,11 @@ function CompanyDetail({
             </Button>
           </div>
         </Panel>
+) : null}
       </div>
 
-      <Panel title="Shareholder votes (loan, buyback, new shares)">
+      {has("proposals") ? (
+<Panel title="Shareholder votes (loan, buyback, new shares)">
         <p className="text-xs text-muted-foreground">
           Needs more than half of the voting shares. Loans come from the bank at {state.companies.settings.interestPct}%
           interest over {state.companies.settings.loanTermDays} days. A buyback buys shares from players&apos; asks at their
@@ -334,8 +347,10 @@ function CompanyDetail({
           </ul>
         ) : null}
       </Panel>
+) : null}
 
-      <Panel title="Recent days">
+      {has("days") ? (
+<Panel title="Recent days">
         {company.history.length === 0 ? (
           <p className="text-xs text-muted-foreground">No settled days yet. The first settlement is at 00:00 Central.</p>
         ) : (
@@ -371,6 +386,7 @@ function CompanyDetail({
           </div>
         )}
       </Panel>
+) : null}
     </div>
   );
 }
@@ -381,7 +397,9 @@ export function CompaniesScreen({
   run,
   selectedItemId,
   onSelectItem,
+  desk = false,
 }: {
+  desk?: boolean;
   state: GameState;
   pending: boolean;
   run: Run;
@@ -390,13 +408,14 @@ export function CompaniesScreen({
 }) {
   const { companies } = state;
   const now = useLiveNow(state.now);
+  const [rightTab, setRightTab] = useState<"today" | "vote" | "proposals" | "days" | "events" | "payments">("today");
   const [eventPick, setEventPick] = useState<Record<string, string>>({});
   const selected =
     companies.companies.find((row) => row.itemId === selectedItemId) ?? companies.companies[0] ?? null;
   const settle = companies.nextSettleAt - now;
 
-  return (
-    <div className="space-y-3">
+
+  const headerEl = (
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <p className="font-heading text-xl sm:text-2xl">Companies</p>
@@ -411,9 +430,10 @@ export function CompaniesScreen({
           Dividends received: {formatCoins(companies.myDividendsTotal)}
         </div>
       </div>
-
+  );
+  const tableEl = (
       <div className="overflow-x-auto rounded-xl bg-card ring-1 ring-foreground/10">
-        <table className="w-full min-w-[56rem] text-left text-xs">
+        <table className={cn("w-full text-left text-xs", desk ? "min-w-[40rem]" : "min-w-[56rem]")}>
           <thead className="bg-muted/40 text-muted-foreground">
             <tr>
               <th className="px-3 py-2 font-medium">Company</th>
@@ -463,7 +483,8 @@ export function CompaniesScreen({
           </tbody>
         </table>
       </div>
-
+  );
+  const stripEl = (
       <div className="flex flex-wrap gap-1">
         {companies.companies.map((company) => (
           <button
@@ -480,16 +501,16 @@ export function CompaniesScreen({
           </button>
         ))}
       </div>
-
-      {selected ? (
+  );
+  const detailEl = selected ? (
         <div className="space-y-3">
           <p className="font-heading text-lg">
             <ItemIcon item={selected} /> {selected.name}
           </p>
           <CompanyDetail key={selected.itemId} company={selected} state={state} pending={pending} run={run} now={now} />
         </div>
-      ) : null}
-
+  ) : null;
+  const eventsEl = (
       <Panel title="Your events (each one can be used once per game)">
         <p className="text-xs text-muted-foreground">
           Assign events to companies. Gains count as revenue, losses as expenses. Place them where they matter: one
@@ -541,7 +562,8 @@ export function CompaniesScreen({
           })}
         </ul>
       </Panel>
-
+  );
+  const payoutsEl = (
       <Panel title={companies.payouts ? `Dividend payments for ${companies.payouts.dayKey}` : "Dividend payments"}>
         {!companies.payouts ? (
           <p className="text-xs text-muted-foreground">No dividends have been paid yet.</p>
@@ -583,6 +605,77 @@ export function CompaniesScreen({
           </div>
         )}
       </Panel>
+  );
+
+  if (desk) {
+    const tabs = [
+      ["today", "Today"],
+      ["vote", "Dividend vote"],
+      ["proposals", "Votes"],
+      ["days", "History"],
+      ["events", "Events"],
+      ["payments", "Payments"],
+    ] as const;
+    const detailProps = { company: selected, state, pending, run, now };
+    return (
+      <div className="grid h-full min-h-0 grid-cols-1 gap-3 overflow-y-auto p-3 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1.1fr)] xl:overflow-hidden">
+        <div className="flex min-h-0 flex-col gap-3 xl:overflow-y-auto [&>*]:shrink-0 [&_td]:px-1.5 [&_td]:py-1 [&_th]:px-1.5 [&_th]:py-1">
+          {headerEl}
+          {tableEl}
+        </div>
+        <div className="min-h-0 space-y-3 xl:overflow-y-auto">
+          {selected ? (
+            <>
+              <p className="font-heading text-lg">
+                <ItemIcon item={selected} /> {selected.name}
+              </p>
+              <CompanyDetail part="mid" key={`${selected.itemId}-mid`} {...detailProps} company={selected} />
+            </>
+          ) : null}
+        </div>
+        <div className="flex min-h-0 flex-col gap-2">
+          <div className="flex shrink-0 flex-wrap gap-1">
+            {tabs.map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setRightTab(id)}
+                className={cn(
+                  "h-8 rounded-lg px-2.5 text-xs font-medium",
+                  rightTab === id ? "bg-primary text-primary-foreground" : "bg-muted/60 text-muted-foreground hover:bg-muted"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {rightTab === "events" ? (
+              eventsEl
+            ) : rightTab === "payments" ? (
+              payoutsEl
+            ) : selected ? (
+              <CompanyDetail part={rightTab} key={`${selected.itemId}-${rightTab}`} {...detailProps} company={selected} />
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {desk ? null : headerEl}
+
+      {desk ? null : tableEl}
+
+      {desk ? null : stripEl}
+
+      {desk ? null : detailEl}
+
+      {desk ? null : eventsEl}
+
+      {desk ? null : payoutsEl}
     </div>
   );
 }

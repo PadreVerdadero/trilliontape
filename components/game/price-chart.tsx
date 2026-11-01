@@ -98,8 +98,6 @@ export function PriceChart({
   mv,
   bestBid,
   bestAsk,
-  bids = [],
-  asks = [],
   myOrders = [],
   onCancel,
   quantity = 1,
@@ -108,6 +106,7 @@ export function PriceChart({
   describeAt,
   onMoveOrder,
   compact = false,
+  fill = false,
   now,
   candleMs = MINUTE_MS,
 }: {
@@ -116,8 +115,6 @@ export function PriceChart({
   mv?: number | null;
   bestBid?: number | null;
   bestAsk?: number | null;
-  bids?: OrderRow[];
-  asks?: OrderRow[];
   myOrders?: OrderRow[];
   onCancel?: (id: number) => void;
   quantity?: number;
@@ -126,6 +123,7 @@ export function PriceChart({
   describeAt?: (side: "buy" | "sell", price: number) => string;
   onMoveOrder?: (group: ChartOrderGroup, toPrice: number) => void;
   compact?: boolean;
+  fill?: boolean;
   now?: number;
   candleMs?: number;
 }) {
@@ -140,6 +138,25 @@ export function PriceChart({
   );
   const [hover, setHover] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ w: 640, h: 320 });
+  useEffect(() => {
+    if (!fill) return;
+    const el = boxRef.current;
+    if (!el) return;
+    const measure = () => {
+      const rect = el.getBoundingClientRect();
+      setBox((prev) =>
+        Math.abs(prev.w - rect.width) < 1 && Math.abs(prev.h - rect.height) < 1
+          ? prev
+          : { w: rect.width, h: rect.height }
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [fill]);
   const [ghost, setGhost] = useState<{ side: "buy" | "sell"; price: number } | null>(null);
   const [armed, setArmed] = useState<
     | { kind: "place"; side: "buy" | "sell"; price: number }
@@ -147,7 +164,6 @@ export function PriceChart({
     | null
   >(null);
   const [drag, setDrag] = useState<{ group: ChartOrderGroup; price: number } | null>(null);
-  const [depthHover, setDepthHover] = useState<{ side: "bid" | "ask"; level: { price: number; qty: number; orders: number; total: number } } | null>(null);
   const [manual, setManual] = useState<{ lo: number; hi: number } | null>(null);
   const traded = prints.length > 0;
   const shown = traded
@@ -174,11 +190,10 @@ export function PriceChart({
   const min = manual?.lo ?? autoMin;
   const max = manual?.hi ?? autoMax;
   const span = Math.max(1, max - min);
-  const depthW = 64;
-  const pad = { top: 14, right: 78 + depthW, bottom: 6, left: 36 };
-  const width = 640 + depthW;
-  const height = compact ? 300 : 440;
-  const volH = 32;
+  const pad = { top: 14, right: 78, bottom: 6, left: 36 };
+  const width = fill ? Math.max(320, Math.round(box.w)) : 640;
+  const height = fill ? Math.max(180, Math.round(box.h)) : compact ? 300 : 440;
+  const volH = fill ? Math.max(28, Math.round(height * 0.16)) : 32;
   const gap = 8;
   const innerW = width - pad.left - pad.right;
   const candleH = height - pad.top - pad.bottom - volH - gap;
@@ -211,44 +226,6 @@ export function PriceChart({
   if (mv != null && bestAsk != null) {
     [mvLabelY, askLabelY] = nudge(mvLabelY, askLabelY);
   }
-  const depth = useMemo(() => {
-    const build = (rows: OrderRow[], side: "bid" | "ask") => {
-      const byPrice = new Map<number, { qty: number; orders: number }>();
-      for (const row of rows) {
-        if (row.remaining <= 0) continue;
-        const entry = byPrice.get(row.price) ?? { qty: 0, orders: 0 };
-        entry.qty += row.remaining;
-        entry.orders += 1;
-        byPrice.set(row.price, entry);
-      }
-      const sorted = [...byPrice.entries()].sort((a, b) => (side === "bid" ? b[0] - a[0] : a[0] - b[0]));
-      let total = 0;
-      return sorted.map(([price, entry]) => {
-        total += entry.qty;
-        return { price, qty: entry.qty, orders: entry.orders, total };
-      });
-    };
-    const bidLevels = build(bids, "bid");
-    const askLevels = build(asks, "ask");
-    const maxTotal = Math.max(1, bidLevels.at(-1)?.total ?? 0, askLevels.at(-1)?.total ?? 0);
-    return { bidLevels, askLevels, maxTotal };
-  }, [bids, asks]);
-  const depthBars = (levels: typeof depth.bidLevels, side: "bid" | "ask") =>
-    levels.flatMap((level, index) => {
-      if (level.price < min || level.price > max) return [];
-      const next = levels[index + 1];
-      const y0 = yFor(level.price);
-      const y1 = next ? yFor(Math.min(max, Math.max(min, next.price))) : y0 + (side === "bid" ? 3 : -3);
-      return [
-        {
-          key: `${side}-${level.price}`,
-          y: Math.min(y0, y1),
-          h: Math.max(2, Math.abs(y1 - y0)),
-          w: Math.max(2, (level.total / depth.maxTotal) * (depthW - 6)),
-          level,
-        },
-      ];
-    });
   const mine = useMemo(() => {
     const groups = new Map<string, ChartOrderGroup>();
     for (const row of myOrders) {
@@ -263,9 +240,6 @@ export function PriceChart({
     }
     return [...groups.values()];
   }, [myOrders, min, max]);
-  const offScale = [...depth.bidLevels, ...depth.askLevels].filter(
-    (level) => level.price < min || level.price > max
-  ).length;
   const maxVol = Math.max(1, ...shown.map((candle) => candle.volume));
   const active = hover != null ? shown[hover] : null;
   const activeX = hover != null ? xMid(hover) : 0;
@@ -347,16 +321,23 @@ export function PriceChart({
       : null;
 
   return (
-    <div className="rounded-xl bg-background/40 p-3 ring-1 ring-foreground/10">
-      <div className="mb-2 flex items-end justify-between gap-3">
+    <div className={cn("rounded-xl bg-background/40 p-3 ring-1 ring-foreground/10", fill && "flex h-full min-h-0 flex-col p-2")}>
+      <div className={cn("mb-2 flex items-end justify-between gap-3", fill && "mb-1")}>
         <div>
           <p className="font-heading text-lg">Price</p>
-          <p className="text-xs text-muted-foreground">
-            {traded
-              ? `Each candle is ${Math.round(candleMs / MINUTE_MS)} minutes. Open is the previous close. Last ${CHART_CANDLES} candles, oldest to newest. Hover for open, high, low, close.`
-              : "No trades yet. The candle sits at the starting price."}{" "}
-            Dashed marks on the right are MV, best bid, and best ask. Bars under the candles are volume. Shaded bars beside the price scale are cumulative bid (green) and ask (red) depth, growing leftward. Your own orders are amber lines (limit) and dashed purple lines (stop); drag one up or down to move it, or tap its ✕ to cancel. Click the left half of the chart to buy and the right half to sell at that price: above the best ask is a Buy STP, at it a market buy, below it a Bid (mirrored for sells).{offScale > 0 ? ` ${offScale} price level${offScale === 1 ? "" : "s"} sit outside this price range.` : ""}
-          </p>
+          {fill ? (
+            <p className="text-[11px] text-muted-foreground">
+              {Math.round(candleMs / MINUTE_MS)}-minute candles · volume bars below · dashed marks are MV, bid and ask ·
+              amber lines are your limits, purple your stops · click to place, drag to move, ✕ to cancel
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {traded
+                ? `Each candle is ${Math.round(candleMs / MINUTE_MS)} minutes. Open is the previous close. Last ${CHART_CANDLES} candles, oldest to newest. Hover for open, high, low, close.`
+                : "No trades yet. The candle sits at the starting price."}{" "}
+              Dashed marks on the right are MV, best bid, and best ask. Bars under the candles are volume. Shaded bars beside the price scale are cumulative bid (green) and ask (red) depth, growing leftward. Your own orders are amber lines (limit) and dashed purple lines (stop); drag one up or down to move it, or tap its ✕ to cancel. Click the left half of the chart to buy and the right half to sell at that price: above the best ask is a Buy STP, at it a market buy, below it a Bid (mirrored for sells).
+            </p>
+          )}
         </div>
         <p
           className={cn(
@@ -403,11 +384,11 @@ export function PriceChart({
           </button>
         ) : null}
       </div>
-      <div className="relative" onMouseLeave={() => setHover(null)}>
+      <div ref={boxRef} className={cn("relative", fill && "min-h-0 flex-1")} onMouseLeave={() => setHover(null)}>
         <svg
           ref={svgRef}
           viewBox={`0 0 ${width} ${height}`}
-          className={cn("h-auto w-full", interactive && "cursor-crosshair")}
+          className={cn(fill ? "absolute inset-0 block h-full w-full" : "h-auto w-full", interactive && "cursor-crosshair")}
           role="img"
           aria-label="One-minute candlestick chart"
           onPointerMove={(event) => {
@@ -481,59 +462,7 @@ export function PriceChart({
               </g>
             );
           })}
-          {([["bid", depth.bidLevels], ["ask", depth.askLevels]] as const).flatMap(([side, levels]) =>
-            depthBars(levels, side).map((bar) => (
-              <rect
-                key={bar.key}
-                x={endX + depthW - 2 - bar.w}
-                y={bar.y}
-                width={bar.w}
-                height={bar.h}
-                className={side === "bid" ? "fill-emerald-400/35" : "fill-rose-400/35"}
-              >
-
-              </rect>
-            ))
-          )}
-          <line
-            x1={endX + depthW - 2}
-            x2={endX + depthW - 2}
-            y1={pad.top}
-            y2={pad.top + candleH}
-            className="stroke-border"
-          />
-          <rect
-            x={endX}
-            y={pad.top}
-            width={depthW}
-            height={candleH}
-            className="fill-transparent"
-            onPointerMove={(event) => {
-              const point = svgPoint(event.clientX, event.clientY);
-              if (!point) return;
-              const at = min + (1 - (point.y - pad.top) / candleH) * span;
-              const nearest = [
-                ...depth.bidLevels.map((level) => ({ side: "bid" as const, level })),
-                ...depth.askLevels.map((level) => ({ side: "ask" as const, level })),
-              ]
-                .filter((entry) => entry.level.price >= min && entry.level.price <= max)
-                .sort((a, b) => Math.abs(a.level.price - at) - Math.abs(b.level.price - at))[0];
-              setDepthHover(nearest && Math.abs(yFor(nearest.level.price) - point.y) <= 14 ? nearest : null);
-            }}
-            onPointerLeave={() => setDepthHover(null)}
-            onClick={(event) => event.stopPropagation()}
-          />
-          {depthHover ? (
-            <line
-              x1={pad.left}
-              x2={endX + depthW - 2}
-              y1={yFor(depthHover.level.price)}
-              y2={yFor(depthHover.level.price)}
-              strokeWidth="1"
-              className={depthHover.side === "bid" ? "stroke-emerald-200" : "stroke-rose-200"}
-              pointerEvents="none"
-            />
-          ) : null}          {mine.map((group) => {
+          {mine.map((group) => {
             const dragging = drag?.group.key === group.key;
             const shownPrice = dragging ? drag.price : group.price;
             const y = yFor(shownPrice);
@@ -635,7 +564,7 @@ export function PriceChart({
             <>
               <line
                 x1={pad.left}
-                x2={endX + depthW - 2}
+                x2={endX}
                 y1={yFor(mv)}
                 y2={yFor(mv)}
                 strokeWidth="2"
@@ -705,7 +634,7 @@ export function PriceChart({
           </text>
         </svg>
         {armed ? (
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/60 px-2 py-1.5 text-xs">
+          <div className={cn("flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/90 px-2 py-1.5 text-xs", fill ? "absolute inset-x-1 bottom-1 z-20" : "mt-2")}>
             <span className="font-medium">
               {armed.kind === "place"
                 ? `${describeAt?.(armed.side, armed.price) ?? armed.side} @ ${formatNumber(armed.price)} · qty ${formatNumber(quantity)}`
@@ -727,23 +656,6 @@ export function PriceChart({
                 Cancel
               </button>
             </span>
-          </div>
-        ) : null}
-        {depthHover ? (
-          <div
-            className="pointer-events-none absolute z-10 -translate-x-full -translate-y-1/2 rounded-md bg-zinc-950/95 px-2 py-1 text-xs shadow-lg ring-1 ring-white/15"
-            style={{
-              left: `${((endX + depthW) / width) * 100 - 1}%`,
-              top: `${(yFor(depthHover.level.price) / height) * 100}%`,
-            }}
-          >
-            <p className={depthHover.side === "bid" ? "font-medium text-emerald-300" : "font-medium text-rose-300"}>
-              {depthHover.side === "bid" ? "Bids" : "Asks"} @ {formatNumber(depthHover.level.price)}
-            </p>
-            <p className="tabular-nums">
-              {formatNumber(depthHover.level.orders)} order{depthHover.level.orders === 1 ? "" : "s"} · {formatNumber(depthHover.level.qty)} unit{depthHover.level.qty === 1 ? "" : "s"}
-            </p>
-            <p className="tabular-nums text-muted-foreground">cumulative {formatNumber(depthHover.level.total)}</p>
           </div>
         ) : null}
         {active ? (          <div

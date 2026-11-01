@@ -39,7 +39,7 @@ export function PlayScreen({
   const marketSort = useMarketSort(state?.prices ?? [], catalog);
   const [mobile, setMobile] = useMobileLayout();
   const [tab, setTab] = useState<PhoneTab>("book");
-  const [view, setView] = useState<"market" | "companies">("market");
+  const [deskTab, setDeskTab] = useState<"market" | "companies" | "stocks" | "deals">("market");
 
   if (loading) {
     return (
@@ -75,11 +75,15 @@ export function PlayScreen({
     );
   }
 
-  const market = (
+  const renderMarket = (view: "market" | "stocks" | "deals") => (
     <MarketPanel
       state={state}
       pending={pending}
       compact={mobile}
+      view={view}
+      pack={pack}
+      orders={orders}
+      onOpenMarket={() => setDeskTab("market")}
       selectedItemId={itemId}
       onSelectItem={setItemId}
       rankedItems={marketSort.rankedItems}
@@ -123,8 +127,9 @@ export function PlayScreen({
     />
   );
 
-  const firms = (
+  const renderFirms = (desk: boolean) => (
     <CompaniesScreen
+      desk={desk}
       state={state}
       pending={pending}
       run={run}
@@ -182,16 +187,18 @@ export function PlayScreen({
                 {(
                   [
                     ["market", "Market"],
+                    ["stocks", "Stocks"],
+                    ["deals", "Deals"],
                     ["companies", "Companies"],
                   ] as const
                 ).map(([id, label]) => (
                   <button
                     key={id}
                     type="button"
-                    onClick={() => setView(id)}
+                    onClick={() => setDeskTab(id)}
                     className={cn(
                       "h-9 px-3",
-                      view === id ? "bg-primary text-primary-foreground" : "bg-muted/50 text-muted-foreground"
+                      deskTab === id ? "bg-primary text-primary-foreground" : "bg-muted/50 text-muted-foreground"
                     )}
                   >
                     {label}
@@ -261,9 +268,9 @@ export function PlayScreen({
         <>
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-3" data-keep-scroll>
             <div className={cn(tab !== "pack" && "hidden")}>{pack}</div>
-            <div className={cn(tab !== "book" && "hidden")}>{market}</div>
+            <div className={cn(tab !== "book" && "hidden")}>{renderMarket("market")}</div>
             <div className={cn(tab !== "orders" && "hidden")}>{orders}</div>
-            <div className={cn(tab !== "firms" && "hidden")}>{firms}</div>
+            <div className={cn(tab !== "firms" && "hidden")}>{renderFirms(false)}</div>
           </div>
           <nav className="grid shrink-0 grid-cols-4 gap-1 border-t border-border/80 bg-background/95 px-2 py-2">
             {(
@@ -288,24 +295,9 @@ export function PlayScreen({
             ))}
           </nav>
         </>
-      ) : view === "companies" ? (
-        <div className="min-h-0 w-full flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4" data-keep-scroll>
-          {firms}
-        </div>
       ) : (
-        <div className="flex min-h-0 w-full flex-1 overflow-hidden">
-          <aside className="flex w-[13.5rem] shrink-0 flex-col overflow-hidden border-r border-border/70 bg-card/40 sm:w-[17.5rem] lg:w-[20.5rem]">
-            <div className="min-h-0 flex-1 overflow-y-auto pb-1" data-keep-scroll>
-              {pack}
-            </div>
-          </aside>
-          <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 sm:px-3" data-keep-scroll>
-            {market}
-            <div className="mt-4 md:hidden">{orders}</div>
-          </main>
-          <aside className="hidden w-[15rem] shrink-0 flex-col overflow-hidden border-l border-border/70 bg-card/40 md:flex lg:w-[17rem]">
-            {orders}
-          </aside>
+        <div className="min-h-0 w-full flex-1 overflow-hidden">
+          {deskTab === "companies" ? renderFirms(true) : renderMarket(deskTab)}
         </div>
       )}
     </div>

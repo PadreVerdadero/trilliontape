@@ -22,6 +22,7 @@ import { useOrderBook } from "@/hooks/use-game";
 import { useConfirmClick } from "@/hooks/use-confirm-click";
 import { PriceChart, type ChartOrderGroup } from "@/components/game/price-chart";
 import { DepthChart } from "@/components/game/depth-chart";
+import { OrderBookPanel } from "@/components/game/order-book";
 import { SwapPanel } from "@/components/game/swap-panel";
 import type { GameState, Item, OrderRow, OrderSide, TakeQuoteInput } from "@/lib/game/types";
 
@@ -39,47 +40,6 @@ function treasuryAtBest(rows: OrderRow[]) {
     price,
     remaining: treasury.filter((row) => row.price === price).reduce((sum, row) => sum + row.remaining, 0),
   };
-}
-
-function TreasuryButton({
-  kind,
-  quote,
-  pending,
-  onTake,
-}: {
-  kind: "buy" | "sell";
-  quote: { id: number; itemId: string; price: number; remaining: number };
-  pending: boolean;
-  onTake: (input: TakeQuoteInput) => void;
-}) {
-  const buy = kind === "buy";
-  return (
-    <button
-      type="button"
-      disabled={pending}
-      title={`${buy ? "Buy" : "Sell"} ${formatNumber(quote.remaining)} at ${formatCoins(quote.price)}`}
-      onClick={() =>
-        onTake({
-          orderId: quote.id,
-          itemId: quote.itemId,
-          side: buy ? "sell" : "buy",
-          price: quote.price,
-          treasury: true,
-        })
-      }
-      className={cn(
-        "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium ring-1 disabled:opacity-50",
-        buy
-          ? "bg-white text-zinc-950 ring-zinc-300 hover:bg-zinc-100"
-          : "bg-black text-white ring-white/50 hover:bg-zinc-900"
-      )}
-    >
-      {buy ? "Buy from treasury" : "Sell to treasury"}
-      <span className={cn("tabular-nums", buy ? "text-zinc-600" : "text-white/75")}>
-        {formatCoins(quote.price)} ×{formatNumber(quote.remaining)}
-      </span>
-    </button>
-  );
 }
 
 function groupLadderRows(rows: OrderRow[], selfId: number) {
@@ -569,6 +529,10 @@ export function MarketPanel({
   cycleSort,
   onSetCandle,
   compact = false,
+  view = "market",
+  pack = null,
+  orders = null,
+  onOpenMarket,
 }: {
   state: GameState;
   pending: boolean;
@@ -600,6 +564,10 @@ export function MarketPanel({
   cycleSort: (column: SortColumn) => void;
   onSetCandle: (ms: number) => Promise<unknown>;
   compact?: boolean;
+  view?: "market" | "stocks" | "deals";
+  pack?: ReactNode;
+  orders?: ReactNode;
+  onOpenMarket?: () => void;
 }) {
   const catalogById = playItemMap(playItems(state.items));
   const selected = catalogById[selectedItemId];
@@ -610,7 +578,6 @@ export function MarketPanel({
   const [orderType, setOrderType] = useState<"limit" | "stop">("limit");
   const [nudgeStep, setNudgeStep] = useState(1);
   const [confirmClick, setConfirmClick] = useConfirmClick(Boolean(compact));
-  const [showDepthBox, setShowDepthBox] = useState(false);
   const [customCandleMinutes, setCustomCandleMinutes] = useState("");
   const [candleChoice, setCandleChoice] = useState<string>(
     CANDLE_PRESETS.some((row) => row.ms === state.candleMs) ? String(state.candleMs) : "custom"
@@ -890,81 +857,9 @@ export function MarketPanel({
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  return (
-    <div className="space-y-3">
-      {compact ? (
-        <div className="sticky top-0 z-20 -mx-3 overflow-x-auto border-b border-border/60 bg-background/95 px-3 py-1.5 backdrop-blur sm:-mx-4 sm:px-4">
-          <div className="flex w-max gap-1">
-            {rankedItems.map((item) => {
-              const active = item.id === selectedItemId;
-              const rarity = rarityOf(item.id, rarityMap);
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  title={item.name}
-                  aria-label={item.name}
-                  aria-current={active}
-                  onClick={() => pick(item.id)}
-                  className={cn(
-                    "flex size-9 shrink-0 items-center justify-center rounded-lg text-xl ring-1 transition-colors",
-                    rarityClass(item.id, rarityMap),
-                    active
-                      ? "bg-primary/25 ring-primary"
-                      : "bg-background/60 ring-foreground/10 hover:bg-background"
-                  )}
-                >
-                  <ItemIcon item={item} />
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="font-heading text-xl sm:text-2xl">Player market</p>
-          <p className="text-xs text-muted-foreground">
-            {compact
-              ? "Crossing bids fill at the ask. Tap a column to sort, then tap a row to trade that good."
-              : "Crossing bids fill at the ask. Bid/Ask is units on the book. Volume is trades today. Tap a column to sort. Bid/Ask: two taps on bids, then two on asks. Pack on the left follows this order. W/S select · A fills MV · D qty 1 · arrows nudge · Shift/Ctrl step place · V buy · X sell · Q take bid · E take ask · T buy treasury · R sell treasury."}
-          </p>
-        </div>
-        {state.recentTrades[0] ? (
-          <p className="rounded-lg bg-primary/10 px-2 py-1 text-xs">
-            Last tape: {formatMilitaryTime(state.recentTrades[0].createdAt, true)} ·{" "}
-            <ItemIcon item={catalogById[state.recentTrades[0].itemId]} />{" "}
-            {formatNumber(state.recentTrades[0].quantity)} @{" "}
-            {formatCoins(state.recentTrades[0].price)}
-          </p>
-        ) : (
-          <p className="text-xs text-muted-foreground">No trades yet. Post the first order.</p>
-        )}
-      </div>
-
-      {selected ? (
-        <div className="space-y-2 rounded-2xl bg-card p-3 ring-1 ring-foreground/10">
-          <div className="space-y-2">
-            <div className="min-w-0">
-              <p className="font-heading text-xl">
-                <ItemIcon item={selected} /> {selected.name}
-              </p>
-              {(() => {
-                const window = state.tradingHours[selected.id];
-                const open = goodIsOpen(window, state.now, state.tradingTimeZone);
-                return (
-                  <p className={cn("text-xs", open ? "text-emerald-400" : "text-amber-300")}>
-                    {open ? "Trading open" : "Trading closed"} · {describeTradingWindow(window)}
-                  </p>
-                );
-              })()}
-            </div>
-            <div
-              className={cn(
-                "grid grid-cols-2 gap-2 sm:grid-cols-4",
-                state.player.isAdmin ? "xl:grid-cols-8" : "xl:grid-cols-7"
-              )}
-            >
+  const statGrid = (className: string) =>
+    selected ? (
+      <div className={className}>
               <Stat
                 label="Price"
                 value={price?.last != null ? formatCoins(price.last) : "none"}
@@ -1016,10 +911,10 @@ export function MarketPanel({
                 compactLabel
                 title="Purchased and in packs / issued but not yet purchased"
               />
-            </div>
-          </div>
+      </div>
+    ) : null;
 
-          <div className="grid gap-2 lg:grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)] lg:items-start">
+  const ticketBox = (
             <div className="rounded-lg bg-background/40 p-2 ring-1 ring-foreground/10">
               <p className="mb-1 font-heading text-sm">Post your own order</p>
               {compact ? null : (
@@ -1105,6 +1000,417 @@ export function MarketPanel({
                 </p>
               ) : null}
             </div>
+  );
+
+  const chartEl = (fill: boolean) =>
+    selected ? (
+          <PriceChart
+            key={selected.id}
+            trades={book?.chartTrades ?? book?.trades ?? []}
+            basePrice={selected.basePrice}
+            mv={price?.vwap ?? selected.basePrice}
+            bestBid={price?.bestBid}
+            bestAsk={price?.bestAsk}
+            myOrders={state.myOrders.filter((row) => row.itemId === selected.id)}
+            quantity={Math.max(1, Number(qtyInput) || 1)}
+            confirm={confirmClick}
+            onPlaceAt={(side, at) => void chartPlace(side, at)}
+            describeAt={describeChart}
+            onMoveOrder={(group, to) => void chartMove(group, to)}
+            onCancel={(id) => {
+              void (async () => {
+                await onCancel(id);
+                await reloadBook();
+              })();
+            }}
+            compact={compact}
+            fill={fill}
+            now={state.now}
+            candleMs={state.candleMs}
+          />
+    ) : null;
+
+  const controlsRow = (
+    <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-xs text-muted-foreground">
+      <label className="flex items-center gap-1.5">
+        <input
+          type="checkbox"
+          checked={confirmClick}
+          onChange={(event) => setConfirmClick(event.target.checked)}
+        />
+        Confirm chart orders with a second tap
+      </label>
+      <label className="flex items-center gap-1.5">
+        Chart quantity
+        <input
+          type="number"
+          min={1}
+          inputMode="numeric"
+          className="h-7 w-16 rounded-md border border-border bg-background px-2 text-foreground"
+          value={qtyInput}
+          onChange={(event) => setQtyInput(event.target.value)}
+          aria-label="Chart order quantity"
+        />
+      </label>
+      <span className="flex items-center gap-1.5">
+            <label htmlFor="player-candle">Your candle size</label>
+            <select
+              id="player-candle"
+              className="h-8 rounded-md border border-border bg-background px-2 text-foreground"
+              value={candleChoice}
+              onChange={(event) => {
+                const choice = event.target.value;
+                setCandleChoice(choice);
+                if (choice !== "custom") {
+                  setCustomCandleMinutes("");
+                  void onSetCandle(Number(choice));
+                } else {
+                  setCustomCandleMinutes(String(Math.round(state.candleMs / 60_000)));
+                }
+              }}
+            >
+              {CANDLE_PRESETS.filter((row) => row.ms <= 60 * 60_000).map((row) => (
+                <option key={row.ms} value={row.ms}>{row.label}</option>
+              ))}
+              <option value="custom">Custom minutes</option>
+            </select>
+            {candleChoice === "custom" ? (
+              <input
+                inputMode="numeric"
+                className="h-8 w-20 rounded-md border border-border bg-background px-2 text-foreground"
+                value={customCandleMinutes}
+                placeholder={String(Math.round(state.candleMs / 60_000))}
+                onChange={(event) => setCustomCandleMinutes(event.target.value)}
+                onBlur={() => {
+                  const minutes = Number(customCandleMinutes);
+                  if (Number.isInteger(minutes) && minutes >= 1 && minutes <= 1440) {
+                    void onSetCandle(minutes * 60_000);
+                  }
+                }}
+                aria-label="Custom candle minutes"
+              />
+            ) : null}
+      </span>
+    </div>
+  );
+
+  const stockList = (
+      <div className="overflow-x-auto rounded-2xl bg-card ring-1 ring-foreground/10">
+        <div
+          className={cn(
+            "grid gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium text-muted-foreground sm:px-4",
+            compact
+              ? "grid-cols-[minmax(0,1.3fr)_4.5rem_4.5rem_4.5rem]"
+              : "min-w-[52rem] grid-cols-[minmax(7rem,0.9fr)_minmax(9rem,1.25fr)_minmax(9rem,1.25fr)_minmax(8.5rem,1.15fr)_minmax(4.5rem,0.55fr)_minmax(4.5rem,0.55fr)]"
+          )}
+        >
+          <SortHead label="Item" column="item" sort={sort} dir={sortDir} onSort={cycleSort} />
+          <SortHead
+            label="Bid"
+            column="bid"
+            sort={sort}
+            dir={sortDir}
+            onSort={cycleSort}
+            className="text-emerald-200/90"
+          />
+          <SortHead
+            label="Ask"
+            column="ask"
+            sort={sort}
+            dir={sortDir}
+            onSort={cycleSort}
+            className="text-rose-200/90"
+          />
+          <SortHead
+            label="MV"
+            column="mv"
+            sort={sort}
+            dir={sortDir}
+            onSort={cycleSort}
+            className="text-sky-200/90"
+          />
+          {compact ? null : (
+            <>
+          <SortHead
+            label={
+              <>
+                <span
+                  className={cn(
+                    sort === "bookBid" && "text-emerald-300",
+                    sort === "bookAsk" && "opacity-40"
+                  )}
+                >
+                  Bid
+                </span>
+                /
+                <span
+                  className={cn(
+                    sort === "bookAsk" && "text-rose-300",
+                    sort === "bookBid" && "opacity-40"
+                  )}
+                >
+                  Ask
+                </span>
+              </>
+            }
+            column="book"
+            sort={sort}
+            dir={sortDir}
+            onSort={cycleSort}
+            className="text-amber-200/90"
+            emphasize={false}
+          />
+          <SortHead
+            label="Volume"
+            column="volume"
+            sort={sort}
+            dir={sortDir}
+            onSort={cycleSort}
+            className="text-violet-200/90"
+          />
+            </>
+          )}
+        </div>
+        <div>
+          {rankedItems.map((item) => {
+            const quote = state.prices.find((row) => row.itemId === item.id);
+            const active = item.id === selectedItemId;
+            const wanted = quote?.wanted ?? 0;
+            const listed = quote?.listed ?? 0;
+            const volume = quote?.tradesToday ?? 0;
+            const rarity = rarityOf(item.id, rarityMap);
+            return (
+              <button
+                key={item.id}
+                type="button"
+                data-market-item={item.id}
+                onClick={() => {
+                  pick(item.id);
+                  if (view === "stocks") onOpenMarket?.();
+                }}
+                className={cn(
+                  "grid w-full items-center gap-2 border-b border-border/40 px-3 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4",
+                  compact
+                    ? "grid-cols-[minmax(0,1.3fr)_4.5rem_4.5rem_4.5rem] py-3"
+                    : "min-w-[52rem] grid-cols-[minmax(7rem,0.9fr)_minmax(9rem,1.25fr)_minmax(9rem,1.25fr)_minmax(8.5rem,1.15fr)_minmax(4.5rem,0.55fr)_minmax(4.5rem,0.55fr)] py-1.5",
+                  active && "bg-primary/15"
+                )}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className={cn("text-xl", rarityClass(item.id, rarityMap))}>
+                    <ItemIcon item={item} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{item.name}</span>
+                    <span className={cn("text-[10px] uppercase tracking-wide", rarityText[rarity])}>
+                      {rarityLabel[rarity]}
+                    </span>
+                  </span>
+                </span>
+                <span className="min-w-0 truncate font-medium tabular-nums text-emerald-200" title={quote?.bestBid != null ? formatCoins(quote.bestBid) : undefined}>
+                  {quote?.bestBid != null ? (compact ? formatCompact(quote.bestBid) : formatCoins(quote.bestBid)) : "—"}
+                </span>
+                <span className="min-w-0 truncate font-medium tabular-nums text-rose-200" title={quote?.bestAsk != null ? formatCoins(quote.bestAsk) : undefined}>
+                  {quote?.bestAsk != null ? (compact ? formatCompact(quote.bestAsk) : formatCoins(quote.bestAsk)) : "—"}
+                </span>
+                <span className="min-w-0 truncate font-medium tabular-nums text-sky-200" title={formatCoins(quote?.vwap ?? item.basePrice)}>
+                  {compact ? formatCompact(quote?.vwap ?? item.basePrice) : formatCoins(quote?.vwap ?? item.basePrice)}
+                </span>
+                {compact ? null : (
+                  <>
+                <span className="font-medium tabular-nums text-amber-200">
+                  <span
+                    className={cn(
+                      sort === "bookBid" && "text-emerald-200",
+                      sort === "bookAsk" && "opacity-40"
+                    )}
+                  >
+                    {formatNumber(wanted)}
+                  </span>
+                  /
+                  <span
+                    className={cn(
+                      sort === "bookAsk" && "text-rose-200",
+                      sort === "bookBid" && "opacity-40"
+                    )}
+                  >
+                    {formatNumber(listed)}
+                  </span>
+                </span>
+                <span className="font-medium text-violet-200">
+                  {formatNumber(volume)}
+                </span>
+                  </>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+  );
+
+  const tapeBox = (
+      <div className="rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
+        <p className="mb-3 font-heading text-lg">Recent trades</p>
+        {state.recentTrades.length === 0 ? (
+          <p className="text-sm text-muted-foreground">The tape is empty.</p>
+        ) : (
+          <ul className="space-y-2">
+            {state.recentTrades.map((trade) => {
+              const item = catalogById[trade.itemId];
+              return (
+                <li key={trade.id} className="text-sm">
+                  <span className="tabular-nums text-muted-foreground">
+                    {formatMilitaryTime(trade.createdAt, true)}
+                  </span>{" "}
+                  · <ItemIcon item={item} /> {item?.name} · {formatNumber(trade.quantity)} @ {formatCoins(trade.price)}{" "}
+                  · {trade.buyUsername} bought from {trade.sellUsername}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {state.winners.length > 0 ? (
+          <p className="pt-3 text-xs text-muted-foreground">
+            Worth a trillion: {state.winners.map((row) => row.username).join(", ")}
+          </p>
+        ) : null}
+      </div>
+  );
+
+  const swapBox = (wide: boolean) => (
+      <SwapPanel
+        wide={wide}
+        inventory={state.player.inventory}
+        gold={state.player.availableGold}
+        swaps={state.swaps ?? []}
+        travelers={state.travelers ?? []}
+        pending={pending}
+        rarityMap={rarityMap}
+        prices={state.prices}
+        catalog={playItems(state.items)}
+        onPropose={onProposeSwap}
+        onAccept={onAcceptSwap}
+        onCancel={onCancelSwap}
+        onDecline={onDeclineSwap}
+      />
+  );
+
+  const depthEl = (heightClass: string) =>
+    selected ? (
+      <DepthChart
+        bids={book?.bids ?? []}
+        asks={book?.asks ?? []}
+        mv={price?.vwap ?? selected.basePrice}
+        compact={compact}
+        heightClass={heightClass}
+      />
+    ) : null;
+
+  const recentList = selected ? (
+    <div>
+      <p className="mb-1 font-heading text-sm">
+        Recent <ItemIcon item={selected} /> {selected.name} trades
+      </p>
+      {(book?.trades ?? []).length === 0 ? (
+        <p className="text-xs text-muted-foreground">No prints for this item yet.</p>
+      ) : (
+        <ul className="space-y-0.5 text-xs">
+          {(book?.trades ?? []).slice(0, 14).map((trade) => (
+            <li key={trade.id} className="flex min-w-0 items-baseline gap-1.5">
+              <span className="shrink-0 tabular-nums text-muted-foreground" title={formatMilitaryTime(trade.createdAt, true)}>
+                {formatMilitaryTime(trade.createdAt)}
+              </span>
+              <span className="shrink-0 tabular-nums" title={formatCoins(trade.price)}>
+                {trade.quantity > 1 ? `${formatCompact(trade.quantity)} @ ` : null}
+                {formatCompact(trade.price)}
+              </span>
+              <span className="min-w-0 truncate">
+                <span className="text-emerald-200">{trade.buyUsername}</span>
+                <span className="text-muted-foreground"> – </span>
+                <span className="text-rose-200">{trade.sellUsername}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  ) : null;
+
+  const renderCompact = () => (
+    <div className="space-y-3">
+      {compact ? (
+        <div className="sticky top-0 z-20 -mx-3 overflow-x-auto border-b border-border/60 bg-background/95 px-3 py-1.5 backdrop-blur sm:-mx-4 sm:px-4">
+          <div className="flex w-max gap-1">
+            {rankedItems.map((item) => {
+              const active = item.id === selectedItemId;
+              const rarity = rarityOf(item.id, rarityMap);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  title={item.name}
+                  aria-label={item.name}
+                  aria-current={active}
+                  onClick={() => pick(item.id)}
+                  className={cn(
+                    "flex size-9 shrink-0 items-center justify-center rounded-lg text-xl ring-1 transition-colors",
+                    rarityClass(item.id, rarityMap),
+                    active
+                      ? "bg-primary/25 ring-primary"
+                      : "bg-background/60 ring-foreground/10 hover:bg-background"
+                  )}
+                >
+                  <ItemIcon item={item} />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="font-heading text-xl sm:text-2xl">Player market</p>
+          <p className="text-xs text-muted-foreground">
+            {compact
+              ? "Crossing bids fill at the ask. Tap a column to sort, then tap a row to trade that good."
+              : "Crossing bids fill at the ask. Bid/Ask is units on the book. Volume is trades today. Tap a column to sort. Bid/Ask: two taps on bids, then two on asks. Pack on the left follows this order. W/S select · A fills MV · D qty 1 · arrows nudge · Shift/Ctrl step place · V buy · X sell · Q take bid · E take ask · T buy treasury · R sell treasury."}
+          </p>
+        </div>
+        {state.recentTrades[0] ? (
+          <p className="rounded-lg bg-primary/10 px-2 py-1 text-xs">
+            Last tape: {formatMilitaryTime(state.recentTrades[0].createdAt, true)} ·{" "}
+            <ItemIcon item={catalogById[state.recentTrades[0].itemId]} />{" "}
+            {formatNumber(state.recentTrades[0].quantity)} @{" "}
+            {formatCoins(state.recentTrades[0].price)}
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">No trades yet. Post the first order.</p>
+        )}
+      </div>
+
+      {selected ? (
+        <div className="space-y-2 rounded-2xl bg-card p-3 ring-1 ring-foreground/10">
+          <div className="space-y-2">
+            <div className="min-w-0">
+              <p className="font-heading text-xl">
+                <ItemIcon item={selected} /> {selected.name}
+              </p>
+              {(() => {
+                const window = state.tradingHours[selected.id];
+                const open = goodIsOpen(window, state.now, state.tradingTimeZone);
+                return (
+                  <p className={cn("text-xs", open ? "text-emerald-400" : "text-amber-300")}>
+                    {open ? "Trading open" : "Trading closed"} · {describeTradingWindow(window)}
+                  </p>
+                );
+              })()}
+            </div>
+            {statGrid(cn("grid grid-cols-2 gap-2 sm:grid-cols-4", state.player.isAdmin ? "xl:grid-cols-8" : "xl:grid-cols-7"))}
+          </div>
+
+          <div className="grid gap-2 lg:grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)] lg:items-start">
+            {ticketBox}
 
             <div>
               <p className="mb-1 font-heading text-sm">
@@ -1193,370 +1499,129 @@ export function MarketPanel({
             />
           ) : null}
 
-          <PriceChart
-            key={selected.id}
-            trades={book?.chartTrades ?? book?.trades ?? []}
-            basePrice={selected.basePrice}
-            mv={price?.vwap ?? selected.basePrice}
-            bestBid={price?.bestBid}
-            bestAsk={price?.bestAsk}
-            bids={book?.bids ?? []}
-            asks={book?.asks ?? []}
-            myOrders={state.myOrders.filter((row) => row.itemId === selected.id)}
-            quantity={Math.max(1, Number(qtyInput) || 1)}
-            confirm={confirmClick}
-            onPlaceAt={(side, at) => void chartPlace(side, at)}
-            describeAt={describeChart}
-            onMoveOrder={(group, to) => void chartMove(group, to)}
-            onCancel={(id) => {
-              void (async () => {
-                await onCancel(id);
-                await reloadBook();
-              })();
-            }}
-            compact={compact}
-            now={state.now}
-            candleMs={state.candleMs}
-          />
-          <label className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={confirmClick}
-              onChange={(event) => setConfirmClick(event.target.checked)}
-            />
-            Confirm chart orders with a second tap (default: on for Phone Layout, off on computer)
-          </label>
-          <label className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
-            Chart quantity
-            <input
-              type="number"
-              min={1}
-              inputMode="numeric"
-              className="h-7 w-20 rounded-md border border-border bg-background px-2 text-foreground"
-              value={qtyInput}
-              onChange={(event) => setQtyInput(event.target.value)}
-              aria-label="Chart order quantity"
-            />
-            <span>(market orders take 1)</span>
-          </label>
-          <label className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={showDepthBox}
-              onChange={(event) => setShowDepthBox(event.target.checked)}
-            />
-            Show separate order depth chart
-          </label>
-          {showDepthBox ? (
-            <DepthChart
-              bids={book?.bids ?? []}
-              asks={book?.asks ?? []}
-              mv={price?.vwap ?? selected.basePrice}
-              compact={compact}
-            />
-          ) : null}
-          <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
-            <label htmlFor="player-candle">Your candle size</label>
-            <select
-              id="player-candle"
-              className="h-8 rounded-md border border-border bg-background px-2 text-foreground"
-              value={candleChoice}
-              onChange={(event) => {
-                const choice = event.target.value;
-                setCandleChoice(choice);
-                if (choice !== "custom") {
-                  setCustomCandleMinutes("");
-                  void onSetCandle(Number(choice));
-                } else {
-                  setCustomCandleMinutes(String(Math.round(state.candleMs / 60_000)));
-                }
-              }}
-            >
-              {CANDLE_PRESETS.filter((row) => row.ms <= 60 * 60_000).map((row) => (
-                <option key={row.ms} value={row.ms}>{row.label}</option>
-              ))}
-              <option value="custom">Custom minutes</option>
-            </select>
-            {candleChoice === "custom" ? (
-              <input
-                inputMode="numeric"
-                className="h-8 w-20 rounded-md border border-border bg-background px-2 text-foreground"
-                value={customCandleMinutes}
-                placeholder={String(Math.round(state.candleMs / 60_000))}
-                onChange={(event) => setCustomCandleMinutes(event.target.value)}
-                onBlur={() => {
-                  const minutes = Number(customCandleMinutes);
-                  if (Number.isInteger(minutes) && minutes >= 1 && minutes <= 1440) {
-                    void onSetCandle(minutes * 60_000);
-                  }
-                }}
-                aria-label="Custom candle minutes"
-              />
-            ) : null}
-          </div>
-
-          <div className={cn("grid gap-4 lg:grid-cols-2", compact && "hidden")}>
-            <div className="rounded-xl bg-emerald-950/25 p-3 ring-1 ring-emerald-400/20">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <p className="font-heading text-lg text-emerald-100">Bids</p>
-                {deskBid ? (
-                  <TreasuryButton
-                    kind="sell"
-                    quote={deskBid}
-                    pending={pending}
-                    onTake={(input) => void takeQuote(input)}
-                  />
-                ) : null}
-              </div>
-              <p className="mb-2 text-[11px] text-muted-foreground">
-                Tap a row for a <strong>market order</strong> to sell 1. Tap yours to cancel 1. <kbd className="text-foreground">Q</kbd> takes
-                the best traveler bid. <kbd className="text-foreground">R</kbd> sells 1 to the treasury.
-              </p>
-              <OrderList
-                empty="No traveler bids. Post one above if you want this."
-                side="buy"
-                rows={playerQuotes(book?.bids ?? [])}
-                myStops={state.myOrders.filter(
-                  (row) => row.itemId === selected.id && row.orderType === "stop" && row.side === "buy"
-                )}
-                selfId={state.player.id}
-                pending={pending}
-                onTake={(input) => void takeQuote(input)}
-                onCancel={async (id) => {
-                  await onCancel(id);
-                  await reloadBook();
-                }}
-              />
-            </div>
-            <div className="rounded-xl bg-rose-950/20 p-3 ring-1 ring-rose-400/20">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <p className="font-heading text-lg text-rose-100">Asks</p>
-                {deskAsk ? (
-                  <TreasuryButton
-                    kind="buy"
-                    quote={deskAsk}
-                    pending={pending}
-                    onTake={(input) => void takeQuote(input)}
-                  />
-                ) : null}
-              </div>
-              <p className="mb-2 text-[11px] text-muted-foreground">
-                Tap a row for a <strong>market order</strong> to buy 1. Tap yours to cancel 1. <kbd className="text-foreground">E</kbd> takes
-                the best traveler ask. <kbd className="text-foreground">T</kbd> buys 1 from the treasury.
-              </p>
-              <OrderList
-                empty="No traveler asks. Post your own, or buy from the treasury if it is offering."
-                side="sell"
-                rows={playerQuotes(book?.asks ?? [])}
-                myStops={state.myOrders.filter(
-                  (row) => row.itemId === selected.id && row.orderType === "stop" && row.side === "sell"
-                )}
-                selfId={state.player.id}
-                pending={pending}
-                onTake={(input) => void takeQuote(input)}
-                onCancel={async (id) => {
-                  await onCancel(id);
-                  await reloadBook();
-                }}
-              />
-            </div>
-          </div>
+          {chartEl(false)}
+          {controlsRow}
+          {depthEl(compact ? "h-32 w-full" : "h-40 w-full")}
         </div>
       ) : null}
 
-      <div className="overflow-x-auto rounded-2xl bg-card ring-1 ring-foreground/10">
-        <div
-          className={cn(
-            "grid gap-2 border-b border-border/70 bg-muted/40 px-3 py-2 text-[11px] font-medium text-muted-foreground sm:px-4",
-            compact
-              ? "grid-cols-[minmax(0,1.3fr)_4.5rem_4.5rem_4.5rem]"
-              : "min-w-[52rem] grid-cols-[minmax(7rem,0.9fr)_minmax(9rem,1.25fr)_minmax(9rem,1.25fr)_minmax(8.5rem,1.15fr)_minmax(4.5rem,0.55fr)_minmax(4.5rem,0.55fr)]"
-          )}
-        >
-          <SortHead label="Item" column="item" sort={sort} dir={sortDir} onSort={cycleSort} />
-          <SortHead
-            label="Bid"
-            column="bid"
-            sort={sort}
-            dir={sortDir}
-            onSort={cycleSort}
-            className="text-emerald-200/90"
-          />
-          <SortHead
-            label="Ask"
-            column="ask"
-            sort={sort}
-            dir={sortDir}
-            onSort={cycleSort}
-            className="text-rose-200/90"
-          />
-          <SortHead
-            label="MV"
-            column="mv"
-            sort={sort}
-            dir={sortDir}
-            onSort={cycleSort}
-            className="text-sky-200/90"
-          />
-          {compact ? null : (
-            <>
-          <SortHead
-            label={
-              <>
-                <span
-                  className={cn(
-                    sort === "bookBid" && "text-emerald-300",
-                    sort === "bookAsk" && "opacity-40"
-                  )}
-                >
-                  Bid
-                </span>
-                /
-                <span
-                  className={cn(
-                    sort === "bookAsk" && "text-rose-300",
-                    sort === "bookBid" && "opacity-40"
-                  )}
-                >
-                  Ask
-                </span>
-              </>
-            }
-            column="book"
-            sort={sort}
-            dir={sortDir}
-            onSort={cycleSort}
-            className="text-amber-200/90"
-            emphasize={false}
-          />
-          <SortHead
-            label="Volume"
-            column="volume"
-            sort={sort}
-            dir={sortDir}
-            onSort={cycleSort}
-            className="text-violet-200/90"
-          />
-            </>
-          )}
-        </div>
-        <div className={cn(compact ? "max-h-none" : "max-h-[min(72vh,40rem)] overflow-auto")}>
-          {rankedItems.map((item) => {
-            const quote = state.prices.find((row) => row.itemId === item.id);
-            const active = item.id === selectedItemId;
-            const wanted = quote?.wanted ?? 0;
-            const listed = quote?.listed ?? 0;
-            const volume = quote?.tradesToday ?? 0;
-            const rarity = rarityOf(item.id, rarityMap);
-            return (
-              <button
-                key={item.id}
-                type="button"
-                data-market-item={item.id}
-                onClick={() => pick(item.id)}
-                className={cn(
-                  "grid w-full items-center gap-2 border-b border-border/40 px-3 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4",
-                  compact
-                    ? "grid-cols-[minmax(0,1.3fr)_4.5rem_4.5rem_4.5rem] py-3"
-                    : "min-w-[52rem] grid-cols-[minmax(7rem,0.9fr)_minmax(9rem,1.25fr)_minmax(9rem,1.25fr)_minmax(8.5rem,1.15fr)_minmax(4.5rem,0.55fr)_minmax(4.5rem,0.55fr)] py-2.5 sm:py-3",
-                  active && "bg-primary/15"
-                )}
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className={cn("text-xl", rarityClass(item.id, rarityMap))}>
-                    <ItemIcon item={item} />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{item.name}</span>
-                    <span className={cn("text-[10px] uppercase tracking-wide", rarityText[rarity])}>
-                      {rarityLabel[rarity]}
-                    </span>
-                  </span>
-                </span>
-                <span className="min-w-0 truncate font-medium tabular-nums text-emerald-200" title={quote?.bestBid != null ? formatCoins(quote.bestBid) : undefined}>
-                  {quote?.bestBid != null ? (compact ? formatCompact(quote.bestBid) : formatCoins(quote.bestBid)) : "—"}
-                </span>
-                <span className="min-w-0 truncate font-medium tabular-nums text-rose-200" title={quote?.bestAsk != null ? formatCoins(quote.bestAsk) : undefined}>
-                  {quote?.bestAsk != null ? (compact ? formatCompact(quote.bestAsk) : formatCoins(quote.bestAsk)) : "—"}
-                </span>
-                <span className="min-w-0 truncate font-medium tabular-nums text-sky-200" title={formatCoins(quote?.vwap ?? item.basePrice)}>
-                  {compact ? formatCompact(quote?.vwap ?? item.basePrice) : formatCoins(quote?.vwap ?? item.basePrice)}
-                </span>
-                {compact ? null : (
-                  <>
-                <span className="font-medium tabular-nums text-amber-200">
-                  <span
-                    className={cn(
-                      sort === "bookBid" && "text-emerald-200",
-                      sort === "bookAsk" && "opacity-40"
-                    )}
-                  >
-                    {formatNumber(wanted)}
-                  </span>
-                  /
-                  <span
-                    className={cn(
-                      sort === "bookAsk" && "text-rose-200",
-                      sort === "bookBid" && "opacity-40"
-                    )}
-                  >
-                    {formatNumber(listed)}
-                  </span>
-                </span>
-                <span className="font-medium text-violet-200">
-                  {formatNumber(volume)}
-                </span>
-                  </>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {stockList}
 
-      <div className="rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
-        <p className="mb-3 font-heading text-lg">Recent trades</p>
-        {state.recentTrades.length === 0 ? (
-          <p className="text-sm text-muted-foreground">The tape is empty.</p>
-        ) : (
-          <ul className="space-y-2">
-            {state.recentTrades.map((trade) => {
-              const item = catalogById[trade.itemId];
-              return (
-                <li key={trade.id} className="text-sm">
-                  <span className="tabular-nums text-muted-foreground">
-                    {formatMilitaryTime(trade.createdAt, true)}
-                  </span>{" "}
-                  · <ItemIcon item={item} /> {item?.name} · {formatNumber(trade.quantity)} @ {formatCoins(trade.price)}{" "}
-                  · {trade.buyUsername} bought from {trade.sellUsername}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {state.winners.length > 0 ? (
-          <p className="pt-3 text-xs text-muted-foreground">
-            Worth a trillion: {state.winners.map((row) => row.username).join(", ")}
-          </p>
-        ) : null}
-      </div>
+      {tapeBox}
 
-      <SwapPanel
-        inventory={state.player.inventory}
-        gold={state.player.availableGold}
-        swaps={state.swaps ?? []}
-        travelers={state.travelers ?? []}
-        pending={pending}
-        rarityMap={rarityMap}
-        prices={state.prices}
-        catalog={playItems(state.items)}
-        onPropose={onProposeSwap}
-        onAccept={onAcceptSwap}
-        onCancel={onCancelSwap}
-        onDecline={onDeclineSwap}
-      />
+      {swapBox(false)}
     </div>
   );
+
+  if (!compact) {
+    if (view === "stocks") {
+      return (
+        <div className="grid h-full min-h-0 gap-3 overflow-y-auto p-3 lg:grid-cols-[minmax(0,1fr)_24rem]">
+          <div className="min-h-0 space-y-2">
+            <div>
+              <p className="font-heading text-xl">Stocks</p>
+              <p className="text-xs text-muted-foreground">
+                Tap a column to sort. Tap a row to open that stock on the Market tab. Bid/Ask is units on the book.
+                Volume is trades today.
+              </p>
+            </div>
+            {stockList}
+          </div>
+          <div className="min-h-0 overflow-y-auto">{tapeBox}</div>
+        </div>
+      );
+    }
+    if (view === "deals") {
+      return <div className="h-full min-h-0 p-3">{swapBox(true)}</div>;
+    }
+    const hours = selected ? state.tradingHours[selected.id] : undefined;
+    const tradingOpen = selected ? goodIsOpen(hours, state.now, state.tradingTimeZone) : true;
+    return (
+      <div className="grid h-full min-h-0 grid-cols-[minmax(14rem,19rem)_minmax(0,1fr)_minmax(15rem,20rem)] overflow-hidden">
+        <aside className="flex min-h-0 flex-col overflow-hidden border-r border-border/70 bg-card/40">
+          <div className="min-h-0 shrink overflow-y-auto" data-keep-scroll>
+            {pack}
+          </div>
+          <div className="shrink-0 border-t border-border/70 p-2">{ticketBox}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto border-t border-border/70 p-2">{recentList}</div>
+        </aside>
+        <main className="flex min-h-0 min-w-0 flex-col gap-2 overflow-hidden p-2">
+          {selected ? (
+            <>
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-heading text-lg leading-tight">
+                    <ItemIcon item={selected} /> {selected.name}
+                  </p>
+                  <p className={cn("text-xs", tradingOpen ? "text-emerald-400" : "text-amber-300")}>
+                    {tradingOpen ? "Trading open" : "Trading closed"} · {describeTradingWindow(hours)}
+                  </p>
+                </div>
+                <div className="flex max-w-full gap-1 overflow-x-auto">
+                  {rankedItems.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      title={item.name}
+                      aria-label={item.name}
+                      aria-current={item.id === selectedItemId}
+                      onClick={() => pick(item.id)}
+                      className={cn(
+                        "flex size-8 shrink-0 items-center justify-center rounded-lg text-lg ring-1 transition-colors",
+                        item.id === selectedItemId
+                          ? "bg-primary/25 ring-primary"
+                          : "bg-background/60 ring-foreground/10 hover:bg-background"
+                      )}
+                    >
+                      <ItemIcon item={item} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {statGrid("grid shrink-0 grid-cols-4 gap-1.5 xl:grid-cols-8")}
+              <div className="min-h-0 flex-1">{chartEl(true)}</div>
+              <div className="shrink-0">{depthEl("h-24 w-full")}</div>
+              <div className="shrink-0">{controlsRow}</div>
+            </>
+          ) : null}
+        </main>
+        <aside className="flex min-h-0 flex-col overflow-hidden border-l border-border/70 bg-card/40">
+          <div className="flex max-h-[40%] min-h-0 shrink-0 flex-col overflow-hidden border-b border-border/70">
+            {orders}
+          </div>
+          <div className="min-h-0 flex-1">
+            {selected ? (
+              <OrderBookPanel
+                asks={book?.asks ?? []}
+                bids={book?.bids ?? []}
+                myStops={state.myOrders.filter((row) => row.itemId === selected.id && row.orderType === "stop")}
+                selfId={state.player.id}
+                pending={pending}
+                mv={Math.round(price?.vwap ?? selected.basePrice)}
+                onTake={(row) =>
+                  void takeQuote({
+                    orderId: row.id,
+                    itemId: row.itemId,
+                    side: row.side,
+                    price: row.price,
+                    treasury: row.isGov,
+                  })
+                }
+                onCancel={(id) => {
+                  void (async () => {
+                    await onCancel(id);
+                    await reloadBook();
+                  })();
+                }}
+              />
+            ) : null}
+          </div>
+        </aside>
+      </div>
+    );
+  }
+
+  return renderCompact();
 }
 
 function valueSizeClass(value: string) {
@@ -1658,113 +1723,3 @@ function Stat({
   );
 }
 
-function OrderList({
-  rows,
-  myStops = [],
-  empty,
-  selfId,
-  pending,
-  side,
-  onTake,
-  onCancel,
-}: {
-  rows: {
-    id: number;
-    itemId: string;
-    username: string;
-    price: number;
-    remaining: number;
-    playerId: number;
-    isGov?: boolean;
-  }[];
-  myStops?: OrderRow[];
-  empty: string;
-  selfId: number;
-  pending: boolean;
-  side: OrderSide;
-  onTake: (input: TakeQuoteInput) => void;
-  onCancel: (id: number) => void;
-}) {
-  if (rows.length === 0 && myStops.length === 0) {
-    return <p className="text-sm leading-6 text-muted-foreground">{empty}</p>;
-  }
-
-  const units = [
-    ...stackUnitRows(rows).map((row) => ({ ...row, stop: false as const })),
-    ...stackUnitRows(myStops).map((row) => ({ ...row, stop: true as const })),
-  ];
-  units.sort((a, b) => (side === "buy" ? b.price - a.price : a.price - b.price));
-  return (
-    <ul className="space-y-0.5 pr-0.5">
-      {units.map((row) => {
-        const yours = row.stop || (row.playerId === selfId && !row.isGov);
-        const govAsk = Boolean(row.isGov) && side === "sell";
-        const govBid = Boolean(row.isGov) && side === "buy";
-        const name = row.stop
-          ? `you (${side === "buy" ? "Buy STP" : "Sell STP"})`
-          : row.isGov
-            ? "Government"
-            : yours
-              ? "you"
-              : row.username;
-        const liveId = row.ids[row.ids.length - 1] ?? row.id;
-        return (
-          <li key={`${row.stop ? "stop" : "live"}-${row.id}-${row.unit}`}>
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() =>
-                yours
-                  ? onCancel(liveId)
-                  : onTake({
-                      orderId: liveId,
-                      itemId: row.itemId,
-                      side,
-                      price: row.price,
-                      treasury: Boolean(row.isGov),
-                    })
-              }
-              title={row.stop ? `Cancel your ${side === "buy" ? "Buy STP" : "Sell STP"}` : undefined}
-              className={cn(
-                "flex h-7 w-full items-center justify-between gap-2 rounded-md px-2 text-left text-sm ring-1 disabled:opacity-100",
-                row.stop && "bg-purple-400/25 ring-purple-400/60 hover:bg-purple-400/40",
-                !row.stop && govAsk && "bg-white text-zinc-950 ring-zinc-300 hover:bg-zinc-100",
-                !row.stop && govBid && "bg-black text-white ring-white/50 hover:bg-zinc-900",
-                !row.stop && !row.isGov && yours && "bg-primary/25 ring-primary hover:bg-primary/35",
-                !row.stop && !row.isGov && !yours && "bg-background/60 ring-foreground/10 hover:bg-background"
-              )}
-            >
-              <span className="tabular-nums font-medium">
-                {formatCoins(row.price)}
-                {row.count > 1 ? (
-                  <span
-                    className={cn(
-                      "ml-1 text-[11px] font-normal",
-                      row.stop && "text-purple-100/80",
-                      !row.stop && govAsk && "text-zinc-600",
-                      !row.stop && govBid && "text-white/75",
-                      !row.stop && !row.isGov && "text-muted-foreground"
-                    )}
-                  >
-                    ×{row.count}
-                  </span>
-                ) : null}
-              </span>
-              <span
-                className={cn(
-                  "min-w-0 truncate text-right text-[11px]",
-                  row.stop && "text-purple-100",
-                  !row.stop && govAsk && "text-zinc-600",
-                  !row.stop && govBid && "text-white/80",
-                  !row.stop && !row.isGov && "text-muted-foreground"
-                )}
-              >
-                {name}
-              </span>
-            </button>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
