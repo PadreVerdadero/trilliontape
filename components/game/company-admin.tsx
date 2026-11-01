@@ -41,6 +41,8 @@ export function CompanyAdmin({ state, pending, run }: { state: GameState; pendin
     dealOpeningShares: settings.dealOpeningShares,
     newsPerDay: String(settings.newsPerDay),
     rumorReliabilityPct: String(settings.rumorReliabilityPct),
+    voteCapPct: String(settings.voteCapPct),
+    ceoSalary: String(settings.ceoSalary),
   }));
   const [events, setEvents] = useState<EventDraft[]>(() => toDrafts(state.companies.allEvents));
   const [message, setMessage] = useState<string | null>(null);
@@ -63,6 +65,8 @@ export function CompanyAdmin({ state, pending, run }: { state: GameState; pendin
       dealOpeningShares: settings.dealOpeningShares,
       newsPerDay: String(settings.newsPerDay),
       rumorReliabilityPct: String(settings.rumorReliabilityPct),
+      voteCapPct: String(settings.voteCapPct),
+      ceoSalary: String(settings.ceoSalary),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsKey]);
@@ -99,6 +103,8 @@ export function CompanyAdmin({ state, pending, run }: { state: GameState; pendin
         dealOpeningShares: draft.dealOpeningShares,
         newsPerDay: Number(draft.newsPerDay),
         rumorReliabilityPct: Number(draft.rumorReliabilityPct),
+        voteCapPct: Number(draft.voteCapPct),
+        ceoSalary: Number(draft.ceoSalary),
       },
     });
     settingsDirty.current = false;
@@ -168,6 +174,14 @@ export function CompanyAdmin({ state, pending, run }: { state: GameState; pendin
           <Input className={field} inputMode="numeric" value={draft.rumorReliabilityPct} onChange={(e) => edit("rumorReliabilityPct", e.target.value)} />
         </div>
         <div className="space-y-1">
+          <Label className="text-amber-100/80">Vote cap (% of shares one voter can carry, 100 = off)</Label>
+          <Input className={field} inputMode="numeric" value={draft.voteCapPct} onChange={(e) => edit("voteCapPct", e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-amber-100/80">CEO salary per day (coins, a company expense)</Label>
+          <Input className={field} inputMode="numeric" value={draft.ceoSalary} onChange={(e) => edit("ceoSalary", e.target.value)} />
+        </div>
+        <div className="space-y-1">
           <Label className="text-amber-100/80">Bankruptcy when</Label>
           <select
             className={field}
@@ -218,6 +232,8 @@ export function CompanyAdmin({ state, pending, run }: { state: GameState; pendin
               dealOpeningShares: base.dealOpeningShares,
               newsPerDay: String(base.newsPerDay),
               rumorReliabilityPct: String(base.rumorReliabilityPct),
+              voteCapPct: String(base.voteCapPct),
+              ceoSalary: String(base.ceoSalary),
             });
           }}
         >

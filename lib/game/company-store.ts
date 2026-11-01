@@ -1,8 +1,17 @@
 import { itemById, items } from "@/lib/game/catalog";
 import { DESK_USERNAME, getDb, getItemAuthorized, readTradingHours, setItemAuthorized } from "@/lib/game/db";
 import {
+  CEO_MIN_PCT,
   COMPANY_TIME_ZONE,
   INDUSTRIES,
+  STRATEGIES,
+  STRATEGY_IDS,
+  asStrategy,
+  canDelegate,
+  computePower,
+  payoutPctWithStrategy,
+  strategyNextDay,
+  tallyCeo,
   PROPOSAL_KINDS,
   TRAITS,
   asIndustry,
@@ -36,10 +45,13 @@ import {
   type CompanyEvent,
   type CompanySettings,
   type ProposalKind,
+  type Delegation,
+  type Strategy,
   type Trait,
 } from "@/lib/game/companies";
 import type {
   CompaniesState,
+  BoardView,
   CompanyDayView,
   CompanyEntryView,
   CompanyNewsView,
@@ -62,6 +74,9 @@ type CompanyRow = {
   treasury_stock: number;
   retained: number;
   dividends: number;
+  ceo_id: number;
+  ceo_since: number | null;
+  strategy: string;
   industry: string;
   traits: string;
   booked_shares: number;
@@ -246,6 +261,8 @@ async function removeCompanyData(itemId: string) {
     "company_payouts",
     "company_news",
     "company_records",
+    "company_delegations",
+    "company_ceo_votes",
   ]) {
     await db.prepare(`DELETE FROM ${table} WHERE item_id = ?`).run(itemId);
   }
@@ -273,6 +290,8 @@ export async function resetCompanies(now = Date.now()) {
     DELETE FROM company_payouts;
     DELETE FROM company_news;
     DELETE FROM company_records;
+    DELETE FROM company_delegations;
+    DELETE FROM company_ceo_votes;
     UPDATE players SET dividends_received = 0;
   `);
   await writeMeta("company_seed", String(now));
@@ -339,6 +358,31 @@ export async function assignCompanyEvent(userId: number, eventId: string, itemId
   return { event, name: itemById[itemId].name };
 }
 
+async function currentHolderMap(itemId: string) {
+  const map = new Map<number, number>();
+  for (const row of (await holdingRows()).filter((entry) => entry.item_id === itemId)) {
+    map.set(row.user_id, row.quantity);
+  }
+  return map;
+}
+
+async function delegationRows(itemId: string): Promise<(Delegation & { fromName: string; toName: string })[]> {
+  const rows = (await getDb()
+    .prepare(
+      `SELECT d.from_user, d.to_user, uf.username AS from_name, ut.username AS to_name
+       FROM company_delegations d
+       JOIN users uf ON uf.id = d.from_user
+       JOIN users ut ON ut.id = d.to_user
+       WHERE d.item_id = ?`
+    )
+    .all(itemId)) as { from_user: number; to_user: number; from_name: string; to_name: string }[];
+  return rows.map((row) => ({ from: row.from_user, to: row.to_user, fromName: row.from_name, toName: row.to_name }));
+}
+
+function lentMessage(toName: string | undefined) {
+  return `You lent your votes${toName ? ` to ${toName}` : ""}, so you cannot vote yourself. Take them back first.`;
+}
+
 export async function castDividendVote(userId: number, itemId: string, dps: number, now = Date.now()) {
   await requireCompany(itemId);
   if (!Number.isInteger(dps) || dps < 0 || dps > 1_000_000) {
@@ -349,8 +393,13 @@ export async function castDividendVote(userId: number, itemId: string, dps: numb
   const window = dividendVoteWindow(book.hours[itemId], book.timeZone, settings, now);
   if (!voteOpenNow(window, now)) throw new Error("Dividend voting is closed. It opens when trading closes.");
   await snapshotIfNeeded(itemId, dayKeyIn(now));
-  const atRecord = (await recordRows(dayKeyIn(now), itemId)).find((row) => row.user_id === userId)?.shares ?? 0;
-  if (atRecord < 1) throw new Error("Only holders at the record time can vote on today's dividend.");
+  const records = new Map((await recordRows(dayKeyIn(now), itemId)).map((row) => [row.user_id, row.shares]));
+  const delegations = await delegationRows(itemId);
+  const row = computePower(records, delegations, settings.voteCapPct).rows.get(userId);
+  if (row?.away) throw new Error(lentMessage(delegations.find((entry) => entry.from === userId)?.toName));
+  if (!row || row.power < 1) {
+    throw new Error("Only holders at the record time (or the traveler they lent votes to) can vote on today's dividend.");
+  }
   await getDb()
     .prepare(
       `INSERT INTO company_dividend_votes (item_id, day_key, user_id, dps, created_at)
@@ -438,28 +487,31 @@ export async function castProposalVote(
     throw new Error("That vote has expired.");
   }
   await requireCompany(proposal.item_id);
-  if ((await sharesHeld(userId, proposal.item_id)) < 1) throw new Error("Only shareholders can vote.");
+  const settings = await readCompanySettings();
+  const delegations = await delegationRows(proposal.item_id);
+  const power = computePower(await currentHolderMap(proposal.item_id), delegations, settings.voteCapPct);
+  const mine = power.rows.get(userId);
+  if (mine?.away) throw new Error(lentMessage(delegations.find((entry) => entry.from === userId)?.toName));
+  if (!mine || mine.power < 1) throw new Error("Only shareholders (or the traveler they lent votes to) can vote.");
   await db
     .prepare(
       `INSERT INTO company_proposal_votes (proposal_id, user_id, yes) VALUES (?, ?, ?)
        ON CONFLICT(proposal_id, user_id) DO UPDATE SET yes = excluded.yes`
     )
     .run(proposalId, userId, yes ? 1 : 0);
-  const outstanding = await outstandingShares(proposal.item_id);
-  const tally = (await db
-    .prepare(
-      `SELECT v.yes AS yes, COALESCE(SUM(i.quantity), 0) AS shares
-       FROM company_proposal_votes v
-       JOIN inventory i ON i.user_id = v.user_id AND i.item_id = ?
-       WHERE v.proposal_id = ?
-       GROUP BY v.yes`
-    )
-    .all(proposal.item_id, proposalId)) as { yes: number; shares: number }[];
-  const yesShares = tally.find((row) => row.yes === 1)?.shares ?? 0;
-  const noShares = tally.find((row) => row.yes === 0)?.shares ?? 0;
+  const ballots = (await db
+    .prepare("SELECT user_id, yes FROM company_proposal_votes WHERE proposal_id = ?")
+    .all(proposalId)) as { user_id: number; yes: number }[];
+  let yesPower = 0;
+  let noPower = 0;
+  for (const ballot of ballots) {
+    const weight = power.rows.get(ballot.user_id)?.power ?? 0;
+    if (ballot.yes === 1) yesPower += weight;
+    else noPower += weight;
+  }
   let status: ProposalOutcome["status"] = "open";
-  if (yesShares * 2 > outstanding) status = "passed";
-  else if (noShares * 2 >= outstanding) status = "failed";
+  if (yesPower * 2 > power.totalPower) status = "passed";
+  else if (noPower * 2 >= power.totalPower) status = "failed";
   if (status !== "open") {
     const info = await db
       .prepare("UPDATE company_proposals SET status = ?, decided_at = ? WHERE id = ? AND status = 'open'")
@@ -467,6 +519,76 @@ export async function castProposalVote(
     if (info.changes < 1) status = "open";
   }
   return { id: proposalId, itemId: proposal.item_id, kind: proposal.kind, amount: proposal.amount, status };
+}
+
+export async function castCeoVote(userId: number, itemId: string, candidateName: string | null, now = Date.now()) {
+  await requireCompany(itemId);
+  const settings = await readCompanySettings();
+  const book = await readTradingHours();
+  const window = dividendVoteWindow(book.hours[itemId], book.timeZone, settings, now);
+  if (!voteOpenNow(window, now)) throw new Error("CEO voting is open while the dividend vote is open (after trading closes).");
+  const day = dayKeyIn(now);
+  await snapshotIfNeeded(itemId, day);
+  const records = await recordRows(day, itemId);
+  const delegations = await delegationRows(itemId);
+  const mine = computePower(new Map(records.map((row) => [row.user_id, row.shares])), delegations, settings.voteCapPct).rows.get(userId);
+  if (mine?.away) throw new Error(lentMessage(delegations.find((entry) => entry.from === userId)?.toName));
+  if (!mine || mine.power < 1) throw new Error("Only holders at the record time (or their delegates) can vote for CEO.");
+  const db = getDb();
+  const name = (candidateName ?? "").trim();
+  if (!name) {
+    await db.prepare("DELETE FROM company_ceo_votes WHERE item_id = ? AND day_key = ? AND voter_id = ?").run(itemId, day, userId);
+    return null;
+  }
+  const candidate = (await db
+    .prepare("SELECT id, username FROM users WHERE username = ? COLLATE NOCASE")
+    .get(name)) as { id: number; username: string } | undefined;
+  if (!candidate) throw new Error("No such traveler.");
+  const total = records.reduce((sum, row) => sum + row.shares, 0);
+  const held = records.find((row) => row.user_id === candidate.id)?.shares ?? 0;
+  if (total < 1 || (held / total) * 100 < CEO_MIN_PCT) {
+    throw new Error(`${candidate.username} needs at least ${CEO_MIN_PCT}% of the shares at the record time to be CEO.`);
+  }
+  await db
+    .prepare(
+      `INSERT INTO company_ceo_votes (item_id, day_key, voter_id, candidate_id) VALUES (?, ?, ?, ?)
+       ON CONFLICT(item_id, day_key, voter_id) DO UPDATE SET candidate_id = excluded.candidate_id`
+    )
+    .run(itemId, day, userId, candidate.id);
+  return candidate.username;
+}
+
+export async function setCompanyStrategy(userId: number, itemId: string, strategy: string) {
+  const company = await requireCompany(itemId);
+  if (company.ceo_id !== userId) throw new Error("Only the CEO can set the strategy.");
+  if (!STRATEGY_IDS.includes(strategy as Strategy)) throw new Error("Pick Growth, Balanced or Harvest.");
+  await getDb().prepare("UPDATE companies SET strategy = ? WHERE item_id = ?").run(strategy, itemId);
+  return strategy as Strategy;
+}
+
+export async function setDelegation(userId: number, itemId: string, toName: string | null) {
+  await requireCompany(itemId);
+  const db = getDb();
+  const name = (toName ?? "").trim();
+  if (!name) {
+    await db.prepare("DELETE FROM company_delegations WHERE item_id = ? AND from_user = ?").run(itemId, userId);
+    return null;
+  }
+  if ((await sharesHeld(userId, itemId)) < 1) throw new Error("Only shareholders can lend their votes.");
+  const target = (await db
+    .prepare("SELECT id, username FROM users WHERE username = ? COLLATE NOCASE")
+    .get(name)) as { id: number; username: string } | undefined;
+  if (!target) throw new Error("No such traveler.");
+  const others = (await delegationRows(itemId)).filter((row) => row.from !== userId);
+  const problem = canDelegate({ from: userId, to: target.id, delegations: others });
+  if (problem) throw new Error(problem);
+  await db
+    .prepare(
+      `INSERT INTO company_delegations (item_id, from_user, to_user, created_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(item_id, from_user) DO UPDATE SET to_user = excluded.to_user, created_at = excluded.created_at`
+    )
+    .run(itemId, userId, target.id, Date.now());
+  return target.username;
 }
 
 export async function setProposalNote(proposalId: number, note: string) {
@@ -714,8 +836,31 @@ async function settleDay(day: string, settings: CompanySettings, now: number) {
     const current = await holdingRows();
     const authorizedOf = await authorizedLookup();
     const paid = new Map<number, { total: number; parts: string[] }>();
+    const notes = new Map<number, string[]>();
+    const addNote = (userId: number, text: string) => {
+      const list = notes.get(userId) ?? [];
+      list.push(text);
+      notes.set(userId, list);
+    };
 
     for (const company of companies) {
+      let salary = 0;
+      let ceoName = "";
+      if (company.ceo_id > 0 && settings.ceoSalary > 0) {
+        const ceo = (await db.prepare("SELECT username FROM users WHERE id = ?").get(company.ceo_id)) as
+          | { username: string }
+          | undefined;
+        if (ceo) {
+          salary = settings.ceoSalary;
+          ceoName = ceo.username;
+          await db
+            .prepare(
+              `INSERT INTO company_entries (item_id, day_key, label, amount, user_id, source, created_at)
+               VALUES (?, ?, ?, ?, ?, 'strategy', ?)`
+            )
+            .run(company.item_id, day, `CEO salary (${ceo.username})`, -salary, company.ceo_id, now);
+        }
+      }
       const entries = (await db
         .prepare(
           `SELECT COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) AS revenue,
@@ -742,12 +887,16 @@ async function settleDay(day: string, settings: CompanySettings, now: number) {
       const voteRows = (await db
         .prepare("SELECT user_id, dps FROM company_dividend_votes WHERE item_id = ? AND day_key = ?")
         .all(company.item_id, day)) as { user_id: number; dps: number }[];
+      const delegations = await delegationRows(company.item_id);
+      const powerRes = computePower(
+        new Map(mine.map((row) => [row.user_id, row.quantity])),
+        delegations,
+        settings.voteCapPct
+      );
       const votes = voteRows
-        .map((vote) => ({
-          dps: vote.dps,
-          shares: mine.find((row) => row.user_id === vote.user_id)?.quantity ?? 0,
-        }))
-        .filter((vote) => vote.shares > 0);
+        .map((vote) => ({ dps: vote.dps, weight: powerRes.rows.get(vote.user_id)?.power ?? 0 }))
+        .filter((vote) => vote.weight > 0);
+      const strategy = company.ceo_id > 0 ? asStrategy(company.strategy) : "balanced";
 
       const result = settleCompanyDay({
         balance: balanceOf(company),
@@ -762,7 +911,12 @@ async function settleDay(day: string, settings: CompanySettings, now: number) {
         outstanding,
         issued,
         votes,
-        payoutPct: payoutPctFor(settings.defaultPayoutPct, profile.industry, profile.traits),
+        votingPower: powerRes.totalPower,
+        payoutPct: payoutPctWithStrategy(
+          payoutPctFor(settings.defaultPayoutPct, profile.industry, profile.traits),
+          strategy
+        ),
+        maxPayoutPct: STRATEGIES[strategy].maxPayoutPct,
       });
 
       await writeBalance(company.item_id, result.balance);
@@ -808,6 +962,37 @@ async function settleDay(day: string, settings: CompanySettings, now: number) {
         await db.prepare("DELETE FROM orders WHERE item_id = ?").run(company.item_id);
         continue;
       }
+      const effect = strategyNextDay(strategy, result.netIncome, swingOf(profile.industry, profile.traits), Math.random);
+      if (effect) {
+        await db
+          .prepare(
+            `INSERT INTO company_entries (item_id, day_key, label, amount, user_id, source, created_at)
+             VALUES (?, ?, ?, ?, NULL, 'strategy', ?)`
+          )
+          .run(company.item_id, addDaysToKey(day, 1), effect.label, effect.amount, now);
+      }
+      if (salary > 0) {
+        await db.prepare("UPDATE players SET gold = gold + ? WHERE user_id = ?").run(salary, company.ceo_id);
+        addNote(company.ceo_id, `CEO salary from ${name}: +${salary.toLocaleString("en-US")} coins.`);
+      }
+      void ceoName;
+      const ballots = (await db
+        .prepare("SELECT voter_id AS voter, candidate_id AS candidate FROM company_ceo_votes WHERE item_id = ? AND day_key = ?")
+        .all(company.item_id, day)) as { voter: number; candidate: number }[];
+      const winner = tallyCeo({
+        ballots,
+        power: powerRes.rows,
+        eligible: (id) =>
+          id > 0 && outstanding > 0 && (((mine.find((row) => row.user_id === id)?.quantity ?? 0) / outstanding) * 100) >= CEO_MIN_PCT,
+        incumbent: company.ceo_id,
+      });
+      if (winner !== company.ceo_id) {
+        await db
+          .prepare("UPDATE companies SET ceo_id = ?, ceo_since = ?, strategy = 'balanced' WHERE item_id = ?")
+          .run(winner, winner > 0 ? now : null, company.item_id);
+        if (winner > 0) addNote(winner, `You were elected CEO of ${name}.`);
+        if (company.ceo_id > 0) addNote(company.ceo_id, winner > 0 ? `You are no longer CEO of ${name}.` : `${name} has no CEO any more.`);
+      }
       if (result.dividendPerShare > 0) {
         for (const holder of mine) {
           const amount = result.dividendPerShare * holder.quantity;
@@ -828,9 +1013,12 @@ async function settleDay(day: string, settings: CompanySettings, now: number) {
         }
       }
     }
-    for (const [userId, entry] of paid) {
-      const note = `Dividends for ${day}: +${entry.total.toLocaleString("en-US")} coins (${entry.parts.join(", ")}).`;
-      await db.prepare("UPDATE players SET last_event = ? WHERE user_id = ?").run(note, userId);
+    for (const userId of new Set([...paid.keys(), ...notes.keys()])) {
+      const parts: string[] = [];
+      const entry = paid.get(userId);
+      if (entry) parts.push(`Dividends for ${day}: +${entry.total.toLocaleString("en-US")} coins (${entry.parts.join(", ")}).`);
+      parts.push(...(notes.get(userId) ?? []));
+      await db.prepare("UPDATE players SET last_event = ? WHERE user_id = ?").run(parts.join(" "), userId);
     }
   });
 }
@@ -975,6 +1163,29 @@ export async function buildCompaniesState(
       >,
     ]);
 
+  const delegRows = (await db
+    .prepare(
+      `SELECT d.item_id, d.from_user, d.to_user, uf.username AS from_name, ut.username AS to_name
+       FROM company_delegations d
+       JOIN users uf ON uf.id = d.from_user
+       JOIN users ut ON ut.id = d.to_user`
+    )
+    .all()) as { item_id: string; from_user: number; to_user: number; from_name: string; to_name: string }[];
+  const ceoVoteRows = (await db
+    .prepare(
+      `SELECT v.item_id, v.voter_id, v.candidate_id, u.username AS cand_name
+       FROM company_ceo_votes v JOIN users u ON u.id = v.candidate_id WHERE v.day_key = ?`
+    )
+    .all(today)) as { item_id: string; voter_id: number; candidate_id: number; cand_name: string }[];
+  const ceoIds = [...new Set(companyRows.filter((row) => row.ceo_id > 0).map((row) => row.ceo_id))];
+  const ceoNames = new Map<number, string>();
+  if (ceoIds.length > 0) {
+    const rows = (await db
+      .prepare(`SELECT id, username FROM users WHERE id IN (${ceoIds.map(() => "?").join(",")})`)
+      .all(...ceoIds)) as { id: number; username: string }[];
+    for (const row of rows) ceoNames.set(row.id, row.username);
+  }
+
   const shareOf = new Map<string, Map<number, number>>();
   for (const row of holders) {
     const bag = shareOf.get(row.item_id) ?? new Map<number, number>();
@@ -999,7 +1210,14 @@ export async function buildCompaniesState(
         id: entry.id,
         label: entry.label,
         amount: entry.amount,
-        source: entry.source === "random" ? "random" : entry.source === "news" ? "news" : "player",
+        source:
+          entry.source === "random"
+            ? "random"
+            : entry.source === "news"
+              ? "news"
+              : entry.source === "strategy"
+                ? "strategy"
+                : "player",
         username: entry.username,
         createdAt: entry.created_at,
       }));
@@ -1015,15 +1233,67 @@ export async function buildCompaniesState(
     const recBag = new Map(recordHere.filter((rec) => rec.user_id > 0).map((rec) => [rec.user_id, rec.shares]));
     const voteBag = recorded ? recBag : bag;
     const voteTotal = [...voteBag.values()].reduce((sum, qty) => sum + qty, 0);
-    const votedShares = votesToday.reduce((sum, vote) => sum + (voteBag.get(vote.user_id) ?? 0), 0);
     const profile = profileOf(row);
+    const strategy = row.ceo_id > 0 ? asStrategy(row.strategy) : "balanced";
+    const itemDelegs = delegRows.filter((entry) => entry.item_id === item.id);
+    const delegPairs = itemDelegs.map((entry) => ({ from: entry.from_user, to: entry.to_user }));
+    const power = computePower(voteBag, delegPairs, settings.voteCapPct);
+    const curPower = computePower(bag, delegPairs, settings.voteCapPct);
+    const votedPower = votesToday.reduce((sum, vote) => sum + (power.rows.get(vote.user_id)?.power ?? 0), 0);
+    const names = new Map<number, string>();
+    for (const holder of holders) if (holder.item_id === item.id) names.set(holder.user_id, holder.username);
+    for (const entry of itemDelegs) {
+      names.set(entry.from_user, entry.from_name);
+      names.set(entry.to_user, entry.to_name);
+    }
+    const itemCeoVotes = ceoVoteRows.filter((entry) => entry.item_id === item.id);
+    for (const entry of itemCeoVotes) names.set(entry.candidate_id, entry.cand_name);
+    if (row.ceo_id > 0 && ceoNames.has(row.ceo_id)) names.set(row.ceo_id, ceoNames.get(row.ceo_id) as string);
+    const tallyByName = new Map<string, number>();
+    for (const entry of itemCeoVotes) {
+      tallyByName.set(entry.cand_name, (tallyByName.get(entry.cand_name) ?? 0) + (power.rows.get(entry.voter_id)?.power ?? 0));
+    }
+    const board: BoardView = {
+      ceo: row.ceo_id > 0 ? { id: row.ceo_id, name: names.get(row.ceo_id) ?? "Unknown", since: row.ceo_since } : null,
+      strategy,
+      isMeCeo: row.ceo_id === userId,
+      salary: settings.ceoSalary,
+      voteCapPct: settings.voteCapPct,
+      candidates: [...bag.entries()]
+        .filter(([, qty]) => outstanding > 0 && (qty / outstanding) * 100 >= CEO_MIN_PCT)
+        .map(([id, qty]) => ({ id, name: names.get(id) ?? "Unknown", pct: (qty / outstanding) * 100 }))
+        .sort((a, b) => b.pct - a.pct || a.name.localeCompare(b.name)),
+      myCeoVote: itemCeoVotes.find((entry) => entry.voter_id === userId)?.cand_name ?? null,
+      ceoTally: [...tallyByName.entries()]
+        .map(([name, weight]) => ({ name, votePct: power.totalPower > 0 ? (weight / power.totalPower) * 100 : 0 }))
+        .sort((a, b) => b.votePct - a.votePct),
+      control: [...power.rows.values()]
+        .filter((entry) => entry.controlled > 0)
+        .sort((a, b) => b.controlled - a.controlled || a.userId - b.userId)
+        .slice(0, 6)
+        .map((entry) => ({
+          userId: entry.userId,
+          username: names.get(entry.userId) ?? "Unknown",
+          ownPct: voteTotal > 0 ? (entry.own / voteTotal) * 100 : 0,
+          controlPct: voteTotal > 0 ? (entry.controlled / voteTotal) * 100 : 0,
+          votePct: power.totalPower > 0 ? (entry.power / power.totalPower) * 100 : 0,
+          delegators: entry.delegators,
+          capped: entry.controlled > entry.power,
+          isMe: entry.userId === userId,
+        })),
+      myDelegateTo: itemDelegs.find((entry) => entry.from_user === userId)?.to_name ?? null,
+      myDelegators: itemDelegs.filter((entry) => entry.to_user === userId).map((entry) => entry.from_name),
+      myVotePct: power.totalPower > 0 ? ((power.rows.get(userId)?.power ?? 0) / power.totalPower) * 100 : 0,
+    };
     const myRecorded = recBag.get(userId) ?? 0;
     const proposals: ProposalView[] = proposalRows
       .filter((proposal) => proposal.item_id === item.id)
       .map((proposal) => {
         const ballots = voteRows.filter((vote) => vote.proposal_id === proposal.id);
         const weight = (yes: number) =>
-          ballots.filter((vote) => vote.yes === yes).reduce((sum, vote) => sum + (bag.get(vote.user_id) ?? 0), 0);
+          ballots
+            .filter((vote) => vote.yes === yes)
+            .reduce((sum, vote) => sum + (curPower.rows.get(vote.user_id)?.power ?? 0), 0);
         const mineBallot = ballots.find((vote) => vote.user_id === userId);
         return {
           id: proposal.id,
@@ -1034,14 +1304,15 @@ export async function buildCompaniesState(
           proposedBy: proposal.username,
           createdAt: proposal.created_at,
           closesAt: proposal.closes_at,
-          yesPct: outstanding > 0 ? (weight(1) / outstanding) * 100 : 0,
-          noPct: outstanding > 0 ? (weight(0) / outstanding) * 100 : 0,
+          yesPct: curPower.totalPower > 0 ? (weight(1) / curPower.totalPower) * 100 : 0,
+          noPct: curPower.totalPower > 0 ? (weight(0) / curPower.totalPower) * 100 : 0,
           myVote: mineBallot ? mineBallot.yes === 1 : null,
           note: proposal.note,
         };
       });
     companies.push({
       itemId: item.id,
+      board,
       industry: { id: profile.industry, ...pickIndustryView(profile.industry) },
       traits: profile.traits.map((trait: Trait) => ({ id: trait, ...TRAITS[trait] })),
       record: {
@@ -1081,10 +1352,10 @@ export async function buildCompaniesState(
         startMin: window.startMin,
         endMin: window.endMin,
         myDps: votesToday.find((vote) => vote.user_id === userId)?.dps ?? null,
-        votedPct: voteTotal > 0 ? (votedShares / voteTotal) * 100 : 0,
+        votedPct: power.totalPower > 0 ? (votedPower / power.totalPower) * 100 : 0,
         defaultDps: defaultDividendPerShare(
           todayRevenue - todayExpenses - scheduledInterest,
-          payoutPctFor(settings.defaultPayoutPct, profile.industry, profile.traits),
+          payoutPctWithStrategy(payoutPctFor(settings.defaultPayoutPct, profile.industry, profile.traits), strategy),
           issued
         ),
       },

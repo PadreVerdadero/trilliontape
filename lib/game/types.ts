@@ -317,7 +317,7 @@ export type CompanyEntryView = {
   id: number;
   label: string;
   amount: number;
-  source: "player" | "random" | "news";
+  source: "player" | "random" | "news" | "strategy";
   username: string | null;
   createdAt: number;
 };
@@ -361,8 +361,33 @@ export type CompanyNewsView = {
   amount: number | null;
 };
 
+export type BoardView = {
+  ceo: { id: number; name: string; since: number | null } | null;
+  strategy: "growth" | "balanced" | "harvest";
+  isMeCeo: boolean;
+  salary: number;
+  voteCapPct: number;
+  candidates: { id: number; name: string; pct: number }[];
+  myCeoVote: string | null;
+  ceoTally: { name: string; votePct: number }[];
+  control: {
+    userId: number;
+    username: string;
+    ownPct: number;
+    controlPct: number;
+    votePct: number;
+    delegators: number;
+    capped: boolean;
+    isMe: boolean;
+  }[];
+  myDelegateTo: string | null;
+  myDelegators: string[];
+  myVotePct: number;
+};
+
 export type CompanyView = {
   itemId: string;
+  board: BoardView;
   industry: { id: string; label: string; emoji: string; blurb: string; chip: string };
   traits: { id: string; label: string; blurb: string }[];
   record: { startMin: number; passed: boolean; myShares: number; paysMe: boolean };
@@ -428,6 +453,8 @@ export type CompaniesState = {
     dealOpeningShares: boolean;
     newsPerDay: number;
     rumorReliabilityPct: number;
+    voteCapPct: number;
+    ceoSalary: number;
   };
   news: CompanyNewsView[];
   myEvents: { id: string; name: string; amount: number; usedItemId: string | null }[];

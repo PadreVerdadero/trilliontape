@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ItemIcon } from "@/components/game/item-icon";
 import { formatCoins, formatNumber } from "@/lib/game/format";
 import { minutesToTimeInput } from "@/lib/game/hours";
+import { STRATEGIES, STRATEGY_IDS } from "@/lib/game/companies";
 import { cn } from "@/lib/utils";
 import type { CompanyView, GameState, ProposalView } from "@/lib/game/types";
 
@@ -177,7 +178,7 @@ function CompanyDetail({
   now,
   part = "all",
 }: {
-  part?: "all" | "mid" | "balance" | "shares" | "today" | "vote" | "proposals" | "days";
+  part?: "all" | "mid" | "balance" | "shares" | "today" | "board" | "vote" | "proposals" | "days";
   company: CompanyView;
   state: GameState;
   pending: boolean;
@@ -186,12 +187,14 @@ function CompanyDetail({
 }) {
   const [dps, setDps] = useState(company.vote.myDps != null ? String(company.vote.myDps) : "");
   const [kind, setKind] = useState<"loan" | "buyback" | "issue">("loan");
+  const [candidate, setCandidate] = useState(company.board.myCeoVote ?? "");
+  const [delegateTo, setDelegateTo] = useState("");
   const [amount, setAmount] = useState("");
   const holder = company.myShares > 0;
   const netToday = company.todayRevenue - company.todayExpenses;
   const win = `${minutesToTimeInput(company.vote.startMin)}–${minutesToTimeInput(company.vote.endMin)}`;
   const treasuryNote = "Counted in dividends, not in votes";
-  const has = (name: "balance" | "shares" | "today" | "vote" | "proposals" | "days") =>
+  const has = (name: "balance" | "shares" | "today" | "board" | "vote" | "proposals" | "days") =>
     part === "all" ? true : part === "mid" ? name === "balance" || name === "shares" : part === name;
 
   return (
@@ -268,7 +271,7 @@ function CompanyDetail({
                 <li key={entry.id} className="flex justify-between gap-2">
                   <span className="min-w-0 truncate">
                     {entry.label}
-                    <span className="text-muted-foreground"> · {entry.username ?? (entry.source === "news" ? "news" : "random")}</span>
+                    <span className="text-muted-foreground"> · {entry.username ?? (entry.source === "news" ? "news" : entry.source === "strategy" ? "strategy" : "random")}</span>
                   </span>
                   <span className={cn("tabular-nums", tone(entry.amount))}>{signed(entry.amount)}</span>
                 </li>
@@ -278,11 +281,175 @@ function CompanyDetail({
         </Panel>
 ) : null}
 
+        {has("board") ? (
+          <Panel title="Boardroom">
+            <div className="space-y-1">
+              <p className="text-xs">
+                <span className="text-muted-foreground">CEO: </span>
+                {company.board.ceo ? (
+                  <span className="font-medium">{company.board.ceo.name}{company.board.isMeCeo ? " (you)" : ""}</span>
+                ) : (
+                  <span className="text-muted-foreground">vacant. Holders with 1% or more can run; the vote is below.</span>
+                )}
+                {company.board.ceo ? (
+                  <span className="text-muted-foreground"> · salary {formatCoins(company.board.salary)} a day (a company expense)</span>
+                ) : null}
+              </p>
+              <p className="text-xs">
+                <span className="text-muted-foreground">Strategy: </span>
+                <span className="font-medium">{STRATEGIES[company.board.strategy].label}</span>
+              </p>
+              {company.board.isMeCeo ? (
+                <div className="space-y-1">
+                  <div className="flex flex-wrap gap-1">
+                    {STRATEGY_IDS.map((id) => (
+                      <Button
+                        key={id}
+                        size="sm"
+                        variant={company.board.strategy === id ? "default" : "outline"}
+                        disabled={pending || company.bankrupt}
+                        title={STRATEGIES[id].blurb}
+                        onClick={() => void run({ action: "companyStrategy", itemId: company.itemId, strategy: id })}
+                      >
+                        {STRATEGIES[id].label}
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">{STRATEGIES[company.board.strategy].blurb}</p>
+                </div>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">{STRATEGIES[company.board.strategy].blurb}</p>
+              )}
+            </div>
+
+            <div className="space-y-1 border-t border-border/50 pt-2">
+              <p className="text-xs font-medium">Vote for CEO</p>
+              <p className="text-[11px] text-muted-foreground">
+                Open while the dividend vote is open ({win} Central). The most voting power wins at 00:00; the sitting CEO keeps
+                a tie or an empty ballot, and a new CEO starts on Balanced.
+              </p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <select
+                  value={candidate}
+                  onChange={(event) => setCandidate(event.target.value)}
+                  className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm"
+                  aria-label="CEO candidate"
+                >
+                  <option value="">No vote</option>
+                  {company.board.candidates.map((entry) => (
+                    <option key={entry.id} value={entry.name}>
+                      {entry.name} ({entry.pct.toFixed(1)}%)
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  size="sm"
+                  disabled={pending || !holder || !company.vote.open || company.bankrupt}
+                  onClick={() => void run({ action: "companyCeoVote", itemId: company.itemId, candidate: candidate || null })}
+                >
+                  {company.board.myCeoVote ? "Update" : "Vote"}
+                </Button>
+              </div>
+              {company.board.myCeoVote ? (
+                <p className="text-[11px] text-muted-foreground">Your vote: {company.board.myCeoVote}</p>
+              ) : null}
+              {company.board.ceoTally.length > 0 ? (
+                <ul className="text-[11px] tabular-nums text-muted-foreground">
+                  {company.board.ceoTally.map((entry) => (
+                    <li key={entry.name}>
+                      {entry.name}: {entry.votePct.toFixed(0)}% of voting power so far
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+
+            <div className="space-y-1 border-t border-border/50 pt-2">
+              <p className="text-xs font-medium">Who controls the votes</p>
+              <p className="text-[11px] text-muted-foreground">
+                {company.board.voteCapPct >= 100
+                  ? "No vote cap."
+                  : `No one can carry more than ${company.board.voteCapPct}% of the shares, even by borrowing votes. Dividends are always paid on every share you own.`}{" "}
+                You have {company.board.myVotePct.toFixed(0)}% of the voting power.
+              </p>
+              {company.board.control.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No one holds shares yet.</p>
+              ) : (
+                <ul className="space-y-1">
+                  {company.board.control.map((entry) => (
+                    <li key={entry.userId} className="text-xs">
+                      <div className="flex justify-between gap-2">
+                        <span className={cn("min-w-0 truncate", entry.isMe && "font-medium text-primary")}>
+                          {entry.username}
+                          {entry.delegators > 0 ? ` · ${entry.delegators} lent` : ""}
+                          {entry.capped ? " · capped" : ""}
+                        </span>
+                        <span className="tabular-nums text-muted-foreground">
+                          {entry.ownPct.toFixed(0)}% own · {entry.controlPct.toFixed(0)}% control · {entry.votePct.toFixed(0)}% power
+                        </span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded bg-muted">
+                        <div className="h-full bg-primary/70" style={{ width: `${Math.min(100, entry.votePct)}%` }} />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="space-y-1 border-t border-border/50 pt-2">
+              <p className="text-xs font-medium">Lend your votes</p>
+              {company.board.myDelegateTo ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span>
+                    You lent your votes to <strong>{company.board.myDelegateTo}</strong>. You cannot vote yourself.
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={pending}
+                    onClick={() => void run({ action: "companyDelegate", itemId: company.itemId, to: null })}
+                  >
+                    Take back
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Input
+                    value={delegateTo}
+                    onChange={(event) => setDelegateTo(event.target.value)}
+                    placeholder="Traveler name"
+                    className="h-8 min-w-0 flex-1"
+                    aria-label="Lend votes to"
+                    disabled={!holder || company.bankrupt}
+                  />
+                  <Button
+                    size="sm"
+                    disabled={pending || !holder || !delegateTo.trim() || company.bankrupt}
+                    onClick={() =>
+                      void run({ action: "companyDelegate", itemId: company.itemId, to: delegateTo.trim() }).then(() =>
+                        setDelegateTo("")
+                      )
+                    }
+                  >
+                    Lend
+                  </Button>
+                </div>
+              )}
+              {company.board.myDelegators.length > 0 ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Lent to you by: {company.board.myDelegators.join(", ")}
+                </p>
+              ) : null}
+            </div>
+          </Panel>
+        ) : null}
+
         {has("vote") ? (
 <Panel title="Dividend vote">
           <p className="text-xs text-muted-foreground">
-            Voting is open {win} {TZ_LABEL} (after trading closes). The weighted average of votes pays at 00:00 if
-            voters hold over half the shares; otherwise a default share of the net income ÷ issued shares (now{" "}
+            Voting is open {win} {TZ_LABEL} (after trading closes). The median vote (weighted by voting power) pays at 00:00 if
+            voters hold over half of the total voting power; otherwise a default share of the net income ÷ issued shares (now{" "}
             {formatCoins(company.vote.defaultDps)} per share; the industry and traits move the default). Capped at
             the company&apos;s cash.
           </p>
@@ -456,7 +623,7 @@ export function CompaniesScreen({
 }) {
   const { companies } = state;
   const now = useLiveNow(state.now);
-  const [rightTab, setRightTab] = useState<"today" | "news" | "vote" | "proposals" | "days" | "events" | "payments">("today");
+  const [rightTab, setRightTab] = useState<"today" | "news" | "board" | "vote" | "proposals" | "days" | "events" | "payments">("today");
   const [eventPick, setEventPick] = useState<Record<string, string>>({});
   const selected =
     companies.companies.find((row) => row.itemId === selectedItemId) ?? companies.companies[0] ?? null;
@@ -721,6 +888,7 @@ export function CompaniesScreen({
     const tabs = [
       ["today", "Today"],
       ["news", "News"],
+      ["board", "Boardroom"],
       ["vote", "Dividend vote"],
       ["proposals", "Votes"],
       ["days", "History"],

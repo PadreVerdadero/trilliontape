@@ -19,6 +19,8 @@ export type CompanySettings = {
   dealOpeningShares: boolean;
   newsPerDay: number;
   rumorReliabilityPct: number;
+  voteCapPct: number;
+  ceoSalary: number;
 };
 
 export type CompanyEvent = {
@@ -41,6 +43,8 @@ export function defaultCompanySettings(): CompanySettings {
     dealOpeningShares: false,
     newsPerDay: 3,
     rumorReliabilityPct: 70,
+    voteCapPct: 30,
+    ceoSalary: 100,
   };
 }
 
@@ -92,6 +96,8 @@ export function validateCompanySettings(raw: Partial<CompanySettings>, base = de
   if (raw.rumorReliabilityPct != null) {
     next.rumorReliabilityPct = wholeInRange(raw.rumorReliabilityPct, 0, 100, "Rumor reliability");
   }
+  if (raw.voteCapPct != null) next.voteCapPct = wholeInRange(raw.voteCapPct, 10, 100, "Vote cap %");
+  if (raw.ceoSalary != null) next.ceoSalary = wholeInRange(raw.ceoSalary, 0, 5000, "CEO salary");
   return next;
 }
 
@@ -230,14 +236,28 @@ export function holderTier(pct: number): HolderTier | null {
   return "Majority";
 }
 
-export type DividendVote = { dps: number; shares: number };
+export type DividendVote = { dps: number; weight: number };
 
-/** Weighted-average dividend per share, valid only when voters hold more than half of the voting shares. */
-export function weightedDividend(votes: DividendVote[], outstanding: number) {
-  const voted = votes.reduce((sum, vote) => sum + vote.shares, 0);
-  if (outstanding <= 0 || voted * 2 <= outstanding) return null;
-  const total = votes.reduce((sum, vote) => sum + vote.dps * vote.shares, 0);
-  return Math.round(total / voted);
+/** Weighted median: the middle value by vote weight, so one extreme vote cannot drag the result. */
+export function weightedMedian(items: { value: number; weight: number }[]) {
+  const rows = items.filter((row) => row.weight > 0).sort((a, b) => a.value - b.value);
+  const total = rows.reduce((sum, row) => sum + row.weight, 0);
+  if (rows.length === 0 || total <= 0) return null;
+  const half = total / 2;
+  let cumulative = 0;
+  for (let i = 0; i < rows.length; i += 1) {
+    cumulative += rows[i].weight;
+    if (cumulative > half) return rows[i].value;
+    if (cumulative === half) return Math.round((rows[i].value + rows[i + 1].value) / 2);
+  }
+  return rows[rows.length - 1].value;
+}
+
+/** Median dividend per share, valid only when voters hold more than half of the total voting power. */
+export function weightedDividend(votes: DividendVote[], totalPower: number) {
+  const voted = votes.reduce((sum, vote) => sum + Math.max(0, vote.weight), 0);
+  if (totalPower <= 0 || voted * 2 <= totalPower) return null;
+  return weightedMedian(votes.map((vote) => ({ value: vote.dps, weight: vote.weight })));
 }
 
 export function defaultDividendPerShare(netIncome: number, payoutPct: number, issuedShares: number) {
@@ -309,7 +329,11 @@ export type SettleInput = {
   outstanding: number;
   issued: number;
   votes: DividendVote[];
+  /** Sum of every holder's capped voting power (quorum is measured against this). */
+  votingPower?: number;
   payoutPct: number;
+  /** Strategy cap: the dividend may be at most this % of the day's net income. */
+  maxPayoutPct?: number;
 };
 
 export type SettleResult = {
@@ -357,11 +381,14 @@ export function settleCompanyDay(input: SettleInput): SettleResult {
   };
   if (result.bankrupt || input.outstanding <= 0) return result;
 
-  const voted = weightedDividend(input.votes, input.outstanding);
+  const voted = weightedDividend(input.votes, input.votingPower ?? input.outstanding);
   let dps = voted ?? defaultDividendPerShare(netIncome, input.payoutPct, input.issued);
   const source: SettleResult["dividendSource"] = voted != null ? "vote" : "default";
   // Declared to the contra-equity Dividends account; capped by cash and by undistributed earnings.
-  const cap = Math.max(0, Math.min(balance.cash, availableEarnings(balance)));
+  let cap = Math.max(0, Math.min(balance.cash, availableEarnings(balance)));
+  if (input.maxPayoutPct != null && input.maxPayoutPct < 100) {
+    cap = Math.min(cap, Math.max(0, Math.floor((netIncome * input.maxPayoutPct) / 100)));
+  }
   dps = Math.max(0, Math.min(dps, Math.floor(cap / input.outstanding)));
   const total = dps * input.outstanding;
   if (dps > 0) {
@@ -619,4 +646,153 @@ export function centralMs(dayKey: string, minute: number, timeZone = COMPANY_TIM
 /** The record time is when voting opens: holders at that moment are paid and vote on the day's dividend. */
 export function recordPassed(window: VoteWindow, now: number) {
   return minuteOfDayIn(now) >= window.startMin;
+}
+
+
+// ---- Vote power (cap and delegation), CEO and strategy ----
+
+export type Delegation = { from: number; to: number };
+
+export type PowerRow = {
+  userId: number;
+  own: number;
+  delegated: number;
+  delegators: number;
+  controlled: number;
+  power: number;
+  away: boolean;
+};
+
+/**
+ * One vote per share, but nobody can carry more than capPct of the total shares (own plus lent to them).
+ * Someone who lends their votes casts none themselves, and delegates cannot lend onward.
+ */
+export function computePower(holders: Map<number, number>, delegations: Delegation[], capPct: number) {
+  const total = [...holders.values()].reduce((sum, qty) => sum + Math.max(0, qty), 0);
+  const cap = capPct >= 100 ? Number.POSITIVE_INFINITY : Math.max(1, Math.floor((total * capPct) / 100));
+  const away = new Set<number>();
+  const incoming = new Map<number, { shares: number; count: number }>();
+  for (const row of delegations) {
+    const shares = holders.get(row.from) ?? 0;
+    if (shares < 1 || row.from === row.to) continue;
+    away.add(row.from);
+    const entry = incoming.get(row.to) ?? { shares: 0, count: 0 };
+    entry.shares += shares;
+    entry.count += 1;
+    incoming.set(row.to, entry);
+  }
+  const rows = new Map<number, PowerRow>();
+  const ids = new Set<number>([...holders.keys(), ...incoming.keys()]);
+  for (const userId of ids) {
+    const own = Math.max(0, holders.get(userId) ?? 0);
+    const lent = away.has(userId);
+    const delegated = lent ? 0 : (incoming.get(userId)?.shares ?? 0);
+    const controlled = (lent ? 0 : own) + delegated;
+    rows.set(userId, {
+      userId,
+      own,
+      delegated,
+      delegators: lent ? 0 : (incoming.get(userId)?.count ?? 0),
+      controlled,
+      power: lent ? 0 : Math.min(controlled, cap),
+      away: lent,
+    });
+  }
+  const totalPower = [...rows.values()].reduce((sum, row) => sum + row.power, 0);
+  return { rows, totalPower, total, cap };
+}
+
+export function canDelegate(input: {
+  from: number;
+  to: number;
+  delegations: Delegation[];
+}) {
+  if (input.from === input.to) return "You cannot lend your votes to yourself.";
+  if (input.delegations.some((row) => row.to === input.from)) {
+    return "Others have lent you their votes, so you cannot lend yours onward.";
+  }
+  if (input.delegations.some((row) => row.from === input.to)) {
+    return "That traveler has lent their own votes away, so they cannot receive yours.";
+  }
+  return null;
+}
+
+export const CEO_MIN_PCT = 1;
+
+/** Picks the new CEO from the day's ballots (by capped power); the incumbent keeps ties and an empty ballot box. */
+export function tallyCeo(input: {
+  ballots: { voter: number; candidate: number }[];
+  power: Map<number, { power: number }>;
+  eligible: (candidate: number) => boolean;
+  incumbent: number;
+}) {
+  const totals = new Map<number, number>();
+  for (const ballot of input.ballots) {
+    const power = input.power.get(ballot.voter)?.power ?? 0;
+    if (power < 1 || !input.eligible(ballot.candidate)) continue;
+    totals.set(ballot.candidate, (totals.get(ballot.candidate) ?? 0) + power);
+  }
+  let best = 0;
+  for (const value of totals.values()) best = Math.max(best, value);
+  if (best <= 0) return input.eligible(input.incumbent) ? input.incumbent : 0;
+  const leaders = [...totals.entries()].filter(([, value]) => value === best).map(([id]) => id);
+  if (leaders.includes(input.incumbent)) return input.incumbent;
+  return Math.min(...leaders);
+}
+
+export type Strategy = "growth" | "balanced" | "harvest";
+export const STRATEGY_IDS: Strategy[] = ["growth", "balanced", "harvest"];
+
+export const STRATEGIES: Record<
+  Strategy,
+  { label: string; blurb: string; maxPayoutPct: number }
+> = {
+  growth: {
+    label: "Growth",
+    blurb:
+      "Reinvests. Dividends are capped at 30% of the day's net income and the default payout is no more than 30%. A profitable day adds extra revenue tomorrow (a quarter of the profit, scaled by the company's swing, capped), but the push stalls about one day in four.",
+    maxPayoutPct: 30,
+  },
+  balanced: {
+    label: "Balanced",
+    blurb: "No changes. Holders' dividend vote decides the payout.",
+    maxPayoutPct: 100,
+  },
+  harvest: {
+    label: "Harvest",
+    blurb:
+      "Pays out. The default payout is 20 points higher, but each profitable day costs the company expenses tomorrow (15% of the profit, capped) as the business is run down.",
+    maxPayoutPct: 100,
+  },
+};
+
+export const GROWTH_RATE = 0.25;
+export const GROWTH_CAP = 1500;
+export const GROWTH_STALL_PCT = 25;
+export const HARVEST_RATE = 0.15;
+export const HARVEST_CAP = 1200;
+
+export function asStrategy(value: string | null | undefined): Strategy {
+  return STRATEGY_IDS.includes(value as Strategy) ? (value as Strategy) : "balanced";
+}
+
+export function payoutPctWithStrategy(basePct: number, strategy: Strategy) {
+  if (strategy === "growth") return Math.min(basePct, STRATEGIES.growth.maxPayoutPct);
+  if (strategy === "harvest") return Math.min(100, basePct + 20);
+  return basePct;
+}
+
+/** Tomorrow's effect of today's strategy: extra revenue for Growth, extra expense for Harvest. */
+export function strategyNextDay(strategy: Strategy, netIncome: number, swing: number, rand: () => number) {
+  if (netIncome <= 0) return null;
+  if (strategy === "growth") {
+    if (rand() * 100 < GROWTH_STALL_PCT) return null;
+    const amount = Math.min(GROWTH_CAP, Math.round((netIncome * GROWTH_RATE * swing) / 10) * 10);
+    return amount >= 10 ? { amount, label: "Growth investment pays off" } : null;
+  }
+  if (strategy === "harvest") {
+    const amount = Math.min(HARVEST_CAP, Math.round((netIncome * HARVEST_RATE) / 10) * 10);
+    return amount >= 10 ? { amount: -amount, label: "Harvest: running the business down" } : null;
+  }
+  return null;
 }

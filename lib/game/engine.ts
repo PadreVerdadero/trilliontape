@@ -101,7 +101,10 @@ import {
   assignCompanyEvent,
   bankruptItemIds,
   buildCompaniesState,
+  castCeoVote,
   castDividendVote,
+  setCompanyStrategy,
+  setDelegation,
   castProposalVote,
   companyCash,
   createProposal,
@@ -3941,6 +3944,37 @@ export async function companyVote(userId: number, proposalId: number, yes: boole
       : status === "failed"
         ? "The motion failed."
         : `Vote recorded: ${yes ? "yes" : "no"}.`
+  );
+}
+
+export async function companyCeoVote(userId: number, itemId: string, candidate: string | null) {
+  await resolveBusy(userId);
+  await requireOpenGame();
+  const name = await castCeoVote(userId, String(itemId), candidate);
+  await setEvent(
+    userId,
+    name
+      ? `CEO vote for ${itemById[itemId]?.name ?? itemId}: ${name}.`
+      : `CEO vote withdrawn for ${itemById[itemId]?.name ?? itemId}.`
+  );
+}
+
+export async function companyStrategy(userId: number, itemId: string, strategy: string) {
+  await resolveBusy(userId);
+  await requireOpenGame();
+  const next = await setCompanyStrategy(userId, String(itemId), String(strategy));
+  await setEvent(userId, `${itemById[itemId]?.name ?? itemId} strategy set to ${next}. It applies at the next 00:00 settlement.`);
+}
+
+export async function companyDelegate(userId: number, itemId: string, to: string | null) {
+  await resolveBusy(userId);
+  await requireOpenGame();
+  const name = await setDelegation(userId, String(itemId), to);
+  await setEvent(
+    userId,
+    name
+      ? `You lent your ${itemById[itemId]?.name ?? itemId} votes to ${name}. Your shares still earn dividends.`
+      : `You took your ${itemById[itemId]?.name ?? itemId} votes back.`
   );
 }
 

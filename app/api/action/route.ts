@@ -43,6 +43,9 @@ import {
   adminSetCompanySettings,
   adminSetCompanyEvents,
   adminDealSharesNow,
+  companyCeoVote,
+  companyDelegate,
+  companyStrategy,
 } from "@/lib/game/engine";
 
 type ActionBody = {
@@ -100,6 +103,9 @@ type ActionBody = {
   | { action: "adminStartingGold"; gold: number }
   | { action: "adminStipendLadder"; amounts: number[] }
   | { action: "adminDealShares" }
+  | { action: "companyCeoVote"; itemId: string; candidate: string | null }
+  | { action: "companyStrategy"; itemId: string; strategy: "growth" | "balanced" | "harvest" }
+  | { action: "companyDelegate"; itemId: string; to: string | null }
   | { action: "companyEvent"; eventId: string; itemId: string }
   | { action: "companyDividendVote"; itemId: string; dps: number }
   | { action: "companyPropose"; itemId: string; kind: "loan" | "buyback" | "issue"; amount: number }
@@ -118,6 +124,8 @@ type ActionBody = {
         dealOpeningShares?: boolean;
         newsPerDay?: number;
         rumorReliabilityPct?: number;
+        voteCapPct?: number;
+        ceoSalary?: number;
       };
     }
   | { action: "adminCompanyEvents"; events: { id?: string; name: string; amount: number; random?: boolean }[] }
@@ -285,6 +293,15 @@ export async function POST(request: Request) {
         break;
       case "adminStartingGold":
         await adminSetStartingGold(userId, Number(body.gold));
+        break;
+      case "companyCeoVote":
+        await companyCeoVote(userId, body.itemId, body.candidate ?? null);
+        break;
+      case "companyStrategy":
+        await companyStrategy(userId, body.itemId, body.strategy);
+        break;
+      case "companyDelegate":
+        await companyDelegate(userId, body.itemId, body.to ?? null);
         break;
       case "adminDealShares":
         await adminDealSharesNow(userId);
