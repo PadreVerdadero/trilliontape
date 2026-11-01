@@ -37,7 +37,6 @@ export function useMobileLayout() {
 
   useEffect(() => {
     document.documentElement.classList.toggle("mobile-desk", mobile);
-    persist(mobile);
   }, [mobile]);
 
   const setMobile = (on: boolean) => {

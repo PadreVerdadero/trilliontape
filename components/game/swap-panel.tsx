@@ -75,7 +75,7 @@ export function SwapPanel({
   onDecline: (id: number) => Promise<unknown>;
 }) {
   const liveItems = playItems(catalog ?? defaultItems);
-  const catalogById = playItemMap(liveItems);
+  const catalogById = useMemo(() => playItemMap(liveItems), [liveItems]);
   const [toUsername, setToUsername] = useState("");
   const [giveGold, setGiveGold] = useState("");
   const [wantGold, setWantGold] = useState("");
@@ -91,7 +91,7 @@ export function SwapPanel({
           name: catalogById[row.itemId]?.name ?? row.itemId,
           quantity: row.quantity,
         })),
-    [inventory]
+    [inventory, catalogById]
   );
 
   function updateLeg(side: "give" | "want", index: number, patch: Partial<LegDraft>) {

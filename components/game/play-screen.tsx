@@ -21,7 +21,8 @@ import { playItems } from "@/lib/game/shares";
 import { cn } from "@/lib/utils";
 import type { GameState } from "@/lib/game/types";
 
-type PhoneTab = "pack" | "book" | "orders" | "firms";
+type PhoneTab = "pack" | "chart" | "trade" | "ladder" | "orders" | "stocks" | "deals" | "firms";
+const PHONE_MARKET_TABS = ["chart", "trade", "ladder", "orders", "stocks", "deals"] as const;
 
 export function PlayScreen({
   initialState,
@@ -38,7 +39,7 @@ export function PlayScreen({
   );
   const marketSort = useMarketSort(state?.prices ?? [], catalog);
   const [mobile, setMobile] = useMobileLayout();
-  const [tab, setTab] = useState<PhoneTab>("book");
+  const [tab, setTab] = useState<PhoneTab>("chart");
   const [deskTab, setDeskTab] = useState<"market" | "companies" | "stocks" | "deals">("market");
 
   if (loading) {
@@ -75,7 +76,7 @@ export function PlayScreen({
     );
   }
 
-  const renderMarket = (view: "market" | "stocks" | "deals") => (
+  const renderMarket = (view: "market" | "stocks" | "deals" | "chart" | "trade" | "ladder" | "orders") => (
     <MarketPanel
       state={state}
       pending={pending}
@@ -83,7 +84,7 @@ export function PlayScreen({
       view={view}
       pack={pack}
       orders={orders}
-      onOpenMarket={() => setDeskTab("market")}
+      onOpenMarket={() => (mobile ? setTab("chart") : setDeskTab("market"))}
       selectedItemId={itemId}
       onSelectItem={setItemId}
       rankedItems={marketSort.rankedItems}
@@ -117,7 +118,7 @@ export function PlayScreen({
       prices={state.prices}
       onSelect={(id) => {
         setItemId(id);
-        if (mobile) setTab("book");
+        if (mobile) setTab("chart");
       }}
       selectedItemId={itemId}
       rankedItemIds={marketSort.rankedItems.map((item) => item.id)}
@@ -266,18 +267,35 @@ export function PlayScreen({
 
       {mobile ? (
         <>
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-3" data-keep-scroll>
-            <div className={cn(tab !== "pack" && "hidden")}>{pack}</div>
-            <div className={cn(tab !== "book" && "hidden")}>{renderMarket("market")}</div>
-            <div className={cn(tab !== "orders" && "hidden")}>{orders}</div>
-            <div className={cn(tab !== "firms" && "hidden")}>{renderFirms(false)}</div>
+          <div className="relative min-h-0 flex-1 overflow-hidden">
+            <div className={cn("h-full", tab !== "pack" && "hidden")}>
+              <div className="h-full overflow-y-auto px-2 py-2" data-keep-scroll>
+                {pack}
+              </div>
+            </div>
+            <div className={cn("h-full", !(PHONE_MARKET_TABS as readonly string[]).includes(tab) && "hidden")}>
+              {renderMarket(
+                (PHONE_MARKET_TABS as readonly string[]).includes(tab)
+                  ? (tab as (typeof PHONE_MARKET_TABS)[number])
+                  : "chart"
+              )}
+            </div>
+            <div className={cn("h-full", tab !== "firms" && "hidden")}>
+              <div className="h-full overflow-y-auto px-2 py-2" data-keep-scroll>
+                {renderFirms(false)}
+              </div>
+            </div>
           </div>
-          <nav className="grid shrink-0 grid-cols-4 gap-1 border-t border-border/80 bg-background/95 px-2 py-2">
+          <nav className="grid shrink-0 grid-cols-4 gap-1 border-t border-border/80 bg-background/95 px-2 py-1.5">
             {(
               [
                 ["pack", "Pack"],
-                ["book", "Book"],
+                ["chart", "Chart"],
+                ["trade", "Trade"],
+                ["ladder", "Ladder"],
                 ["orders", "Orders"],
+                ["stocks", "Stocks"],
+                ["deals", "Deals"],
                 ["firms", "Firms"],
               ] as const
             ).map(([id, label]) => (
@@ -286,7 +304,7 @@ export function PlayScreen({
                 type="button"
                 onClick={() => setTab(id)}
                 className={cn(
-                  "h-11 rounded-lg text-sm font-medium",
+                  "h-9 rounded-lg text-sm font-medium",
                   tab === id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
                 )}
               >

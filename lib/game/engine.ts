@@ -659,7 +659,13 @@ async function matchItem(itemId: string) {
       }
       qty = Math.min(qty, room);
     }
-    await executeFill(pair.buy, pair.sell, itemId, qty, pair.sell.price);
+    // Two travelers split the gap (rounded half up); treasury quotes keep their own MV price.
+    const fillPrice = pair.sell.treasury
+      ? pair.sell.price
+      : pair.buy.treasury
+        ? pair.buy.price
+        : Math.round((pair.buy.price + pair.sell.price) / 2);
+    await executeFill(pair.buy, pair.sell, itemId, qty, fillPrice);
   }
   bustPriceSheet();
 }

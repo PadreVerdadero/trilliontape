@@ -127,7 +127,8 @@ export function PriceChart({
   now?: number;
   candleMs?: number;
 }) {
-  const clock = now ?? Date.now();
+  const [mountedAt] = useState(() => Date.now());
+  const clock = now ?? mountedAt;
   const prints = useMemo(
     () => [...trades].sort((a, b) => a.id - b.id || a.createdAt - b.createdAt),
     [trades]
@@ -262,7 +263,9 @@ export function PriceChart({
     setManual({ lo: nextLo, hi: Math.max(nextLo + 5, Math.round(mid + half)) });
   };
   const panRef = useRef(panBy);
-  panRef.current = panBy;
+  useEffect(() => {
+    panRef.current = panBy;
+  });
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
@@ -325,7 +328,7 @@ export function PriceChart({
       <div className={cn("mb-2 flex items-end justify-between gap-3", fill && "mb-1")}>
         <div>
           <p className="font-heading text-lg">Price</p>
-          {fill ? (
+          {fill && compact ? null : fill ? (
             <p className="text-[11px] text-muted-foreground">
               {Math.round(candleMs / MINUTE_MS)}-minute candles · volume bars below · dashed marks are MV, bid and ask ·
               amber lines are your limits, purple your stops · click to place, drag to move, ✕ to cancel
@@ -357,13 +360,13 @@ export function PriceChart({
       </div>
       <div className="mb-1 flex flex-wrap items-center justify-end gap-1 text-xs">
         <span className="mr-auto text-muted-foreground">
-          Price range {formatNumber(min)}–{formatNumber(max)}{manual ? "" : " (auto)"} · mouse wheel over the chart scrolls
+          Price range {formatNumber(min)}–{formatNumber(max)}{manual ? "" : " (auto)"}{compact ? "" : " · mouse wheel over the chart scrolls"}
         </span>
         {([
-          ["▲ Up", () => panBy(0.25)],
-          ["▼ Down", () => panBy(-0.25)],
-          ["＋ Zoom in", () => zoomBy(0.7)],
-          ["－ Zoom out", () => zoomBy(1.4)],
+          [compact ? "▲" : "▲ Up", () => panBy(0.25)],
+          [compact ? "▼" : "▼ Down", () => panBy(-0.25)],
+          [compact ? "＋" : "＋ Zoom in", () => zoomBy(0.7)],
+          [compact ? "－" : "－ Zoom out", () => zoomBy(1.4)],
         ] as const).map(([label, run]) => (
           <button
             key={label}

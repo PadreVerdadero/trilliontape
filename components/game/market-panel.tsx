@@ -79,7 +79,9 @@ function PriceLadder({
   onPlaceStop,
   onMarket,
   onCancel,
+  fill = false,
 }: {
+  fill?: boolean;
   bids: OrderRow[];
   asks: OrderRow[];
   myStops: OrderRow[];
@@ -149,7 +151,6 @@ function PriceLadder({
   // the ladder back and made it look like it was constantly refreshing.
   useEffect(() => {
     centerRef.current?.scrollIntoView({ block: "center" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recenterToken]);
 
   function buyAction(price: number): { kind: "stop" | "market" | "limit"; label: string } {
@@ -187,13 +188,13 @@ function PriceLadder({
   }
 
   return (
-    <div className="mt-2 rounded-lg border border-border/60 bg-background/30 p-2">
-      <p className="mb-1 text-[10px] text-muted-foreground">
+    <div className={cn("rounded-lg border border-border/60 bg-background/30 p-2", fill ? "flex h-full min-h-0 flex-col" : "mt-2")}>
+      <p className={cn("mb-1 text-[10px] text-muted-foreground", fill && "hidden")}>
         Scroll without a price limit. Tap the middle price to edit it, the left/right buttons to place a
         bid/ask (auto Buy/Sell STP beyond the book, auto market at the touch), or a resting quote to take
         it or cancel yours.
       </p>
-      <label className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+      <label className={cn("flex shrink-0 items-center gap-2 text-xs text-muted-foreground", fill ? "mb-1" : "mb-2")}>
         Tick scale
         <input
           type="number"
@@ -213,11 +214,11 @@ function PriceLadder({
             }
           }}
         />
-        <span>prices per step (1–1,000,000)</span>
+        <span>{fill ? "per step" : "prices per step (1–1,000,000)"}</span>
       </label>
       <div
         ref={scrollRef}
-        className="max-h-[min(55dvh,32rem)] overflow-y-auto rounded-md border border-border/60"
+        className={cn("overflow-y-auto rounded-md border border-border/60", fill ? "min-h-0 flex-1" : "max-h-[min(55dvh,32rem)]")}
         onScroll={(event) => {
           const element = event.currentTarget;
           const extension = 200 * tickSize;
@@ -478,38 +479,6 @@ function shortcutTargetIsText(target: EventTarget | null) {
   return field.id !== "px" && field.id !== "qty";
 }
 
-function unitRows<T extends { remaining: number }>(rows: T[]) {
-  return rows.flatMap((row) =>
-    Array.from({ length: Math.max(0, row.remaining) }, (_, unit) => ({
-      ...row,
-      remaining: 1,
-      unit,
-    }))
-  );
-}
-
-function stackUnitRows<
-  T extends { id: number; remaining: number; playerId: number; price: number; isGov?: boolean },
->(rows: T[]) {
-  const units = unitRows(rows);
-  const stacks: (T & { remaining: number; unit: number; count: number; ids: number[] })[] = [];
-  for (const row of units) {
-    const prev = stacks[stacks.length - 1];
-    if (
-      prev &&
-      prev.playerId === row.playerId &&
-      prev.price === row.price &&
-      Boolean(prev.isGov) === Boolean(row.isGov)
-    ) {
-      prev.count += 1;
-      prev.ids.push(row.id);
-      continue;
-    }
-    stacks.push({ ...row, count: 1, ids: [row.id] });
-  }
-  return stacks;
-}
-
 export function MarketPanel({
   state,
   pending,
@@ -564,7 +533,7 @@ export function MarketPanel({
   cycleSort: (column: SortColumn) => void;
   onSetCandle: (ms: number) => Promise<unknown>;
   compact?: boolean;
-  view?: "market" | "stocks" | "deals";
+  view?: "market" | "stocks" | "deals" | "chart" | "trade" | "ladder" | "orders";
   pack?: ReactNode;
   orders?: ReactNode;
   onOpenMarket?: () => void;
@@ -583,11 +552,13 @@ export function MarketPanel({
     CANDLE_PRESETS.some((row) => row.ms === state.candleMs) ? String(state.candleMs) : "custom"
   );
 
-  useEffect(() => {
+  const [seenCandleMs, setSeenCandleMs] = useState(state.candleMs);
+  if (seenCandleMs !== state.candleMs) {
+    setSeenCandleMs(state.candleMs);
     setCandleChoice(
       CANDLE_PRESETS.some((row) => row.ms === state.candleMs) ? String(state.candleMs) : "custom"
     );
-  }, [state.candleMs]);
+  }
   const priceRef = useRef<HTMLInputElement>(null);
   const qtyRef = useRef<HTMLInputElement>(null);
   const focusAfter = useRef<"px" | "qty" | null>(null);
@@ -1038,7 +1009,7 @@ export function MarketPanel({
           checked={confirmClick}
           onChange={(event) => setConfirmClick(event.target.checked)}
         />
-        Confirm chart orders with a second tap
+        {compact ? "Confirm taps" : "Confirm chart orders with a second tap"}
       </label>
       <label className="flex items-center gap-1.5">
         Chart quantity
@@ -1191,7 +1162,7 @@ export function MarketPanel({
                 className={cn(
                   "grid w-full items-center gap-2 border-b border-border/40 px-3 text-left text-sm last:border-b-0 hover:bg-background/50 sm:px-4",
                   compact
-                    ? "grid-cols-[minmax(0,1.3fr)_4.5rem_4.5rem_4.5rem] py-3"
+                    ? "grid-cols-[minmax(0,1.3fr)_4.5rem_4.5rem_4.5rem] py-1"
                     : "min-w-[52rem] grid-cols-[minmax(7rem,0.9fr)_minmax(9rem,1.25fr)_minmax(9rem,1.25fr)_minmax(8.5rem,1.15fr)_minmax(4.5rem,0.55fr)_minmax(4.5rem,0.55fr)] py-1.5",
                   active && "bg-primary/15"
                 )}
@@ -1337,181 +1308,175 @@ export function MarketPanel({
     </div>
   ) : null;
 
-  const renderCompact = () => (
-    <div className="space-y-3">
-      {compact ? (
-        <div className="sticky top-0 z-20 -mx-3 overflow-x-auto border-b border-border/60 bg-background/95 px-3 py-1.5 backdrop-blur sm:-mx-4 sm:px-4">
-          <div className="flex w-max gap-1">
-            {rankedItems.map((item) => {
-              const active = item.id === selectedItemId;
-              const rarity = rarityOf(item.id, rarityMap);
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  title={item.name}
-                  aria-label={item.name}
-                  aria-current={active}
-                  onClick={() => pick(item.id)}
-                  className={cn(
-                    "flex size-9 shrink-0 items-center justify-center rounded-lg text-xl ring-1 transition-colors",
-                    rarityClass(item.id, rarityMap),
-                    active
-                      ? "bg-primary/25 ring-primary"
-                      : "bg-background/60 ring-foreground/10 hover:bg-background"
-                  )}
-                >
-                  <ItemIcon item={item} />
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="font-heading text-xl sm:text-2xl">Player market</p>
-          <p className="text-xs text-muted-foreground">
-            {compact
-              ? "Crossing bids fill at the ask. Tap a column to sort, then tap a row to trade that good."
-              : "Crossing bids fill at the ask. Bid/Ask is units on the book. Volume is trades today. Tap a column to sort. Bid/Ask: two taps on bids, then two on asks. Pack on the left follows this order. W/S select · A fills MV · D qty 1 · arrows nudge · Shift/Ctrl step place · V buy · X sell · Q take bid · E take ask · T buy treasury · R sell treasury."}
-          </p>
-        </div>
-        {state.recentTrades[0] ? (
-          <p className="rounded-lg bg-primary/10 px-2 py-1 text-xs">
-            Last tape: {formatMilitaryTime(state.recentTrades[0].createdAt, true)} ·{" "}
-            <ItemIcon item={catalogById[state.recentTrades[0].itemId]} />{" "}
-            {formatNumber(state.recentTrades[0].quantity)} @{" "}
-            {formatCoins(state.recentTrades[0].price)}
-          </p>
-        ) : (
-          <p className="text-xs text-muted-foreground">No trades yet. Post the first order.</p>
-        )}
-      </div>
-
-      {selected ? (
-        <div className="space-y-2 rounded-2xl bg-card p-3 ring-1 ring-foreground/10">
-          <div className="space-y-2">
-            <div className="min-w-0">
-              <p className="font-heading text-xl">
-                <ItemIcon item={selected} /> {selected.name}
-              </p>
-              {(() => {
-                const window = state.tradingHours[selected.id];
-                const open = goodIsOpen(window, state.now, state.tradingTimeZone);
-                return (
-                  <p className={cn("text-xs", open ? "text-emerald-400" : "text-amber-300")}>
-                    {open ? "Trading open" : "Trading closed"} · {describeTradingWindow(window)}
-                  </p>
-                );
-              })()}
-            </div>
-            {statGrid(cn("grid grid-cols-2 gap-2 sm:grid-cols-4", state.player.isAdmin ? "xl:grid-cols-8" : "xl:grid-cols-7"))}
-          </div>
-
-          <div className="grid gap-2 lg:grid-cols-[minmax(12rem,16rem)_minmax(0,1fr)] lg:items-start">
-            {ticketBox}
-
-            <div>
-              <p className="mb-1 font-heading text-sm">
-                Recent <ItemIcon item={selected} /> {selected.name} trades
-              </p>
-              {(book?.trades ?? []).length === 0 ? (
-                <p className="rounded-lg bg-background/40 p-2 text-xs text-muted-foreground ring-1 ring-foreground/10">
-                  No prints for this item yet.
-                </p>
-              ) : (
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-                  {[0, 1, 2, 3, 4].map((column) => {
-                    const slice = (book?.trades ?? []).slice(column * 5, column * 5 + 5);
-                    return (
-                      <div
-                        key={column}
-                        className="rounded-lg bg-background/40 p-2 ring-1 ring-foreground/10"
-                      >
-                        {slice.length === 0 ? (
-                          <p className="text-xs text-muted-foreground">—</p>
-                        ) : (
-                          <ul className="space-y-1 text-xs">
-                            {slice.map((trade) => (
-                              <li key={trade.id} className="flex min-w-0 items-baseline gap-1.5">
-                                <span
-                                  className="shrink-0 tabular-nums text-muted-foreground"
-                                  title={formatMilitaryTime(trade.createdAt, true)}
-                                >
-                                  {formatMilitaryTime(trade.createdAt)}
-                                </span>
-                                <span
-                                  className="shrink-0 tabular-nums"
-                                  title={formatCoins(trade.price)}
-                                >
-                                  {trade.quantity > 1 ? `${formatCompact(trade.quantity)} @ ` : null}
-                                  {formatCompact(trade.price)}
-                                </span>
-                                <span className="min-w-0 truncate">
-                                  <span className="text-emerald-200">{trade.buyUsername}</span>
-                                  <span className="text-muted-foreground"> – </span>
-                                  <span className="text-rose-200">{trade.sellUsername}</span>
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {compact ? (
-            <PriceLadder
-              key={selected.id}
-              bids={book?.bids ?? []}
-              asks={book?.asks ?? []}
-              myStops={state.myOrders.filter(
-                (row) => row.itemId === selected.id && row.orderType === "stop"
-              )}
-              marketValue={price?.vwap ?? selected.basePrice}
-              bestBid={price?.bestBid}
-              bestAsk={price?.bestAsk}
-              selfId={state.player.id}
-              pending={pending}
-              onSelect={(value) => setPriceInput(String(value))}
-              onPlaceLimit={(side, value) => void placeAt(side, value, "limit")}
-              onPlaceStop={(side, value) => void placeAt(side, value, "stop")}
-              onMarket={(row, side) =>
-                void takeQuote({
-                  orderId: row.id,
-                  itemId: row.itemId,
-                  side,
-                  price: row.price,
-                  treasury: row.isGov,
-                })
-              }
-              onCancel={(id) => {
-                void (async () => {
-                  await onCancel(id);
-                  await reloadBook();
-                })();
-              }}
-            />
-          ) : null}
-
-          {chartEl(false)}
-          {controlsRow}
-          {depthEl(compact ? "h-32 w-full" : "h-40 w-full")}
-        </div>
-      ) : null}
-
-      {stockList}
-
-      {tapeBox}
-
-      {swapBox(false)}
+  const itemStrip = (
+    <div className="flex shrink-0 gap-1 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {rankedItems.map((item) => {
+        const active = item.id === selectedItemId;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            title={item.name}
+            aria-label={item.name}
+            aria-current={active}
+            onClick={() => pick(item.id)}
+            className={cn(
+              "flex size-9 shrink-0 items-center justify-center rounded-lg text-xl ring-1 transition-colors",
+              rarityClass(item.id, rarityMap),
+              active ? "bg-primary/25 ring-primary" : "bg-background/60 ring-foreground/10 hover:bg-background"
+            )}
+          >
+            <ItemIcon item={item} />
+          </button>
+        );
+      })}
     </div>
   );
+
+  const phoneHead = selected ? (
+    <div className="flex shrink-0 items-center justify-between gap-2">
+      <p className="min-w-0 truncate font-heading text-base leading-tight">
+        <ItemIcon item={selected} /> {selected.name}
+      </p>
+      <p
+        className={cn(
+          "shrink-0 text-[11px]",
+          goodIsOpen(state.tradingHours[selected.id], state.now, state.tradingTimeZone)
+            ? "text-emerald-400"
+            : "text-amber-300"
+        )}
+      >
+        {goodIsOpen(state.tradingHours[selected.id], state.now, state.tradingTimeZone) ? "Open" : "Closed"} ·{" "}
+        {describeTradingWindow(state.tradingHours[selected.id])}
+      </p>
+    </div>
+  ) : null;
+
+  if (compact) {
+    const wrap = "flex h-full min-h-0 flex-col gap-1.5 overflow-hidden p-2";
+    if (view === "stocks") {
+      return (
+        <div className="h-full min-h-0 overflow-y-auto p-2" data-keep-scroll>
+          {stockList}
+        </div>
+      );
+    }
+    if (view === "deals") {
+      return (
+        <div className="h-full min-h-0 overflow-y-auto p-2" data-keep-scroll>
+          {swapBox(false)}
+        </div>
+      );
+    }
+    if (view === "orders") {
+      return (
+        <div className="flex h-full min-h-0 flex-col overflow-hidden">
+          <div className="flex max-h-[42%] min-h-0 shrink-0 flex-col overflow-hidden border-b border-border/70">
+            {orders}
+          </div>
+          <div className="min-h-0 flex-1">
+            {selected ? (
+              <OrderBookPanel
+                asks={book?.asks ?? []}
+                bids={book?.bids ?? []}
+                myStops={state.myOrders.filter((row) => row.itemId === selected.id && row.orderType === "stop")}
+                selfId={state.player.id}
+                pending={pending}
+                mv={Math.round(price?.vwap ?? selected.basePrice)}
+                onTake={(row) =>
+                  void takeQuote({
+                    orderId: row.id,
+                    itemId: row.itemId,
+                    side: row.side,
+                    price: row.price,
+                    treasury: row.isGov,
+                  })
+                }
+                onCancel={(id) => {
+                  void (async () => {
+                    await onCancel(id);
+                    await reloadBook();
+                  })();
+                }}
+              />
+            ) : null}
+          </div>
+        </div>
+      );
+    }
+    if (view === "ladder") {
+      return (
+        <div className={wrap}>
+          {itemStrip}
+          {phoneHead}
+          {selected ? (
+            <div className="min-h-0 flex-1">
+              <PriceLadder
+                fill
+                key={selected.id}
+                bids={book?.bids ?? []}
+                asks={book?.asks ?? []}
+                myStops={state.myOrders.filter((row) => row.itemId === selected.id && row.orderType === "stop")}
+                marketValue={price?.vwap ?? selected.basePrice}
+                bestBid={price?.bestBid}
+                bestAsk={price?.bestAsk}
+                selfId={state.player.id}
+                pending={pending}
+                onSelect={(value) => setPriceInput(String(value))}
+                onPlaceLimit={(side, value) => void placeAt(side, value, "limit")}
+                onPlaceStop={(side, value) => void placeAt(side, value, "stop")}
+                onMarket={(row, side) =>
+                  void takeQuote({
+                    orderId: row.id,
+                    itemId: row.itemId,
+                    side,
+                    price: row.price,
+                    treasury: row.isGov,
+                  })
+                }
+                onCancel={(id) => {
+                  void (async () => {
+                    await onCancel(id);
+                    await reloadBook();
+                  })();
+                }}
+              />
+            </div>
+          ) : null}
+        </div>
+      );
+    }
+    if (view === "trade") {
+      return (
+        <div className={wrap}>
+          {itemStrip}
+          {phoneHead}
+          {statGrid("grid shrink-0 grid-cols-4 gap-1")}
+          <div className="shrink-0">{ticketBox}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto">{recentList}</div>
+        </div>
+      );
+    }
+    return (
+      <div className={wrap}>
+        {itemStrip}
+        {phoneHead}
+        {selected ? (
+          <p className="shrink-0 text-xs tabular-nums">
+            <span className="text-muted-foreground">Last </span>
+            {price?.last != null ? formatNumber(price.last) : "—"}
+            <span className="text-emerald-300"> · Bid {price?.bestBid != null ? formatNumber(price.bestBid) : "—"}</span>
+            <span className="text-rose-300"> · Ask {price?.bestAsk != null ? formatNumber(price.bestAsk) : "—"}</span>
+            <span className="text-sky-300"> · MV {formatNumber(Math.round(price?.vwap ?? selected.basePrice))}</span>
+            <span className="text-muted-foreground"> · Vol {formatNumber(price?.tradesToday ?? 0)}</span>
+          </p>
+        ) : null}
+        <div className="min-h-0 flex-1">{chartEl(true)}</div>
+        <div className="shrink-0">{depthEl("h-12 w-full")}</div>
+        <div className="shrink-0">{controlsRow}</div>
+      </div>
+    );
+  }
 
   if (!compact) {
     if (view === "stocks") {
@@ -1621,7 +1586,7 @@ export function MarketPanel({
     );
   }
 
-  return renderCompact();
+  return null;
 }
 
 function valueSizeClass(value: string) {

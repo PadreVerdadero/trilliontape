@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { formatCompact, formatNumber } from "@/lib/game/format";
 import type { OrderRow } from "@/lib/game/types";
 
