@@ -1,13 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { useEffect, useState, type ReactNode } from "react";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { GAME_NAME } from "@/lib/game/brand";
+import { cn } from "@/lib/utils";
 import type { SeatRole, StockDef, WolfView } from "@/lib/wolf/types";
 
 type Action = Record<string, unknown> & { action: string };
+
+const fieldClass =
+  "h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground";
 
 export function WolfScreen({ initial }: { initial: WolfView }) {
   const [state, setState] = useState(initial);
@@ -59,41 +65,53 @@ export function WolfScreen({ initial }: { initial: WolfView }) {
     left == null
       ? null
       : `${Math.floor(left / 60000)}:${String(Math.floor((left % 60000) / 1000)).padStart(2, "0")}`;
+  const role =
+    state.phase === "lobby" && state.plan === "both"
+      ? "Manager and investor"
+      : roleLabel(state.you.role);
 
   return (
-    <div className="min-h-dvh bg-zinc-950 text-zinc-50">
-      <header className="sticky top-0 z-20 border-b border-white/10 bg-zinc-950/95 pt-[env(safe-area-inset-top)] backdrop-blur">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-3 py-3">
-          <div>
-            <p className="text-[11px] font-semibold tracking-[0.2em] text-amber-200/80 uppercase">TrillionTape</p>
-            <h1 className="font-heading text-2xl">Wolf Street</h1>
+    <div className="flex min-h-dvh flex-col pb-[env(safe-area-inset-bottom)]">
+      <header className="sticky top-0 z-20 shrink-0 border-b border-border/80 bg-background/90 pt-[env(safe-area-inset-top)] backdrop-blur">
+        <div className="flex w-full items-center justify-between gap-2 px-3 py-2 sm:px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <p className="font-heading text-lg">{GAME_NAME}</p>
+            <span className="truncate text-sm text-muted-foreground">
+              Wolf Street
+              <span className="text-border"> · </span>
+              {state.you.username}
+            </span>
           </div>
-          <div className="text-right text-sm">
-            <p>
-              {state.phase === "lobby" ? "Lobby" : `Round ${state.round} · ${phaseLabel(state.phase)}`}
-              {clock ? ` · ${clock}` : ""}
-            </p>
-            {state.you.seated ? (
-              <p className="text-zinc-400">
-                {state.you.username} ·{" "}
-                {state.phase === "lobby" && state.plan === "both"
-                  ? "Manager and investor"
-                  : roleLabel(state.you.role)}
-                {state.phase === "lobby" ? "" : ` · ${state.you.cash} cash`}
-                {state.phase !== "lobby" && state.you.investing ? ` · ${state.you.tokens} tokens` : ""}
-              </p>
-            ) : (
-              <p className="text-zinc-400">{state.you.username}</p>
-            )}
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            <Link
+              href="/play"
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9 px-2 sm:px-3")}
+            >
+              Desk
+            </Link>
+            <form action="/auth/logout" method="post">
+              <button
+                type="submit"
+                className="inline-flex h-9 items-center rounded-lg px-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground sm:px-3"
+              >
+                Sign out
+              </button>
+            </form>
           </div>
-          <Link href="/play" className="text-sm text-amber-200 underline-offset-2 hover:underline">
-            Desk
-          </Link>
         </div>
+        <p className="w-full truncate px-3 pb-2 text-sm text-muted-foreground sm:px-4">
+          {state.phase === "lobby" ? "Lobby" : `Round ${state.round} · ${phaseLabel(state.phase)}`}
+          {clock ? ` · ${clock}` : ""}
+          {state.you.seated ? ` · ${role}` : ""}
+          {state.you.seated && state.phase !== "lobby" ? ` · ${state.you.cash} cash` : ""}
+          {state.you.seated && state.phase !== "lobby" && state.you.investing
+            ? ` · ${state.you.tokens} tokens`
+            : ""}
+        </p>
       </header>
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-3 py-4 pb-16">
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-3 py-4 sm:px-4">
         {error ? (
-          <p className="rounded-lg border border-red-400/40 bg-red-950/50 px-3 py-2 text-sm text-red-100">
+          <p className="rounded-xl bg-destructive/15 px-3 py-2 text-sm text-destructive ring-1 ring-destructive/30">
             {error}
             <button type="button" className="ml-3 underline" onClick={() => setError(null)}>
               Dismiss
@@ -168,37 +186,79 @@ function roleLabel(role: SeatRole | null) {
   return "Not seated";
 }
 
+function ink(color: string) {
+  const hex = color.trim().replace("#", "");
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return "#1c120c";
+  const channel = (start: number) => Number.parseInt(hex.slice(start, start + 2), 16) / 255;
+  const lin = (value: number) =>
+    value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  const luminance =
+    0.2126 * lin(channel(0)) + 0.7152 * lin(channel(2)) + 0.0722 * lin(channel(4));
+  return luminance > 0.45 ? "#1c120c" : "#fffaf3";
+}
+
+function stockColor(state: WolfView, stockId: string) {
+  return state.stocks.find((stock) => stock.id === stockId)?.color ?? "#a8a29e";
+}
+
 function Tracks({ stocks }: { stocks: WolfView["stocks"] }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {stocks.map((stock) => (
-        <section key={stock.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
-          <div className="mb-2 flex items-baseline justify-between">
-            <h2 className="font-heading text-lg" style={{ color: stock.color }}>
-              {stock.name}
-            </h2>
-            <p className="text-sm tabular-nums">
-              {stock.roll == null ? "Start" : stock.roll > 0 ? `+${stock.roll}` : stock.roll} · {stock.value}
-            </p>
-          </div>
-          <div className="grid grid-cols-8 gap-1">
-            {stock.track.map((value, index) => (
-              <div
-                key={`${stock.id}-${index}`}
-                className="rounded px-0.5 py-1 text-center text-[11px] tabular-nums"
-                style={{
-                  background: index === stock.index ? stock.color : "transparent",
-                  color: index === stock.index ? "#18181b" : "#e4e4e7",
-                  outline: index === stock.startIndex ? `1px solid ${stock.color}` : undefined,
-                }}
-              >
-                {value}
-              </div>
-            ))}
-          </div>
-        </section>
-      ))}
+      {stocks.map((stock) => {
+        const fg = ink(stock.color);
+        return (
+          <section
+            key={stock.id}
+            className="rounded-xl p-3 ring-1 ring-black/10"
+            style={{ background: stock.color, color: fg }}
+          >
+            <div className="mb-2 flex items-baseline justify-between gap-2">
+              <h2 className="font-heading text-lg">{stock.name}</h2>
+              <p className="text-sm tabular-nums">
+                {stock.roll == null ? "Start" : stock.roll > 0 ? `+${stock.roll}` : stock.roll} · {stock.value}
+              </p>
+            </div>
+            <div className="grid grid-cols-8 gap-1">
+              {stock.track.map((value, index) => (
+                <div
+                  key={`${stock.id}-${index}`}
+                  className="rounded px-0.5 py-1 text-center text-[11px] tabular-nums"
+                  style={{
+                    background: index === stock.index ? fg : "transparent",
+                    color: index === stock.index ? stock.color : fg,
+                    outline: index === stock.startIndex ? `1px solid ${fg}` : undefined,
+                  }}
+                >
+                  {value}
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })}
     </div>
+  );
+}
+
+function Panel({
+  title,
+  body,
+  children,
+  className,
+}: {
+  title: string;
+  body?: string;
+  children?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <Card className={className}>
+      <CardHeader>
+        <CardTitle className="font-heading text-xl">{title}</CardTitle>
+        {body ? <CardDescription>{body}</CardDescription> : null}
+      </CardHeader>
+      {children ? <CardContent className="flex w-full flex-col items-start gap-3">{children}</CardContent> : null}
+    </Card>
   );
 }
 
@@ -219,12 +279,8 @@ function Lobby({
         ? `This table needs ${plan.managers} managers and ${plan.investors} investors.`
         : "Seat 3 to 11 travelers.";
   return (
-    <section className="space-y-4 rounded-xl border border-white/10 bg-white/5 p-4">
-      <div>
-        <h2 className="font-heading text-xl">Who is at the table</h2>
-        <p className="text-sm text-zinc-400">{planText} Everyone starts with 120. Investors hold 10 tokens.</p>
-      </div>
-      <ul className="space-y-2">
+    <Panel title="Who is at the table" body={`${planText} Everyone starts with 120. Investors hold 10 tokens.`}>
+      <ul className="w-full space-y-2">
         {state.seats.map((seat) => (
           <li key={seat.userId} className="flex flex-wrap items-center justify-between gap-2 text-sm">
             <span>
@@ -233,7 +289,7 @@ function Lobby({
             </span>
             {state.you.office && plan !== "both" ? (
               <select
-                className="h-9 rounded-md border border-white/15 bg-zinc-900 px-2"
+                className={cn(fieldClass, "w-auto")}
                 value={seat.role}
                 onChange={(event) =>
                   void act({ action: "assign", userId: seat.userId, role: event.target.value })
@@ -243,13 +299,13 @@ function Lobby({
                 <option value="manager">Manager</option>
               </select>
             ) : (
-              <span className="text-zinc-400">
+              <span className="text-muted-foreground">
                 {plan === "both" ? "Manager and investor" : roleLabel(seat.role)}
               </span>
             )}
           </li>
         ))}
-        {state.seats.length === 0 ? <li className="text-sm text-zinc-400">No one is seated.</li> : null}
+        {state.seats.length === 0 ? <li className="text-sm text-muted-foreground">No one is seated.</li> : null}
       </ul>
       {plan !== "both" ? (
         <div className="flex flex-wrap gap-2">
@@ -281,7 +337,7 @@ function Lobby({
         Start the street
       </Button>
       {state.you.office && state.catalog ? <StockEditor stocks={state.catalog} pending={pending} act={act} /> : null}
-    </section>
+    </Panel>
   );
 }
 
@@ -297,9 +353,9 @@ function StockEditor({
   const [name, setName] = useState("");
   const [color, setColor] = useState("#a8a29e");
   return (
-    <div className="space-y-3 border-t border-white/10 pt-4">
+    <div className="w-full space-y-3 border-t border-border pt-4">
       <h3 className="font-heading text-lg">Stocks</h3>
-      <p className="text-sm text-zinc-400">
+      <p className="text-sm text-muted-foreground">
         Each stock has its own 8-space track and 6-face die. Ordinary cards and 2× cards are separate. A full set at
         the end is one company of every stock.
       </p>
@@ -309,9 +365,9 @@ function StockEditor({
       <div className="flex flex-wrap items-end gap-2">
         <div>
           <Label htmlFor="new-stock">New stock</Label>
-          <Input id="new-stock" value={name} onChange={(event) => setName(event.target.value)} className="bg-zinc-900" />
+          <Input id="new-stock" value={name} onChange={(event) => setName(event.target.value)} />
         </div>
-        <Input value={color} onChange={(event) => setColor(event.target.value)} className="w-28 bg-zinc-900" />
+        <Input value={color} onChange={(event) => setColor(event.target.value)} className="w-28" />
         <Button
           disabled={pending}
           variant="outline"
@@ -344,48 +400,51 @@ function StockRow({
   const [name, setName] = useState(stock.name);
   const [color, setColor] = useState(stock.color);
   return (
-    <div className="space-y-2 rounded-lg border border-white/10 p-3">
-      <div className="flex flex-wrap gap-2">
-        <Input value={name} onChange={(event) => setName(event.target.value)} className="max-w-40 bg-zinc-900" />
-        <Input value={color} onChange={(event) => setColor(event.target.value)} className="w-28 bg-zinc-900" />
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={pending}
-          onClick={() => void act({ action: "removeStock", stockId: stock.id })}
-        >
-          Remove
-        </Button>
+    <div className="overflow-hidden rounded-xl bg-background/40 ring-1 ring-foreground/10">
+      <div className="h-2" style={{ background: color }} />
+      <div className="space-y-2 p-3">
+        <div className="flex flex-wrap gap-2">
+          <Input value={name} onChange={(event) => setName(event.target.value)} className="max-w-40" />
+          <Input value={color} onChange={(event) => setColor(event.target.value)} className="w-28" />
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={() => void act({ action: "removeStock", stockId: stock.id })}
+          >
+            Remove
+          </Button>
+        </div>
+        <Label>Track</Label>
+        <Input value={track} onChange={(event) => setTrack(event.target.value)} />
+        <Label>Die</Label>
+        <Input value={die} onChange={(event) => setDie(event.target.value)} />
+        <div className="flex flex-wrap gap-2">
+          <Input value={normalCards} onChange={(event) => setNormal(event.target.value)} className="w-24" />
+          <Input value={doubleCards} onChange={(event) => setDouble(event.target.value)} className="w-24" />
+          <Input value={startIndex} onChange={(event) => setStart(event.target.value)} className="w-24" />
+          <Button
+            size="sm"
+            disabled={pending}
+            onClick={() =>
+              void act({
+                action: "saveStock",
+                stockId: stock.id,
+                name,
+                color,
+                track: track.split(/[^-\d]+/).filter(Boolean).map(Number),
+                die: die.split(/[^-\d]+/).filter(Boolean).map(Number),
+                startIndex: Number(startIndex) - 1,
+                normalCards: Number(normalCards),
+                doubleCards: Number(doubleCards),
+              })
+            }
+          >
+            Save
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">Ordinary cards, 2× cards, and the start space (1–8).</p>
       </div>
-      <Label>Track</Label>
-      <Input value={track} onChange={(event) => setTrack(event.target.value)} className="bg-zinc-900" />
-      <Label>Die</Label>
-      <Input value={die} onChange={(event) => setDie(event.target.value)} className="bg-zinc-900" />
-      <div className="flex flex-wrap gap-2">
-        <Input value={normalCards} onChange={(event) => setNormal(event.target.value)} className="w-24 bg-zinc-900" />
-        <Input value={doubleCards} onChange={(event) => setDouble(event.target.value)} className="w-24 bg-zinc-900" />
-        <Input value={startIndex} onChange={(event) => setStart(event.target.value)} className="w-24 bg-zinc-900" />
-        <Button
-          size="sm"
-          disabled={pending}
-          onClick={() =>
-            void act({
-              action: "saveStock",
-              stockId: stock.id,
-              name,
-              color,
-              track: track.split(/[^-\d]+/).filter(Boolean).map(Number),
-              die: die.split(/[^-\d]+/).filter(Boolean).map(Number),
-              startIndex: Number(startIndex) - 1,
-              normalCards: Number(normalCards),
-              doubleCards: Number(doubleCards),
-            })
-          }
-        >
-          Save
-        </Button>
-      </div>
-      <p className="text-xs text-zinc-500">Ordinary cards, 2× cards, and the start space (1–8).</p>
     </div>
   );
 }
@@ -402,21 +461,26 @@ function Draft({
   const draft = state.draft;
   if (!draft) return null;
   return (
-    <section className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
-      <h2 className="font-heading text-xl">Keep one company</h2>
-      <p className="text-sm text-zinc-400">
-        You have kept {draft.kept}. Still choosing: {draft.waiting.join(", ") || "no one"}.
-      </p>
-      <div className="flex flex-wrap gap-2">
+    <Panel
+      title="Keep one company"
+      body={`You have kept ${draft.kept}. Still choosing: ${draft.waiting.join(", ") || "no one"}.`}
+    >
+      <div className="flex w-full flex-wrap gap-2">
         {draft.hand.map((card) => (
-          <Button key={card.id} disabled={pending} onClick={() => void act({ action: "draft", cardId: card.id })}>
-            Keep {card.double ? "2× " : ""}
-            {stockName(state, card.stockId)}
-          </Button>
+          <CompanyBox
+            key={card.id}
+            color={stockColor(state, card.stockId)}
+            title={`${card.double ? "2× " : ""}${stockName(state, card.stockId)}`}
+            detail="Keep"
+            disabled={pending}
+            onClick={() => void act({ action: "draft", cardId: card.id })}
+          />
         ))}
-        {draft.hand.length === 0 ? <p className="text-sm text-zinc-400">Waiting on the other managers.</p> : null}
+        {draft.hand.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Waiting on the other managers.</p>
+        ) : null}
       </div>
-    </section>
+    </Panel>
   );
 }
 
@@ -435,14 +499,12 @@ function Floor({
   const [lock, setLock] = useState(false);
   const targets = state.seats.filter((seat) => seat.userId !== state.you.id);
   return (
-    <section className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
-      <h2 className="font-heading text-xl">Make an offer</h2>
-      <p className="text-sm text-zinc-400">
-        An offer goes to one traveler. A locked deal cannot be pulled. Unlocked deals can be replaced or dropped until
-        the clock ends.
-      </p>
-      <div className="grid gap-2 sm:grid-cols-2">
-        <select className="h-10 rounded-md border border-white/15 bg-zinc-900 px-2" value={cardId} onChange={(event) => setCardId(event.target.value)}>
+    <Panel
+      title="Make an offer"
+      body="An offer goes to one traveler. A locked deal cannot be pulled. Unlocked deals can be replaced or dropped until the clock ends."
+    >
+      <div className="grid w-full gap-2 sm:grid-cols-2">
+        <select className={fieldClass} value={cardId} onChange={(event) => setCardId(event.target.value)}>
           {state.companies.map((card) => (
             <option key={card.id} value={card.id}>
               {card.double ? "2× " : ""}
@@ -451,7 +513,7 @@ function Floor({
             </option>
           ))}
         </select>
-        <select className="h-10 rounded-md border border-white/15 bg-zinc-900 px-2" value={toId} onChange={(event) => setToId(event.target.value)}>
+        <select className={fieldClass} value={toId} onChange={(event) => setToId(event.target.value)}>
           <option value="">To whom</option>
           {targets.map((seat) => (
             <option key={seat.userId} value={seat.userId}>
@@ -459,7 +521,7 @@ function Floor({
             </option>
           ))}
         </select>
-        <Input value={price} onChange={(event) => setPrice(event.target.value)} className="bg-zinc-900" />
+        <Input value={price} onChange={(event) => setPrice(event.target.value)} />
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={lock} onChange={(event) => setLock(event.target.checked)} />
           Lock if they accept
@@ -472,32 +534,44 @@ function Floor({
         Send offer
       </Button>
       {state.offers.length > 0 ? (
-        <ul className="space-y-2">
-          {state.offers.map((offer) => (
-            <li key={offer.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <span>
-                {offer.fromName} → {offer.toName}: {offer.price}
-                {offer.lock ? " · lock" : ""} on {companyLabel(state, offer.cardId)}
-              </span>
-              <span className="flex gap-2">
-                {offer.toId === state.you.id ? (
-                  <Button size="sm" disabled={pending} onClick={() => void act({ action: "accept", offerId: offer.id })}>
-                    Accept
-                  </Button>
-                ) : null}
-                {offer.fromId === state.you.id ? (
-                  <Button size="sm" variant="outline" disabled={pending} onClick={() => void act({ action: "cancelOffer", offerId: offer.id })}>
-                    Pull offer
-                  </Button>
-                ) : null}
-              </span>
-            </li>
-          ))}
+        <ul className="w-full space-y-2">
+          {state.offers.map((offer) => {
+            const card = state.companies.find((row) => row.id === offer.cardId);
+            const color = stockColor(state, card?.stockId ?? "");
+            return (
+              <li key={offer.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="flex flex-wrap items-center gap-2">
+                  <CompanyBox
+                    color={color}
+                    title={companyLabel(state, offer.cardId)}
+                    detail={`${offer.fromName} → ${offer.toName}: ${offer.price}${offer.lock ? " · lock" : ""}`}
+                  />
+                </span>
+                <span className="flex gap-2">
+                  {offer.toId === state.you.id ? (
+                    <Button size="sm" disabled={pending} onClick={() => void act({ action: "accept", offerId: offer.id })}>
+                      Accept
+                    </Button>
+                  ) : null}
+                  {offer.fromId === state.you.id ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={pending}
+                      onClick={() => void act({ action: "cancelOffer", offerId: offer.id })}
+                    >
+                      Pull offer
+                    </Button>
+                  ) : null}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       ) : (
-        <p className="text-sm text-zinc-500">No open offers.</p>
+        <p className="text-sm text-muted-foreground">No open offers.</p>
       )}
-    </section>
+    </Panel>
   );
 }
 
@@ -512,41 +586,41 @@ function Companies({
 }) {
   if (state.companies.length === 0 || state.phase === "lobby") return null;
   return (
-    <section className="space-y-2">
-      <h2 className="font-heading text-lg">Companies</h2>
-      <ul className="grid gap-2 sm:grid-cols-2">
+    <Panel title="Companies">
+      <ul className="grid w-full gap-2 sm:grid-cols-2">
         {state.companies.map((card) => {
           const mine = card.managerId === state.you.id || card.investorId === state.you.id;
           return (
-            <li key={card.id} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm">
-              <p style={{ color: state.stocks.find((stock) => stock.id === card.stockId)?.color }}>
-                {card.double ? "2× " : ""}
-                {stockName(state, card.stockId)}
-              </p>
-              <p className="text-zinc-400">
-                {card.managerName}
-                {card.investorName ? ` · ${card.investorName} at ${card.price}` : " · unsold"}
-                {card.locked ? " · locked" : ""}
-              </p>
-              {state.phase === "negotiation" && mine && card.investorId != null ? (
-                <span className="mt-2 flex gap-2">
-                  {!card.locked ? (
-                    <Button size="sm" variant="outline" disabled={pending} onClick={() => void act({ action: "pull", cardId: card.id })}>
+            <li key={card.id}>
+              <CompanyBox
+                fill
+                color={stockColor(state, card.stockId)}
+                title={`${card.double ? "2× " : ""}${stockName(state, card.stockId)}`}
+                detail={`${card.managerName}${
+                  card.investorName ? ` · ${card.investorName} at ${card.price}` : " · unsold"
+                }${card.locked ? " · locked" : ""}`}
+              >
+                {state.phase === "negotiation" && mine && card.investorId != null && !card.locked ? (
+                  <span className="mt-2 flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={pending}
+                      onClick={() => void act({ action: "pull", cardId: card.id })}
+                    >
                       Pull deal
                     </Button>
-                  ) : null}
-                  {!card.locked ? (
                     <Button size="sm" disabled={pending} onClick={() => void act({ action: "lock", cardId: card.id })}>
                       Lock
                     </Button>
-                  ) : null}
-                </span>
-              ) : null}
+                  </span>
+                ) : null}
+              </CompanyBox>
             </li>
           );
         })}
       </ul>
-    </section>
+    </Panel>
   );
 }
 
@@ -573,30 +647,32 @@ function Upkeep({
     );
   }
   return (
-    <section className="space-y-3 rounded-xl border border-amber-300/30 bg-amber-950/30 p-4">
-      <h2 className="font-heading text-xl">Sell {state.mustSell} to the bank</h2>
-      <p className="text-sm text-zinc-300">You cannot cover 10 per company. Sell exactly {state.mustSell} for 5 each.</p>
-      <div className="flex flex-wrap gap-2">
+    <Panel
+      title={`Sell ${state.mustSell} to the bank`}
+      body={`You cannot cover 10 per company. Sell exactly ${state.mustSell} for 5 each.`}
+      className="bg-primary/10"
+    >
+      <div className="flex w-full flex-wrap gap-2">
         {owned.map((card) => {
           const on = picked.includes(card.id);
           return (
-            <Button
+            <CompanyBox
               key={card.id}
-              variant={on ? "default" : "outline"}
+              color={stockColor(state, card.stockId)}
+              title={`${card.double ? "2× " : ""}${stockName(state, card.stockId)}`}
+              detail={on ? "Selected" : "Sell"}
+              selected={on}
               onClick={() =>
                 setPicked((prev) => (prev.includes(card.id) ? prev.filter((id) => id !== card.id) : [...prev, card.id]))
               }
-            >
-              {card.double ? "2× " : ""}
-              {stockName(state, card.stockId)}
-            </Button>
+            />
           );
         })}
       </div>
       <Button disabled={pending || picked.length !== state.mustSell} onClick={() => void act({ action: "sell", cardIds: picked })}>
         Sell to the bank
       </Button>
-    </section>
+    </Panel>
   );
 }
 
@@ -613,27 +689,35 @@ function Auction({
   const [amount, setAmount] = useState("0");
   if (!auction) return null;
   const manager = state.you.role === "manager" || state.you.role === "both";
+  const color = stockColor(state, auction.stockId);
   return (
-    <section className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
-      <h2 className="font-heading text-xl">
-        Blind bid · {auction.double ? "2× " : ""}
-        {stockName(state, auction.stockId)}
-      </h2>
-      <p className="text-sm text-zinc-400">
-        {auction.left} still up. {auction.tieFloor > 0 ? `Tied at ${auction.tieFloor}. Bid higher, or 0 to drop.` : "Bid 0 to pass."} Waiting
-        on {auction.waiting.join(", ") || "no one"}.
-      </p>
-      {manager && auction.youBid ? (
-        <div className="flex gap-2">
-          <Input value={amount} onChange={(event) => setAmount(event.target.value)} className="max-w-32 bg-zinc-900" />
-          <Button disabled={pending} onClick={() => void act({ action: "bid", amount: Number(amount) })}>
-            Bid
-          </Button>
-        </div>
-      ) : (
-        <p className="text-sm text-zinc-400">{auction.yourBid != null ? `Your bid is ${auction.yourBid}.` : "Investors watch this one."}</p>
-      )}
-    </section>
+    <Card className="overflow-hidden">
+      <div className="px-4 py-3" style={{ background: color, color: ink(color) }}>
+        <h2 className="font-heading text-xl">
+          Blind bid · {auction.double ? "2× " : ""}
+          {stockName(state, auction.stockId)}
+        </h2>
+      </div>
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">
+          {auction.left} still up.{" "}
+          {auction.tieFloor > 0 ? `Tied at ${auction.tieFloor}. Bid higher, or 0 to drop.` : "Bid 0 to pass."} Waiting
+          on {auction.waiting.join(", ") || "no one"}.
+        </p>
+        {manager && auction.youBid ? (
+          <div className="flex gap-2">
+            <Input value={amount} onChange={(event) => setAmount(event.target.value)} className="max-w-32" />
+            <Button disabled={pending} onClick={() => void act({ action: "bid", amount: Number(amount) })}>
+              Bid
+            </Button>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {auction.yourBid != null ? `Your bid is ${auction.yourBid}.` : "Investors watch this one."}
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -648,8 +732,7 @@ function Score({
 }) {
   const winners = state.winners;
   return (
-    <section className="space-y-3 rounded-xl border border-amber-300/40 bg-amber-950/40 p-4">
-      <h2 className="font-heading text-xl">The street closes</h2>
+    <Panel title="The street closes" className="bg-primary/15">
       {winners ? (
         <p>
           {state.combo
@@ -670,7 +753,7 @@ function Score({
           Back to the lobby
         </Button>
       ) : null}
-    </section>
+    </Panel>
   );
 }
 
@@ -688,29 +771,76 @@ function PhaseNote({
   onClick: () => void;
 }) {
   return (
-    <section className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-4">
-      <h2 className="font-heading text-xl">{title}</h2>
-      <p className="text-sm text-zinc-400">{body}</p>
+    <Panel title={title} body={body}>
       {action ? (
         <Button disabled={pending} onClick={onClick}>
           {action}
         </Button>
       ) : null}
-    </section>
+    </Panel>
   );
 }
 
 function Log({ lines }: { lines: string[] }) {
   if (lines.length === 0) return null;
   return (
-    <section>
-      <h2 className="font-heading text-lg">Tape</h2>
-      <ul className="mt-2 space-y-1 text-sm text-zinc-400">
+    <Panel title="Tape">
+      <ul className="space-y-1 text-sm text-muted-foreground">
         {lines.map((line, index) => (
           <li key={`${index}-${line}`}>{line}</li>
         ))}
       </ul>
-    </section>
+    </Panel>
+  );
+}
+
+function CompanyBox({
+  color,
+  title,
+  detail,
+  children,
+  onClick,
+  disabled,
+  selected,
+  fill,
+}: {
+  color: string;
+  title: string;
+  detail?: string;
+  children?: ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  selected?: boolean;
+  fill?: boolean;
+}) {
+  const fg = ink(color);
+  const className = cn(
+    "rounded-xl px-3 py-2 text-left text-sm ring-1 ring-black/15",
+    fill ? "w-full" : "min-w-40",
+    onClick && "transition hover:brightness-110 disabled:opacity-50",
+    selected && "ring-2 ring-offset-2"
+  );
+  const style = {
+    background: color,
+    color: fg,
+    outline: selected ? `2px solid ${fg}` : undefined,
+    outlineOffset: selected ? 2 : undefined,
+  };
+  if (onClick) {
+    return (
+      <button type="button" disabled={disabled} onClick={onClick} className={className} style={style}>
+        <p className="font-heading text-base leading-tight">{title}</p>
+        {detail ? <p className="text-xs opacity-80">{detail}</p> : null}
+        {children}
+      </button>
+    );
+  }
+  return (
+    <div className={className} style={style}>
+      <p className="font-heading text-base leading-tight">{title}</p>
+      {detail ? <p className="text-xs opacity-80">{detail}</p> : null}
+      {children}
+    </div>
   );
 }
 
