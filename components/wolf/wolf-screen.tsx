@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -201,32 +201,152 @@ function stockColor(state: WolfView, stockId: string) {
   return state.stocks.find((stock) => stock.id === stockId)?.color ?? "#a8a29e";
 }
 
+function faceLabel(face: number | null | undefined) {
+  if (face == null) return "Start";
+  return face > 0 ? `+${face}` : String(face);
+}
+
 function Tracks({ stocks }: { stocks: WolfView["stocks"] }) {
+  const stocksRef = useRef(stocks);
+  stocksRef.current = stocks;
+  const settledRef = useRef(stocks);
+  const signature = stocks.map((stock) => `${stock.id}:${stock.index}:${stock.roll ?? ""}`).join("|");
+  const [shownIndex, setShownIndex] = useState<Record<string, number>>(() =>
+    Object.fromEntries(stocks.map((stock) => [stock.id, stock.index]))
+  );
+  const [spinning, setSpinning] = useState(false);
+  const [liveFace, setLiveFace] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const next = stocksRef.current;
+    const previous = settledRef.current;
+    const moved = next.some((stock) => {
+      const before = previous.find((row) => row.id === stock.id);
+      return !before || before.index !== stock.index || before.roll !== stock.roll;
+    });
+    if (!moved) {
+      settledRef.current = next;
+      return;
+    }
+    const from = Object.fromEntries(previous.map((stock) => [stock.id, stock.index]));
+    const finals = Object.fromEntries(next.map((stock) => [stock.id, stock.index]));
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) {
+      settledRef.current = next;
+      setSpinning(false);
+      setShownIndex(finals);
+      return;
+    }
+    let stopped = false;
+    const timers: number[] = [];
+    const firstFaces: Record<string, number> = {};
+    for (const stock of next) {
+      const die = stock.die.length > 0 ? stock.die : [0];
+      firstFaces[stock.id] = die[Math.floor(Math.random() * die.length)] ?? 0;
+    }
+    setSpinning(true);
+    setShownIndex(from);
+    setLiveFace(firstFaces);
+    const spinTimer = window.setInterval(() => {
+      if (stopped) return;
+      const faces: Record<string, number> = {};
+      for (const stock of next) {
+        const die = stock.die.length > 0 ? stock.die : [0];
+        faces[stock.id] = die[Math.floor(Math.random() * die.length)] ?? 0;
+      }
+      setLiveFace(faces);
+    }, 90);
+    timers.push(spinTimer);
+    const land = window.setTimeout(() => {
+      window.clearInterval(spinTimer);
+      if (stopped) return;
+      setSpinning(false);
+      setLiveFace(Object.fromEntries(next.map((stock) => [stock.id, stock.roll ?? 0])));
+      const maxSteps = Math.max(
+        0,
+        ...next.map((stock) => Math.abs(stock.index - (from[stock.id] ?? stock.index)))
+      );
+      if (maxSteps === 0) {
+        settledRef.current = next;
+        setShownIndex(finals);
+        return;
+      }
+      let step = 0;
+      const walk = window.setInterval(() => {
+        step += 1;
+        const positions: Record<string, number> = {};
+        for (const stock of next) {
+          const start = from[stock.id] ?? stock.index;
+          const delta = stock.index - start;
+          const walked = Math.min(step, Math.abs(delta));
+          positions[stock.id] = start + Math.sign(delta) * walked;
+        }
+        if (!stopped) setShownIndex(positions);
+        if (step >= maxSteps) {
+          window.clearInterval(walk);
+          settledRef.current = next;
+        }
+      }, 280);
+      timers.push(walk);
+    }, 1600);
+    timers.push(land);
+    return () => {
+      stopped = true;
+      for (const timer of timers) {
+        window.clearTimeout(timer);
+        window.clearInterval(timer);
+      }
+    };
+  }, [signature]);
+
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <style>{`
+        @keyframes wolf-die {
+          0% { transform: rotate(-14deg) translateY(0); }
+          25% { transform: rotate(16deg) translateY(-5px); }
+          50% { transform: rotate(-18deg) translateY(2px); }
+          75% { transform: rotate(12deg) translateY(-3px); }
+          100% { transform: rotate(0deg) translateY(0); }
+        }
+        .wolf-die { animation: wolf-die 0.16s linear infinite; }
+        @media (prefers-reduced-motion: reduce) {
+          .wolf-die { animation: none; }
+        }
+      `}</style>
       {stocks.map((stock) => {
         const fg = ink(stock.color);
+        const index = shownIndex[stock.id] ?? stock.index;
+        const face = spinning ? liveFace[stock.id] : stock.roll;
         return (
           <section
             key={stock.id}
             className="rounded-xl p-3 ring-1 ring-black/10"
             style={{ background: stock.color, color: fg }}
           >
-            <div className="mb-2 flex items-baseline justify-between gap-2">
+            <div className="mb-2 flex items-center justify-between gap-2">
               <h2 className="font-heading text-lg">{stock.name}</h2>
-              <p className="text-sm tabular-nums">
-                {stock.roll == null ? "Start" : stock.roll > 0 ? `+${stock.roll}` : stock.roll} · {stock.value}
-              </p>
+              <span
+                className={cn(
+                  "grid size-11 place-items-center rounded-lg text-base font-semibold tabular-nums shadow-sm",
+                  spinning && "wolf-die"
+                )}
+                style={{ background: fg, color: stock.color }}
+                aria-label={spinning ? `${stock.name} die rolling` : `${stock.name} rolled ${faceLabel(stock.roll)}`}
+              >
+                {faceLabel(face)}
+              </span>
             </div>
             <div className="grid grid-cols-8 gap-1">
-              {stock.track.map((value, index) => (
+              {stock.track.map((value, cell) => (
                 <div
-                  key={`${stock.id}-${index}`}
-                  className="rounded px-0.5 py-1 text-center text-[11px] tabular-nums"
+                  key={`${stock.id}-${cell}`}
+                  className="rounded px-0.5 py-1 text-center text-[11px] tabular-nums transition-transform"
                   style={{
-                    background: index === stock.index ? fg : "transparent",
-                    color: index === stock.index ? stock.color : fg,
-                    outline: index === stock.startIndex ? `1px solid ${fg}` : undefined,
+                    background: cell === index ? fg : "transparent",
+                    color: cell === index ? stock.color : fg,
+                    outline: cell === stock.startIndex ? `1px solid ${fg}` : undefined,
+                    transform: cell === index ? "scale(1.08)" : undefined,
                   }}
                 >
                   {value}
@@ -585,42 +705,64 @@ function Companies({
   act: (body: Action) => Promise<void>;
 }) {
   if (state.companies.length === 0 || state.phase === "lobby") return null;
+  const tables = state.seats
+    .map((seat) => ({
+      seat,
+      cards: state.companies.filter((card) => card.managerId === seat.userId),
+    }))
+    .filter((table) => table.cards.length > 0);
   return (
-    <Panel title="Companies">
-      <ul className="grid w-full gap-2 sm:grid-cols-2">
-        {state.companies.map((card) => {
-          const mine = card.managerId === state.you.id || card.investorId === state.you.id;
-          return (
-            <li key={card.id}>
-              <CompanyBox
-                fill
-                color={stockColor(state, card.stockId)}
-                title={`${card.double ? "2× " : ""}${stockName(state, card.stockId)}`}
-                detail={`${card.managerName}${
-                  card.investorName ? ` · ${card.investorName} at ${card.price}` : " · unsold"
-                }${card.locked ? " · locked" : ""}`}
-              >
-                {state.phase === "negotiation" && mine && card.investorId != null && !card.locked ? (
-                  <span className="mt-2 flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={pending}
-                      onClick={() => void act({ action: "pull", cardId: card.id })}
-                    >
-                      Pull deal
-                    </Button>
-                    <Button size="sm" disabled={pending} onClick={() => void act({ action: "lock", cardId: card.id })}>
-                      Lock
-                    </Button>
-                  </span>
-                ) : null}
-              </CompanyBox>
-            </li>
-          );
-        })}
-      </ul>
-    </Panel>
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {tables.map(({ seat, cards }) => (
+        <Card key={seat.userId} className="min-w-0">
+          <CardHeader>
+            <CardTitle className="font-heading text-xl">
+              {seat.username}&apos;s table
+              {seat.userId === state.you.id ? " · you" : ""}
+            </CardTitle>
+            <CardDescription>
+              {seat.cash} cash
+              {seat.investing ? ` · ${seat.tokens} tokens` : ""}
+              {` · ${cards.length} ${cards.length === 1 ? "company" : "companies"}`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            {cards.map((card) => {
+              const mine = card.managerId === state.you.id || card.investorId === state.you.id;
+              return (
+                <CompanyBox
+                  key={card.id}
+                  fill
+                  color={stockColor(state, card.stockId)}
+                  title={`${card.double ? "2× " : ""}${stockName(state, card.stockId)}`}
+                  detail={
+                    card.investorName
+                      ? `${card.investorName} at ${card.price}${card.locked ? " · locked" : ""}`
+                      : "Unsold"
+                  }
+                >
+                  {state.phase === "negotiation" && mine && card.investorId != null && !card.locked ? (
+                    <span className="mt-2 flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={pending}
+                        onClick={() => void act({ action: "pull", cardId: card.id })}
+                      >
+                        Pull deal
+                      </Button>
+                      <Button size="sm" disabled={pending} onClick={() => void act({ action: "lock", cardId: card.id })}>
+                        Lock
+                      </Button>
+                    </span>
+                  ) : null}
+                </CompanyBox>
+              );
+            })}
+          </CardContent>
+        </Card>
+      ))}
+    </div>
   );
 }
 
