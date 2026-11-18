@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -49,11 +49,13 @@ export function WolfScreen({ initial }: { initial: WolfView }) {
       const data = (await response.json()) as WolfView & { error?: string };
       if (!response.ok) {
         setError(data.error ?? "That did not go through.");
-        return;
+        return false;
       }
       setState(data);
+      return true;
     } catch {
       setError("Network hiccup. Try again.");
+      return false;
     } finally {
       setPending(false);
     }
@@ -123,7 +125,11 @@ export function WolfScreen({ initial }: { initial: WolfView }) {
         {state.phase === "draft" && state.draft ? (
           <Draft state={state} pending={pending} act={act} />
         ) : null}
-        {state.phase === "negotiation" ? <Floor state={state} pending={pending} act={act} /> : null}
+        {state.phase === "negotiation" ? (
+          <p className="text-sm text-muted-foreground">
+            Every company sits with the manager who owns it. Click one on another manager&apos;s table and enter what you will pay. Your token drops onto it with the amount.
+          </p>
+        ) : null}
         {state.phase === "market" ? (
           <PhaseNote
             title="The market moved"
@@ -389,7 +395,7 @@ function Lobby({
 }: {
   state: WolfView;
   pending: boolean;
-  act: (body: Action) => Promise<void>;
+  act: (body: Action) => Promise<boolean>;
 }) {
   const plan = state.plan;
   const planText =
@@ -468,7 +474,7 @@ function StockEditor({
 }: {
   stocks: StockDef[];
   pending: boolean;
-  act: (body: Action) => Promise<void>;
+  act: (body: Action) => Promise<boolean>;
 }) {
   const [name, setName] = useState("");
   const [color, setColor] = useState("#a8a29e");
@@ -510,7 +516,7 @@ function StockRow({
 }: {
   stock: StockDef;
   pending: boolean;
-  act: (body: Action) => Promise<void>;
+  act: (body: Action) => Promise<boolean>;
 }) {
   const [track, setTrack] = useState(stock.track.join(", "));
   const [die, setDie] = useState(stock.die.join(", "));
@@ -576,7 +582,7 @@ function Draft({
 }: {
   state: WolfView;
   pending: boolean;
-  act: (body: Action) => Promise<void>;
+  act: (body: Action) => Promise<boolean>;
 }) {
   const draft = state.draft;
   if (!draft) return null;
@@ -604,95 +610,24 @@ function Draft({
   );
 }
 
-function Floor({
-  state,
-  pending,
-  act,
-}: {
-  state: WolfView;
-  pending: boolean;
-  act: (body: Action) => Promise<void>;
-}) {
-  const [price, setPrice] = useState("10");
-  const [toId, setToId] = useState("");
-  const [cardId, setCardId] = useState(state.companies[0]?.id ?? "");
-  const [lock, setLock] = useState(false);
-  const targets = state.seats.filter((seat) => seat.userId !== state.you.id);
-  return (
-    <Panel
-      title="Make an offer"
-      body="An offer goes to one traveler. A locked deal cannot be pulled. Unlocked deals can be replaced or dropped until the clock ends."
-    >
-      <div className="grid w-full gap-2 sm:grid-cols-2">
-        <select className={fieldClass} value={cardId} onChange={(event) => setCardId(event.target.value)}>
-          {state.companies.map((card) => (
-            <option key={card.id} value={card.id}>
-              {card.double ? "2× " : ""}
-              {stockName(state, card.stockId)} · {card.managerName}
-              {card.price != null ? ` · ${card.price}${card.locked ? " locked" : ""}` : ""}
-            </option>
-          ))}
-        </select>
-        <select className={fieldClass} value={toId} onChange={(event) => setToId(event.target.value)}>
-          <option value="">To whom</option>
-          {targets.map((seat) => (
-            <option key={seat.userId} value={seat.userId}>
-              {seat.username} · {seat.cash} cash{seat.investing ? ` · ${seat.tokens} tokens` : ""}
-            </option>
-          ))}
-        </select>
-        <Input value={price} onChange={(event) => setPrice(event.target.value)} />
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={lock} onChange={(event) => setLock(event.target.checked)} />
-          Lock if they accept
-        </label>
-      </div>
-      <Button
-        disabled={pending || !cardId || !toId}
-        onClick={() => void act({ action: "offer", cardId, toId: Number(toId), price: Number(price), lock })}
-      >
-        Send offer
-      </Button>
-      {state.offers.length > 0 ? (
-        <ul className="w-full space-y-2">
-          {state.offers.map((offer) => {
-            const card = state.companies.find((row) => row.id === offer.cardId);
-            const color = stockColor(state, card?.stockId ?? "");
-            return (
-              <li key={offer.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                <span className="flex flex-wrap items-center gap-2">
-                  <CompanyBox
-                    color={color}
-                    title={companyLabel(state, offer.cardId)}
-                    detail={`${offer.fromName} → ${offer.toName}: ${offer.price}${offer.lock ? " · lock" : ""}`}
-                  />
-                </span>
-                <span className="flex gap-2">
-                  {offer.toId === state.you.id ? (
-                    <Button size="sm" disabled={pending} onClick={() => void act({ action: "accept", offerId: offer.id })}>
-                      Accept
-                    </Button>
-                  ) : null}
-                  {offer.fromId === state.you.id ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={pending}
-                      onClick={() => void act({ action: "cancelOffer", offerId: offer.id })}
-                    >
-                      Pull offer
-                    </Button>
-                  ) : null}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <p className="text-sm text-muted-foreground">No open offers.</p>
-      )}
-    </Panel>
-  );
+function useFreshKeys(keys: string[]) {
+  const signature = keys.join("\n");
+  const seen = useRef<Set<string> | null>(null);
+  const [fresh, setFresh] = useState<Set<string>>(new Set());
+  useLayoutEffect(() => {
+    const current = new Set(signature ? signature.split("\n") : []);
+    if (seen.current == null) {
+      seen.current = current;
+      return;
+    }
+    const arrived = [...current].filter((key) => key && !seen.current?.has(key));
+    seen.current = current;
+    if (arrived.length === 0) return;
+    setFresh(new Set(arrived));
+    const timer = window.setTimeout(() => setFresh(new Set()), 1500);
+    return () => window.clearTimeout(timer);
+  }, [signature]);
+  return fresh;
 }
 
 function Companies({
@@ -702,67 +637,333 @@ function Companies({
 }: {
   state: WolfView;
   pending: boolean;
-  act: (body: Action) => Promise<void>;
+  act: (body: Action) => Promise<boolean>;
 }) {
+  const [biddingId, setBiddingId] = useState<string | null>(null);
+  const [askingId, setAskingId] = useState<string | null>(null);
+  const offerKeys = state.offers.map((offer) => offer.id);
+  const dealKeys = state.companies
+    .filter((card) => card.investorId != null && card.price != null)
+    .map((card) => `${card.id}:${card.investorId}:${card.price}`);
+  const fresh = useFreshKeys([...offerKeys, ...dealKeys]);
   if (state.companies.length === 0 || state.phase === "lobby") return null;
+  const stockOrder = new Map(state.stocks.map((stock, index) => [stock.id, index]));
   const tables = state.seats
     .map((seat) => ({
       seat,
-      cards: state.companies.filter((card) => card.managerId === seat.userId),
+      cards: state.companies
+        .filter((card) => card.managerId === seat.userId)
+        .sort(
+          (a, b) =>
+            (stockOrder.get(a.stockId) ?? 0) - (stockOrder.get(b.stockId) ?? 0) ||
+            Number(a.double) - Number(b.double)
+        ),
     }))
     .filter((table) => table.cards.length > 0);
+  const investors = state.seats.filter((seat) => seat.investing && seat.userId !== state.you.id);
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <style>{`
+        @keyframes wolf-token-drop {
+          0% { transform: translateY(-5rem) scale(0.84); }
+          42% { transform: translateY(-2.5rem) scale(0.94); }
+          70% { transform: translateY(0.42rem) scale(1.08); }
+          84% { transform: translateY(-0.38rem) scale(0.98); }
+          100% { transform: translateY(0) scale(1); }
+        }
+        .wolf-token-drop {
+          position: relative;
+          z-index: 3;
+          animation: wolf-token-drop 1.4s linear both;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .wolf-token-drop { animation: none; }
+        }
+      `}</style>
       {tables.map(({ seat, cards }) => (
-        <Card key={seat.userId} className="min-w-0">
+        <Card key={seat.userId} className="min-w-0 overflow-visible">
           <CardHeader>
             <CardTitle className="font-heading text-xl">
-              {seat.username}&apos;s table
+              {seat.username}
               {seat.userId === state.you.id ? " · you" : ""}
             </CardTitle>
             <CardDescription>
-              {seat.cash} cash
+              Manager · {seat.cash} cash
               {seat.investing ? ` · ${seat.tokens} tokens` : ""}
               {` · ${cards.length} ${cards.length === 1 ? "company" : "companies"}`}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
             {cards.map((card) => {
-              const mine = card.managerId === state.you.id || card.investorId === state.you.id;
+              const color = stockColor(state, card.stockId);
+              const offers = state.offers.filter((offer) => offer.cardId === card.id);
+              const canBid =
+                state.phase === "negotiation" &&
+                state.you.investing &&
+                card.managerId !== state.you.id &&
+                !card.locked;
+              const canAsk = state.phase === "negotiation" && card.managerId === state.you.id && !card.locked;
+              const dealKey =
+                card.investorId != null && card.price != null ? `${card.id}:${card.investorId}:${card.price}` : null;
               return (
-                <CompanyBox
+                <div
                   key={card.id}
-                  fill
-                  color={stockColor(state, card.stockId)}
-                  title={`${card.double ? "2× " : ""}${stockName(state, card.stockId)}`}
-                  detail={
-                    card.investorName
-                      ? `${card.investorName} at ${card.price}${card.locked ? " · locked" : ""}`
-                      : "Unsold"
-                  }
+                  onClick={() => {
+                    if (!canBid) return;
+                    setAskingId(null);
+                    setBiddingId(card.id);
+                  }}
                 >
-                  {state.phase === "negotiation" && mine && card.investorId != null && !card.locked ? (
-                    <span className="mt-2 flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        disabled={pending}
-                        onClick={() => void act({ action: "pull", cardId: card.id })}
-                      >
-                        Pull deal
-                      </Button>
-                      <Button size="sm" disabled={pending} onClick={() => void act({ action: "lock", cardId: card.id })}>
-                        Lock
-                      </Button>
-                    </span>
-                  ) : null}
-                </CompanyBox>
+                  <CompanyBox
+                    fill
+                    color={color}
+                    title={`${card.double ? "2× " : ""}${stockName(state, card.stockId)}`}
+                    detail={
+                      canBid && biddingId !== card.id
+                        ? "Click and enter an amount"
+                        : card.locked
+                          ? "Locked"
+                          : undefined
+                    }
+                    className={canBid ? "cursor-pointer" : undefined}
+                    tokens={
+                      card.investorName != null || offers.length > 0 ? (
+                        <span className="mb-1 flex flex-wrap items-center gap-1" onClick={(event) => event.stopPropagation()}>
+                        {card.investorName != null && card.price != null ? (
+                          <InvestorToken
+                            name={card.investorName}
+                            amount={card.price}
+                            locked={card.locked}
+                            drop={dealKey != null && fresh.has(dealKey)}
+                          />
+                        ) : null}
+                        {offers.map((offer) => {
+                          const investorName = offer.fromId === card.managerId ? offer.toName : offer.fromName;
+                          return (
+                            <InvestorToken
+                              key={offer.id}
+                              name={investorName}
+                              amount={offer.price}
+                              locked={offer.lock}
+                              drop={fresh.has(offer.id)}
+                              note={offer.fromId === card.managerId ? "ask" : undefined}
+                            >
+                              {offer.toId === state.you.id ? (
+                                <Button
+                                  size="sm"
+                                  disabled={pending}
+                                  onClick={() => void act({ action: "accept", offerId: offer.id })}
+                                >
+                                  Accept
+                                </Button>
+                              ) : null}
+                              {offer.fromId === state.you.id ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={pending}
+                                  onClick={() => void act({ action: "cancelOffer", offerId: offer.id })}
+                                >
+                                  Pull
+                                </Button>
+                              ) : null}
+                            </InvestorToken>
+                          );
+                        })}
+                      </span>
+                      ) : undefined
+                    }
+                  >
+                    {biddingId === card.id && canBid ? (
+                      <BidForm
+                        pending={pending}
+                        onSubmit={async (price, lock) => {
+                          const ok = await act({
+                            action: "offer",
+                            cardId: card.id,
+                            toId: card.managerId,
+                            price,
+                            lock,
+                          });
+                          if (ok) setBiddingId(null);
+                        }}
+                      />
+                    ) : null}
+                    {canAsk ? (
+                      askingId === card.id ? (
+                        <AskForm
+                          investors={investors}
+                          pending={pending}
+                          onSubmit={async (price, toId, lock) => {
+                            const ok = await act({
+                              action: "offer",
+                              cardId: card.id,
+                              toId,
+                              price,
+                              lock,
+                            });
+                            if (ok) setAskingId(null);
+                          }}
+                        />
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="mt-2"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setBiddingId(null);
+                            setAskingId(card.id);
+                          }}
+                        >
+                          Ask an investor
+                        </Button>
+                      )
+                    ) : null}
+                    {state.phase === "negotiation" &&
+                    (card.managerId === state.you.id || card.investorId === state.you.id) &&
+                    card.investorId != null &&
+                    !card.locked ? (
+                      <span className="mt-2 flex gap-2" onClick={(event) => event.stopPropagation()}>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={pending}
+                          onClick={() => void act({ action: "pull", cardId: card.id })}
+                        >
+                          Pull deal
+                        </Button>
+                        <Button size="sm" disabled={pending} onClick={() => void act({ action: "lock", cardId: card.id })}>
+                          Lock
+                        </Button>
+                      </span>
+                    ) : null}
+                  </CompanyBox>
+                </div>
               );
             })}
           </CardContent>
         </Card>
       ))}
     </div>
+  );
+}
+
+function BidForm({
+  pending,
+  onSubmit,
+}: {
+  pending: boolean;
+  onSubmit: (price: number, lock: boolean) => Promise<void>;
+}) {
+  const [amount, setAmount] = useState("10");
+  const [lock, setLock] = useState(false);
+  return (
+    <form
+      className="mt-2 flex flex-wrap items-center gap-2"
+      onClick={(event) => event.stopPropagation()}
+      onSubmit={(event) => {
+        event.preventDefault();
+        void onSubmit(Number(amount), lock);
+      }}
+    >
+      <Input
+        autoFocus
+        inputMode="numeric"
+        aria-label="Amount"
+        value={amount}
+        onChange={(event) => setAmount(event.target.value)}
+        className="h-8 w-20 bg-background text-foreground"
+      />
+      <label className="flex items-center gap-1 text-xs">
+        <input type="checkbox" checked={lock} onChange={(event) => setLock(event.target.checked)} />
+        Lock
+      </label>
+      <Button type="submit" size="sm" disabled={pending}>
+        Offer
+      </Button>
+    </form>
+  );
+}
+
+function AskForm({
+  investors,
+  pending,
+  onSubmit,
+}: {
+  investors: WolfView["seats"];
+  pending: boolean;
+  onSubmit: (price: number, toId: number, lock: boolean) => Promise<void>;
+}) {
+  const [amount, setAmount] = useState("10");
+  const [toId, setToId] = useState(investors[0] ? String(investors[0].userId) : "");
+  const [lock, setLock] = useState(false);
+  return (
+    <form
+      className="mt-2 flex flex-wrap items-center gap-2"
+      onClick={(event) => event.stopPropagation()}
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!toId) return;
+        void onSubmit(Number(amount), Number(toId), lock);
+      }}
+    >
+      <select className={cn(fieldClass, "w-auto bg-background")} value={toId} onChange={(event) => setToId(event.target.value)}>
+        {investors.map((seat) => (
+          <option key={seat.userId} value={seat.userId}>
+            {seat.username}
+          </option>
+        ))}
+      </select>
+      <Input
+        inputMode="numeric"
+        aria-label="Amount"
+        value={amount}
+        onChange={(event) => setAmount(event.target.value)}
+        className="h-8 w-20 bg-background text-foreground"
+      />
+      <label className="flex items-center gap-1 text-xs">
+        <input type="checkbox" checked={lock} onChange={(event) => setLock(event.target.checked)} />
+        Lock
+      </label>
+      <Button type="submit" size="sm" disabled={pending || !toId}>
+        Ask
+      </Button>
+    </form>
+  );
+}
+
+function InvestorToken({
+  name,
+  amount,
+  locked,
+  drop,
+  note,
+  children,
+}: {
+  name: string;
+  amount: number;
+  locked?: boolean;
+  drop?: boolean;
+  note?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full bg-background px-1 py-0.5 text-xs font-medium text-foreground shadow-sm ring-1 ring-black/20",
+        drop && "wolf-token-drop"
+      )}
+    >
+      <span className="grid size-6 place-items-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">
+        {name.slice(0, 1).toUpperCase()}
+      </span>
+      <span>{name}</span>
+      <span className="tabular-nums">{amount}</span>
+      {note ? <span className="opacity-70">{note}</span> : null}
+      {locked ? <span className="opacity-70">locked</span> : null}
+      {children}
+    </span>
   );
 }
 
@@ -773,7 +974,7 @@ function Upkeep({
 }: {
   state: WolfView;
   pending: boolean;
-  act: (body: Action) => Promise<void>;
+  act: (body: Action) => Promise<boolean>;
 }) {
   const owned = state.companies.filter((card) => card.managerId === state.you.id);
   const [picked, setPicked] = useState<string[]>([]);
@@ -825,7 +1026,7 @@ function Auction({
 }: {
   state: WolfView;
   pending: boolean;
-  act: (body: Action) => Promise<void>;
+  act: (body: Action) => Promise<boolean>;
 }) {
   const auction = state.auction;
   const [amount, setAmount] = useState("0");
@@ -870,7 +1071,7 @@ function Score({
 }: {
   state: WolfView;
   pending: boolean;
-  act: (body: Action) => Promise<void>;
+  act: (body: Action) => Promise<boolean>;
 }) {
   const winners = state.winners;
   return (
@@ -941,26 +1142,31 @@ function CompanyBox({
   title,
   detail,
   children,
+  tokens,
   onClick,
   disabled,
   selected,
   fill,
+  className: extra,
 }: {
   color: string;
   title: string;
   detail?: string;
   children?: ReactNode;
+  tokens?: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
   selected?: boolean;
   fill?: boolean;
+  className?: string;
 }) {
   const fg = ink(color);
   const className = cn(
     "rounded-xl px-3 py-2 text-left text-sm ring-1 ring-black/15",
     fill ? "w-full" : "min-w-40",
     onClick && "transition hover:brightness-110 disabled:opacity-50",
-    selected && "ring-2 ring-offset-2"
+    selected && "ring-2 ring-offset-2",
+    extra
   );
   const style = {
     background: color,
@@ -968,30 +1174,28 @@ function CompanyBox({
     outline: selected ? `2px solid ${fg}` : undefined,
     outlineOffset: selected ? 2 : undefined,
   };
+  const body = (
+    <>
+      {tokens}
+      <p className="font-heading text-base leading-tight">{title}</p>
+      {detail ? <p className="text-xs opacity-80">{detail}</p> : null}
+      {children}
+    </>
+  );
   if (onClick) {
     return (
       <button type="button" disabled={disabled} onClick={onClick} className={className} style={style}>
-        <p className="font-heading text-base leading-tight">{title}</p>
-        {detail ? <p className="text-xs opacity-80">{detail}</p> : null}
-        {children}
+        {body}
       </button>
     );
   }
   return (
     <div className={className} style={style}>
-      <p className="font-heading text-base leading-tight">{title}</p>
-      {detail ? <p className="text-xs opacity-80">{detail}</p> : null}
-      {children}
+      {body}
     </div>
   );
 }
 
 function stockName(state: WolfView, stockId: string) {
   return state.stocks.find((stock) => stock.id === stockId)?.name ?? stockId;
-}
-
-function companyLabel(state: WolfView, cardId: string) {
-  const card = state.companies.find((row) => row.id === cardId);
-  if (!card) return "a company";
-  return `${card.double ? "2× " : ""}${stockName(state, card.stockId)}`;
 }
