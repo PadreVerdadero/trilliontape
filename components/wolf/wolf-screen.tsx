@@ -661,23 +661,6 @@ function Companies({
     .filter((table) => table.cards.length > 0);
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-      <style>{`
-        @keyframes wolf-token-drop {
-          0% { transform: translateY(-5rem) scale(0.84); }
-          42% { transform: translateY(-2.5rem) scale(0.94); }
-          70% { transform: translateY(0.42rem) scale(1.08); }
-          84% { transform: translateY(-0.38rem) scale(0.98); }
-          100% { transform: translateY(0) scale(1); }
-        }
-        .wolf-token-drop {
-          position: relative;
-          z-index: 3;
-          animation: wolf-token-drop 1.4s linear both;
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .wolf-token-drop { animation: none; }
-        }
-      `}</style>
       {tables.map(({ seat, cards }) => (
         <Card key={seat.userId} className="min-w-0 overflow-visible">
           <CardHeader>
@@ -751,6 +734,7 @@ function Companies({
                               {canTakeQuote(state, offer, card.managerId) ? (
                                 <Button
                                   size="sm"
+                                  className="h-6 px-1.5 text-[10px]"
                                   disabled={pending}
                                   onClick={() => void act({ action: "accept", offerId: offer.id })}
                                 >
@@ -761,6 +745,7 @@ function Companies({
                                 <Button
                                   size="sm"
                                   variant="outline"
+                                  className="h-6 bg-white/90 px-1.5 text-[10px] text-[#1c120c]"
                                   disabled={pending}
                                   onClick={() => void act({ action: "cancelOffer", offerId: offer.id })}
                                 >
@@ -897,24 +882,98 @@ function InvestorToken({
   note?: string;
   children?: ReactNode;
 }) {
+  const tone = note === "bid" || note === "ask" || note === "close" ? note : locked ? "locked" : "deal";
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full bg-background px-1 py-0.5 text-xs font-medium text-foreground shadow-sm ring-1 ring-black/20",
-        drop && "wolf-token-drop"
-      )}
-    >
-      <span className="grid size-6 place-items-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground">
+    <span className={cn("wolf-chip", `wolf-chip-${tone}`, drop && "wolf-token-drop")}>
+      <style>{tokenCss}</style>
+      <span className="wolf-chip-face" aria-hidden>
         {name.slice(0, 1).toUpperCase()}
       </span>
-      <span>{name}</span>
-      <span className="tabular-nums">{amount}</span>
-      {note ? <span className="opacity-70">{note}</span> : null}
-      {locked ? <span className="opacity-70">locked</span> : null}
+      <span className="wolf-chip-copy">
+        <span className="wolf-chip-name">{name}</span>
+        <span className="wolf-chip-amount">{amount}</span>
+      </span>
+      <span className="wolf-chip-kind">{note ?? (locked ? "locked" : "deal")}</span>
       {children}
     </span>
   );
 }
+
+const tokenCss = `
+@keyframes wolf-token-drop {
+  0% { transform: translateY(-5rem) scale(0.84) rotate(-8deg); }
+  42% { transform: translateY(-2.5rem) scale(0.94) rotate(3deg); }
+  70% { transform: translateY(0.42rem) scale(1.08) rotate(-1deg); }
+  84% { transform: translateY(-0.38rem) scale(0.98); }
+  100% { transform: translateY(0) scale(1) rotate(0deg); }
+}
+.wolf-token-drop { position: relative; z-index: 3; animation: wolf-token-drop 1.4s linear both; }
+@media (prefers-reduced-motion: reduce) {
+  .wolf-token-drop { animation: none; }
+}
+.wolf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  padding: 0.15rem 0.5rem 0.15rem 0.15rem;
+  color: #fffaf3;
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1;
+  box-shadow: 0 6px 12px rgba(28, 18, 12, 0.22);
+}
+.wolf-chip-bid {
+  border-radius: 999px;
+  background:
+    repeating-conic-gradient(from 0deg, rgba(255,255,255,0.28) 0 6deg, transparent 6deg 14deg),
+    radial-gradient(circle at 30% 25%, #86efac, #16a34a 46%, #14532d);
+  box-shadow: 0 0 0 2px #dcfce7, 0 0 0 4px #166534, 0 6px 12px rgba(20, 83, 45, 0.35);
+}
+.wolf-chip-ask {
+  border-radius: 0.35rem 999px 999px 0.35rem;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,0.18), transparent 28%),
+    radial-gradient(circle at 20% 20%, #fda4af, #e11d48 48%, #881337);
+  box-shadow: 0 0 0 2px #ffe4e6, 0 0 0 4px #9f1239, 0 6px 12px rgba(136, 19, 55, 0.35);
+}
+.wolf-chip-close {
+  border-radius: 999px;
+  color: #1c120c;
+  background:
+    repeating-radial-gradient(circle at 50% 50%, rgba(255,255,255,0.35) 0 2px, transparent 2px 5px),
+    radial-gradient(circle at 32% 28%, #fde68a, #d97706 52%, #92400e);
+  box-shadow: 0 0 0 2px #fff7d6, 0 0 0 4px #b45309, 0 6px 12px rgba(146, 64, 14, 0.3);
+}
+.wolf-chip-deal, .wolf-chip-locked {
+  border-radius: 0.7rem;
+  color: #1c120c;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.55), transparent 40%),
+    radial-gradient(circle at 30% 20%, #fff7ed, #e7d3b0 62%, #a8906a);
+  box-shadow: 0 0 0 2px #fffaf3, 0 0 0 4px #8a7048, 0 6px 12px rgba(90, 64, 32, 0.25);
+}
+.wolf-chip-face {
+  display: grid;
+  width: 1.7rem;
+  height: 1.7rem;
+  flex: none;
+  place-items: center;
+  border-radius: 999px;
+  font-family: var(--font-heading), serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  background:
+    repeating-conic-gradient(from 8deg, rgba(255,255,255,0.4) 0 10deg, transparent 10deg 20deg),
+    rgba(0, 0, 0, 0.16);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.5);
+}
+.wolf-chip-ask .wolf-chip-face { border-radius: 0.3rem; }
+.wolf-chip-copy { display: flex; min-width: 0; flex-direction: column; gap: 0.12rem; }
+.wolf-chip-name { max-width: 5.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wolf-chip-amount { font-variant-numeric: tabular-nums; font-size: 0.84rem; letter-spacing: 0.04em; }
+.wolf-chip-kind { font-size: 0.58rem; font-weight: 750; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.92; }
+`;
 
 function Upkeep({
   state,
@@ -1110,24 +1169,48 @@ function CompanyBox({
   className?: string;
 }) {
   const fg = ink(color);
+  const doubled = title.startsWith("2×");
+  const name = doubled ? title.replace(/^2×\s*/, "") : title;
+  const seal = name.slice(0, 1).toUpperCase();
   const className = cn(
-    "rounded-xl px-3 py-2 text-left text-sm ring-1 ring-black/15",
+    "relative rounded-2xl px-3 py-2.5 text-left text-sm",
     fill ? "w-full" : "min-w-40",
     onClick && "transition hover:brightness-110 disabled:opacity-50",
     selected && "ring-2 ring-offset-2",
     extra
   );
   const style = {
-    background: color,
+    background: `radial-gradient(120% 90% at 100% 0%, rgba(255,255,255,0.28), transparent 42%), repeating-linear-gradient(-45deg, transparent 0 7px, rgba(0,0,0,0.05) 7px 8px), ${color}`,
     color: fg,
+    boxShadow: `inset 0 0 0 1px ${fg}73, inset 0 0 0 5px transparent, inset 0 0 0 6px ${fg}59, 0 10px 18px rgba(28,18,12,0.14)`,
     outline: selected ? `2px solid ${fg}` : undefined,
     outlineOffset: selected ? 2 : undefined,
   };
   const body = (
     <>
-      {tokens}
-      <p className="font-heading text-base leading-tight">{title}</p>
-      {detail ? <p className="text-xs opacity-80">{detail}</p> : null}
+      <span className="mb-1.5 flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] opacity-80">
+        <span>Company</span>
+        <span className="rounded-full px-1.5 py-0.5 ring-1 ring-current">
+          {doubled ? "2× share" : "Share"}
+        </span>
+      </span>
+      {tokens ? <span className="relative z-[1] mb-1.5 flex flex-wrap gap-1.5">{tokens}</span> : null}
+      <span className="flex items-end justify-between gap-2">
+        <span className="min-w-0">
+          <p className="font-heading text-lg leading-none tracking-wide">{name}</p>
+          {detail ? <p className="mt-1 text-xs opacity-80">{detail}</p> : null}
+        </span>
+        <span
+          aria-hidden
+          className="grid size-9 shrink-0 place-items-center rounded-full font-heading text-base font-semibold"
+          style={{
+            background: `radial-gradient(circle at 35% 30%, rgba(255,255,255,0.6), transparent 42%), ${fg}1f`,
+            boxShadow: `inset 0 0 0 2px ${fg}99, inset 0 0 0 4px transparent, inset 0 0 0 5px ${fg}66`,
+          }}
+        >
+          {seal}
+        </span>
+      </span>
       {children}
     </>
   );
