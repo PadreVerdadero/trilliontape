@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GAME_NAME } from "@/lib/game/brand";
 import { cn } from "@/lib/utils";
-import type { SeatRole, StockDef, WolfView } from "@/lib/wolf/types";
+import type { SeatRole, WolfView } from "@/lib/wolf/types";
 import { play, toggleSound, unlockSound } from "@/components/wolf/sounds";
 
 type Action = Record<string, unknown> & { action: string };
@@ -22,6 +22,7 @@ export function WolfScreen({ initial }: { initial: WolfView }) {
   const [pending, setPending] = useState(false);
   const [now, setNow] = useState(initial.now);
   const [sound, setSound] = useState(true);
+  const [tab, setTab] = useState<"now" | "admin">("now");
   const previous = useRef(initial);
   const flights = useCashFlights(state, previous);
   const ticked = useRef<number | null>(null);
@@ -172,70 +173,45 @@ export function WolfScreen({ initial }: { initial: WolfView }) {
         </div>
       </header>
       <CashFlights flights={flights} />
-      <main className="mx-auto grid w-full max-w-7xl gap-3 px-3 py-4 sm:px-4 lg:grid-cols-[18rem_minmax(0,1fr)_20rem] lg:items-start">
+      <main className="mx-auto grid w-full max-w-7xl gap-3 px-3 py-4 sm:px-4 lg:grid-cols-[22rem_minmax(0,1fr)_22rem] lg:items-start">
         {error ? (
-          <p className="rounded-xl bg-destructive/15 px-3 py-2 text-sm text-destructive ring-1 ring-destructive/30">
+          <p className="col-span-full rounded-xl bg-destructive/15 px-3 py-2 text-sm text-destructive ring-1 ring-destructive/30">
             {error}
             <button type="button" className="ml-3 underline" onClick={() => setError(null)}>
               Dismiss
             </button>
           </p>
         ) : null}
-        <aside className="order-2 flex flex-col gap-3 lg:sticky lg:top-24 lg:order-1">
+        <aside className="order-2 flex flex-col gap-3 lg:order-1">
           <h2 className="font-heading text-lg">Tracks</h2>
           <Tracks stocks={state.stocks} stack />
+          <div className="flex gap-1">
+            <button
+              type="button"
+              className={cn(buttonVariants({ variant: tab === "now" ? "default" : "outline", size: "sm" }))}
+              onClick={() => setTab("now")}
+            >
+              Now
+            </button>
+            {state.you.office ? (
+              <button
+                type="button"
+                className={cn(buttonVariants({ variant: tab === "admin" ? "default" : "outline", size: "sm" }))}
+                onClick={() => setTab("admin")}
+              >
+                Admin
+              </button>
+            ) : null}
+          </div>
+          {tab === "admin" && state.you.office ? (
+            <AdminPanel stocks={state.stocks} phase={state.phase} pending={pending} act={act} />
+          ) : (
+            <GameNow state={state} pending={pending} act={act} clock={clock} urgent={urgent} warning={warning} />
+          )}
         </aside>
         <section className="order-3 flex min-w-0 flex-col gap-3 lg:order-2">
-          {clock ? (
-            <div
-              className={cn(
-                "flex items-center justify-between rounded-2xl px-4 py-3 ring-1 ring-border",
-                urgent ? "bg-destructive/15" : warning ? "bg-amber-500/15" : "bg-card"
-              )}
-            >
-              <span className="text-sm text-muted-foreground">Time left</span>
-              <span className="font-heading text-4xl tabular-nums">{clock}</span>
-            </div>
-          ) : null}
-          {state.phase === "lobby" ? <Lobby state={state} pending={pending} act={act} /> : null}
-          {state.phase === "draft" && state.draft ? (
-            <Draft state={state} pending={pending} act={act} />
-          ) : null}
-          {state.phase === "negotiation" ? (
-            <p className="text-sm text-muted-foreground">
-              Investors bid. The manager asks, and only the manager can close. A closed deal turns gold, and nobody can bid on it.
-            </p>
-          ) : null}
-          {state.phase === "market" ? (
-            <PhaseNote
-              title="The market moved"
-              body="💵 is moving from the companies to the investors who held them."
-              action="Take the fees"
-              pending={pending}
-              onClick={() => void act({ action: "fees" })}
-            />
-          ) : null}
-          {state.phase === "fees" ? (
-            <PhaseNote
-              title="Managers have been paid"
-              body={
-                state.combo
-                  ? "💵 moved from the investors to the managers. A traveler who cannot cover every fee pays nothing. Their 💵 and 🪙 are wiped, and they stay in as a manager."
-                  : "💵 moved from the investors to the managers. A traveler who cannot cover every fee pays nothing. Their 💵 is wiped, the bank lends 100, and one 🪙 is repaid at the end."
-              }
-              action="Pay upkeep"
-              pending={pending}
-              onClick={() => void act({ action: "upkeep" })}
-            />
-          ) : null}
-          {state.phase === "upkeep" ? <Upkeep state={state} pending={pending} act={act} /> : null}
-          {state.phase === "auction" && state.auction ? (
-            <Auction state={state} pending={pending} act={act} />
-          ) : null}
-          {state.phase === "score" ? <Score state={state} pending={pending} act={act} /> : null}
           {state.phase !== "lobby" ? <SeatPurses state={state} /> : null}
           <Companies state={state} pending={pending} act={act} side="others" />
-          <Log lines={state.log} />
         </section>
         <aside className="order-1 lg:sticky lg:top-24 lg:order-3">
           <YouColumn state={state} pending={pending} act={act} />
@@ -425,7 +401,10 @@ function Tracks({ stocks, stack }: { stocks: WolfView["stocks"]; stack?: boolean
                 {faceLabel(face)}
               </span>
             </div>
-            <div className="grid grid-cols-8 gap-1">
+            <div
+              className="grid gap-1"
+              style={{ gridTemplateColumns: `repeat(${Math.max(stock.track.length, 1)}, minmax(0, 1fr))` }}
+            >
               {stock.track.map((value, cell) => (
                 <div
                   key={`${stock.id}-${cell}`}
@@ -544,114 +523,264 @@ function Lobby({
       <Button disabled={pending || state.seats.length < 3} onClick={() => void act({ action: "start" })}>
         Start the street
       </Button>
-      {state.you.office && state.catalog ? <StockEditor stocks={state.catalog} pending={pending} act={act} /> : null}
     </Panel>
   );
 }
 
-function StockEditor({
+function GameNow({
+  state,
+  pending,
+  act,
+  clock,
+  urgent,
+  warning,
+}: {
+  state: WolfView;
+  pending: boolean;
+  act: (body: Action) => Promise<boolean>;
+  clock: string | null;
+  urgent: boolean;
+  warning: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      {clock ? (
+        <div
+          className={cn(
+            "flex items-center justify-between rounded-2xl px-4 py-3 ring-1 ring-border",
+            urgent ? "bg-destructive/15" : warning ? "bg-amber-500/15" : "bg-card"
+          )}
+        >
+          <span className="text-sm text-muted-foreground">Time left</span>
+          <span className="font-heading text-4xl tabular-nums">{clock}</span>
+        </div>
+      ) : null}
+      {state.phase === "lobby" ? <Lobby state={state} pending={pending} act={act} /> : null}
+      {state.phase === "draft" && state.draft ? <Draft state={state} pending={pending} act={act} /> : null}
+      {state.phase === "negotiation" ? (
+        <p className="text-sm text-muted-foreground">
+          Investors bid. The manager asks, and only the manager can close. A closed deal turns gold, and nobody can bid on it.
+        </p>
+      ) : null}
+      {state.phase === "market" ? (
+        <PhaseNote
+          title="The market moved"
+          body="💵 is moving from the companies to the investors who held them."
+          action="Take the fees"
+          pending={pending}
+          onClick={() => void act({ action: "fees" })}
+        />
+      ) : null}
+      {state.phase === "fees" ? (
+        <PhaseNote
+          title="Managers have been paid"
+          body={
+            state.combo
+              ? "💵 moved from the investors to the managers. A traveler who cannot cover every fee pays nothing. Their 💵 and 🪙 are wiped, and they stay in as a manager."
+              : "💵 moved from the investors to the managers. A traveler who cannot cover every fee pays nothing. Their 💵 is wiped, the bank lends 100, and one 🪙 is repaid at the end."
+          }
+          action="Pay upkeep"
+          pending={pending}
+          onClick={() => void act({ action: "upkeep" })}
+        />
+      ) : null}
+      {state.phase === "upkeep" ? <Upkeep state={state} pending={pending} act={act} /> : null}
+      {state.phase === "auction" && state.auction ? <Auction state={state} pending={pending} act={act} /> : null}
+      {state.phase === "score" ? <Score state={state} pending={pending} act={act} /> : null}
+      <Log lines={state.log} />
+    </div>
+  );
+}
+
+function groupDie(die: number[]) {
+  const rows: { face: number; weight: number }[] = [];
+  for (const face of die) {
+    const found = rows.find((row) => row.face === face);
+    if (found) found.weight += 1;
+    else rows.push({ face, weight: 1 });
+  }
+  return rows.length > 0 ? rows : [{ face: 0, weight: 1 }];
+}
+
+function AdminPanel({
   stocks,
+  phase,
   pending,
   act,
 }: {
-  stocks: StockDef[];
+  stocks: WolfView["stocks"];
+  phase: WolfView["phase"];
   pending: boolean;
   act: (body: Action) => Promise<boolean>;
 }) {
   const [name, setName] = useState("");
   const [color, setColor] = useState("#a8a29e");
   return (
-    <div className="w-full space-y-3 border-t border-border pt-4">
-      <h3 className="font-heading text-lg">Stocks</h3>
+    <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Each stock has its own 8-space track and 6-face die. Ordinary cards and 2× cards are separate. A full set at
-        the end is one company of every stock.
+        Set how many numbers are on a track, which rolls it has, and how often each roll comes up. A higher weight is
+        drawn more often.
       </p>
       {stocks.map((stock) => (
-        <StockRow key={stock.id} stock={stock} pending={pending} act={act} />
+        <AdminStock key={stock.id} stock={stock} phase={phase} pending={pending} act={act} />
       ))}
-      <div className="flex flex-wrap items-end gap-2">
-        <div>
-          <Label htmlFor="new-stock">New stock</Label>
-          <Input id="new-stock" value={name} onChange={(event) => setName(event.target.value)} />
+      {phase === "lobby" ? (
+        <div className="flex flex-wrap items-end gap-2">
+          <div>
+            <Label htmlFor="new-stock">New stock</Label>
+            <Input id="new-stock" value={name} onChange={(event) => setName(event.target.value)} />
+          </div>
+          <Input value={color} onChange={(event) => setColor(event.target.value)} className="w-28" aria-label="Color" />
+          <Button
+            disabled={pending}
+            variant="outline"
+            onClick={() => {
+              void act({ action: "addStock", name, color });
+              setName("");
+            }}
+          >
+            Add
+          </Button>
         </div>
-        <Input value={color} onChange={(event) => setColor(event.target.value)} className="w-28" />
-        <Button
-          disabled={pending}
-          variant="outline"
-          onClick={() => {
-            void act({ action: "addStock", name, color });
-            setName("");
-          }}
-        >
-          Add
-        </Button>
-      </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">New stocks wait for the lobby. Track and roll changes apply now.</p>
+      )}
     </div>
   );
 }
 
-function StockRow({
+function AdminStock({
   stock,
+  phase,
   pending,
   act,
 }: {
-  stock: StockDef;
+  stock: WolfView["stocks"][number];
+  phase: WolfView["phase"];
   pending: boolean;
   act: (body: Action) => Promise<boolean>;
 }) {
-  const [track, setTrack] = useState(stock.track.join(", "));
-  const [die, setDie] = useState(stock.die.join(", "));
-  const [normalCards, setNormal] = useState(String(stock.normalCards));
-  const [doubleCards, setDouble] = useState(String(stock.doubleCards));
-  const [startIndex, setStart] = useState(String(stock.startIndex + 1));
+  const [values, setValues] = useState(stock.track);
+  const [rolls, setRolls] = useState(() => groupDie(stock.die));
+  const [start, setStart] = useState(stock.startIndex);
   const [name, setName] = useState(stock.name);
   const [color, setColor] = useState(stock.color);
+  const total = rolls.reduce((sum, row) => sum + Math.max(1, row.weight), 0);
+  function setCount(count: number) {
+    if (!Number.isFinite(count)) return;
+    const next = Math.max(2, Math.min(16, Math.trunc(count)));
+    setValues((prev) => {
+      const copy = prev.slice(0, next);
+      while (copy.length < next) copy.push((copy[copy.length - 1] ?? 0) + 10);
+      return copy;
+    });
+    setStart((current) => Math.min(current, next - 1));
+  }
   return (
     <div className="overflow-hidden rounded-xl bg-background/40 ring-1 ring-foreground/10">
       <div className="h-2" style={{ background: color }} />
       <div className="space-y-2 p-3">
         <div className="flex flex-wrap gap-2">
-          <Input value={name} onChange={(event) => setName(event.target.value)} className="max-w-40" />
-          <Input value={color} onChange={(event) => setColor(event.target.value)} className="w-28" />
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={pending}
-            onClick={() => void act({ action: "removeStock", stockId: stock.id })}
-          >
-            Remove
-          </Button>
+          <Input value={name} onChange={(event) => setName(event.target.value)} className="max-w-32" aria-label="Stock name" />
+          <Input value={color} onChange={(event) => setColor(event.target.value)} className="w-24" aria-label="Color" />
+          {phase === "lobby" ? (
+            <Button size="sm" variant="outline" disabled={pending} onClick={() => void act({ action: "removeStock", stockId: stock.id })}>
+              Remove
+            </Button>
+          ) : null}
         </div>
-        <Label>Track</Label>
-        <Input value={track} onChange={(event) => setTrack(event.target.value)} />
-        <Label>Die</Label>
-        <Input value={die} onChange={(event) => setDie(event.target.value)} />
-        <div className="flex flex-wrap gap-2">
-          <Input value={normalCards} onChange={(event) => setNormal(event.target.value)} className="w-24" />
-          <Input value={doubleCards} onChange={(event) => setDouble(event.target.value)} className="w-24" />
-          <Input value={startIndex} onChange={(event) => setStart(event.target.value)} className="w-24" />
-          <Button
-            size="sm"
-            disabled={pending}
-            onClick={() =>
-              void act({
-                action: "saveStock",
-                stockId: stock.id,
-                name,
-                color,
-                track: track.split(/[^-\d]+/).filter(Boolean).map(Number),
-                die: die.split(/[^-\d]+/).filter(Boolean).map(Number),
-                startIndex: Number(startIndex) - 1,
-                normalCards: Number(normalCards),
-                doubleCards: Number(doubleCards),
-              })
-            }
-          >
-            Save
-          </Button>
+        <div className="flex items-center gap-2">
+          <Label htmlFor={`${stock.id}-spaces`}>Spaces</Label>
+          <Input
+            id={`${stock.id}-spaces`}
+            inputMode="numeric"
+            value={String(values.length)}
+            onChange={(event) => setCount(Number(event.target.value))}
+            className="w-16"
+          />
         </div>
-        <p className="text-xs text-muted-foreground">Ordinary cards, 2× cards, and the start space (1–8).</p>
+        <div className="grid grid-cols-4 gap-1">
+          {values.map((value, index) => (
+            <Input
+              key={`${stock.id}-space-${index}`}
+              aria-label={`Space ${index + 1}`}
+              inputMode="numeric"
+              value={String(value)}
+              onChange={(event) =>
+                setValues((prev) => prev.map((cell, cellIndex) => (cellIndex === index ? Number(event.target.value) : cell)))
+              }
+              className="h-8 px-1 text-center"
+            />
+          ))}
+        </div>
+        <Label htmlFor={`${stock.id}-start`}>Start space</Label>
+        <Input
+          id={`${stock.id}-start`}
+          inputMode="numeric"
+          value={String(start + 1)}
+          onChange={(event) => setStart(Math.max(0, Math.min(values.length - 1, Number(event.target.value) - 1)))}
+          className="w-16"
+        />
+        <p className="text-xs font-medium">Rolls</p>
+        {rolls.map((row, index) => (
+          <div key={`${stock.id}-roll-${index}`} className="flex items-center gap-1">
+            <Input
+              aria-label={`Roll ${index + 1}`}
+              inputMode="numeric"
+              value={String(row.face)}
+              onChange={(event) =>
+                setRolls((prev) => prev.map((item, itemIndex) => (itemIndex === index ? { ...item, face: Number(event.target.value) } : item)))
+              }
+              className="h-8 w-16"
+            />
+            <Input
+              aria-label={`Weight ${index + 1}`}
+              inputMode="numeric"
+              value={String(row.weight)}
+              onChange={(event) =>
+                setRolls((prev) =>
+                  prev.map((item, itemIndex) =>
+                    itemIndex === index ? { ...item, weight: Math.max(1, Math.min(20, Number(event.target.value) || 1)) } : item
+                  )
+                )
+              }
+              className="h-8 w-14"
+            />
+            <span className="w-10 text-xs tabular-nums text-muted-foreground">
+              {Math.round((Math.max(1, row.weight) / total) * 100)}%
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={rolls.length < 2}
+              onClick={() => setRolls((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
+            >
+              Drop
+            </Button>
+          </div>
+        ))}
+        <Button size="sm" variant="outline" onClick={() => setRolls((prev) => [...prev, { face: 0, weight: 1 }])}>
+          Add roll
+        </Button>
+        <Button
+          size="sm"
+          disabled={pending}
+          onClick={() =>
+            void act({
+              action: "saveStock",
+              stockId: stock.id,
+              name,
+              color,
+              track: values.map((value) => Math.trunc(Number(value))),
+              die: rolls.flatMap((row) => Array.from({ length: Math.max(1, Math.min(20, Math.trunc(row.weight))) }, () => Math.trunc(row.face))),
+              startIndex: start,
+              normalCards: stock.normalCards,
+              doubleCards: stock.doubleCards,
+            })
+          }
+        >
+          Save {name}
+        </Button>
       </div>
     </div>
   );
@@ -756,7 +885,7 @@ function Companies({
     .filter(({ seat }) => (side === "you" ? seat.userId === state.you.id : seat.userId !== state.you.id));
   if (tables.length === 0) return null;
   return (
-    <div className={side === "you" ? "flex flex-col gap-3" : "grid gap-3 md:grid-cols-2"}>
+    <div className="flex flex-col gap-3">
       {tables.map(({ seat, cards }) => (
         <Card key={seat.userId} className="min-w-0 overflow-visible">
           <CardHeader>
@@ -771,7 +900,7 @@ function Companies({
               </CardDescription>
             )}
           </CardHeader>
-          <CardContent className="flex flex-col gap-2">
+          <CardContent className="grid grid-cols-2 gap-2">
             {cards.map((card) => {
               const color = stockColor(state, card.stockId);
               const offers = state.offers
@@ -1347,7 +1476,7 @@ function CompanyBox({
   const name = doubled ? title.replace(/^2×\s*/, "") : title;
   const seal = name.slice(0, 1).toUpperCase();
   const className = cn(
-    "relative rounded-2xl px-3 py-2.5 text-left text-sm",
+    "relative min-w-0 rounded-2xl px-3 py-2.5 text-left text-sm",
     fill ? "w-full" : "min-w-40",
     onClick && "transition hover:brightness-110 disabled:opacity-50",
     selected && "ring-2 ring-offset-2",

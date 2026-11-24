@@ -179,15 +179,23 @@ function slug(name: string) {
 }
 
 function cleanTrack(values: number[]) {
-  if (values.length !== 8 || values.some((value) => !Number.isInteger(value) || value < -999 || value > 999)) {
-    throw new Error("A track needs 8 whole numbers.");
+  if (
+    values.length < 2 ||
+    values.length > 16 ||
+    values.some((value) => !Number.isInteger(value) || value < -999 || value > 999)
+  ) {
+    throw new Error("A track needs 2 to 16 whole numbers.");
   }
   return values;
 }
 
 function cleanDie(values: number[]) {
-  if (values.length !== 6 || values.some((value) => !Number.isInteger(value) || value < -20 || value > 20)) {
-    throw new Error("A die needs 6 whole faces.");
+  if (
+    values.length < 1 ||
+    values.length > 80 ||
+    values.some((value) => !Number.isInteger(value) || value < -20 || value > 20)
+  ) {
+    throw new Error("A die needs 1 to 80 whole faces.");
   }
   return values;
 }
@@ -205,13 +213,12 @@ export function saveStock(
     doubleCards: number;
   }
 ) {
-  if (table.phase !== "lobby") throw new Error("Stocks can change in the lobby.");
   const stockDef = table.stocks.find((row) => row.id === stockId);
   if (!stockDef) throw new Error("Unknown stock.");
   const track = cleanTrack(draft.track);
   const die = cleanDie(draft.die);
   const startIndex = Math.floor(draft.startIndex);
-  if (startIndex < 0 || startIndex > 7) throw new Error("The start space is 1 through 8.");
+  if (startIndex < 0 || startIndex >= track.length) throw new Error("The start space has to be on the track.");
   const normalCards = Math.floor(draft.normalCards);
   const doubleCards = Math.floor(draft.doubleCards);
   if (normalCards < 0 || normalCards > 30 || doubleCards < 0 || doubleCards > 10) {
@@ -227,6 +234,8 @@ export function saveStock(
   stockDef.startIndex = startIndex;
   stockDef.normalCards = normalCards;
   stockDef.doubleCards = doubleCards;
+  const marker = table.positions[stockId];
+  if (marker != null) table.positions[stockId] = Math.max(0, Math.min(track.length - 1, marker));
 }
 
 export function addStock(table: WolfTable, name: string, color: string) {

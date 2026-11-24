@@ -14,6 +14,7 @@ import {
   rolePlan,
   salesRequired,
   sellForUpkeep,
+  saveStock,
   sit,
   startGame,
   takeFees,
@@ -227,6 +228,37 @@ enterUpkeep;
   assert.throws(() => lockDeal(table, ben.userId, adaCard.id, 1_000), /manager/);
   lockDeal(table, ada.userId, adaCard.id, 1_000);
   assert.equal(adaCard.locked, true);
+}
+
+{
+  const table = emptyTable();
+  const red = table.stocks[0];
+  table.positions[red.id] = 7;
+  saveStock(table, red.id, {
+    name: "Red",
+    color: "#e11d48",
+    track: [0, 20, 40, 60],
+    die: [-2, -2, 1, 1, 1],
+    startIndex: 1,
+    normalCards: red.normalCards,
+    doubleCards: red.doubleCards,
+  });
+  assert.deepEqual(table.stocks[0].track, [0, 20, 40, 60]);
+  assert.equal(table.stocks[0].die.filter((face) => face === 1).length, 3);
+  assert.equal(table.positions[red.id], 3);
+  assert.throws(
+    () =>
+      saveStock(table, red.id, {
+        name: "Red",
+        color: "#e11d48",
+        track: [1],
+        die: [0],
+        startIndex: 0,
+        normalCards: 1,
+        doubleCards: 0,
+      }),
+    /track/
+  );
 }
 
 console.log("wolf street rules ok");
