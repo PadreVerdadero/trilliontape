@@ -211,10 +211,16 @@ enterUpkeep;
   assert.equal(benCard.locked, false);
   assert.equal(ada.tokens, INVESTOR_TOKENS - 1);
 
-  assert.throws(
-    () => makeOffer(table, ben.userId, { cardId: camCard.id, price: 12, kind: "close" }),
-    /manager/
-  );
+  makeOffer(table, ben.userId, { cardId: adaCard.id, price: 18, kind: "close" });
+  const closeBid = table.offers.find((offer) => offer.cardId === adaCard.id);
+  assert.equal(closeBid?.kind, "close");
+  assert.equal(closeBid?.lock, true);
+  assert.equal(closeBid?.toId, ada.userId);
+  acceptOffer(table, ada.userId, closeBid!.id, 1_000);
+  assert.equal(adaCard.price, 18);
+  assert.equal(adaCard.locked, true);
+  assert.equal(ben.tokens, INVESTOR_TOKENS - 1);
+
   makeOffer(table, cam.userId, { cardId: camCard.id, price: 12, kind: "close" });
   const close = table.offers.find((offer) => offer.cardId === camCard.id);
   assert.equal(close?.kind, "close");

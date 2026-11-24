@@ -559,7 +559,7 @@ function GameNow({
       {state.phase === "draft" && state.draft ? <Draft state={state} pending={pending} act={act} /> : null}
       {state.phase === "negotiation" ? (
         <p className="text-sm text-muted-foreground">
-          Investors bid. The manager asks, and only the manager can close. A closed deal turns gold, and nobody can bid on it.
+          Investors bid. The manager asks. If you close is a price that locks the company when the other side takes it. A closed deal turns gold, and nobody can bid on it. Only the manager can close a deal that is already sitting on the company.
         </p>
       ) : null}
       {state.phase === "market" ? (
@@ -933,8 +933,8 @@ function Companies({
                     detail={
                       canQuote && quotingId !== card.id
                         ? canAsk
-                          ? "Ask or close"
-                          : "Bid"
+                          ? "Ask, or offer if they close"
+                          : "Bid, or offer if they close"
                         : card.locked
                           ? "Closed"
                           : undefined
@@ -967,7 +967,7 @@ function Companies({
                                   disabled={pending}
                                   onClick={() => void act({ action: "accept", offerId: offer.id })}
                                 >
-                                  Take
+                                  {kind === "close" ? "Close" : "Take"}
                                 </Button>
                               ) : null}
                               {offer.fromId === state.you.id ? (
@@ -1064,14 +1064,17 @@ function QuoteForm({
   pending: boolean;
   onSubmit: (price: number, kind: "bid" | "ask" | "close") => Promise<void>;
 }) {
-  const [amount, setAmount] = useState("10");
+  const [amount, setAmount] = useState("");
+  const price = /^\d+$/.test(amount.trim()) ? Number(amount) : null;
+  const ready = price != null && price <= 999;
   return (
     <form
       className="mt-2 flex flex-wrap items-center gap-2"
       onClick={(event) => event.stopPropagation()}
       onSubmit={(event) => {
         event.preventDefault();
-        void onSubmit(Number(amount), mode);
+        if (!ready || price == null) return;
+        void onSubmit(price, mode);
       }}
     >
       <Input
@@ -1082,20 +1085,21 @@ function QuoteForm({
         onChange={(event) => setAmount(event.target.value)}
         className="h-8 w-20 bg-background text-foreground"
       />
-      <Button type="submit" size="sm" disabled={pending}>
+      <Button type="submit" size="sm" disabled={pending || !ready}>
         {mode === "bid" ? "Bid" : "Ask"}
       </Button>
-      {mode === "ask" ? (
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          disabled={pending}
-          onClick={() => void onSubmit(Number(amount), "close")}
-        >
-          Close
-        </Button>
-      ) : null}
+      <Button
+        type="button"
+        size="sm"
+        variant="secondary"
+        disabled={pending || !ready}
+        onClick={() => {
+          if (!ready || price == null) return;
+          void onSubmit(price, "close");
+        }}
+      >
+        If you close
+      </Button>
     </form>
   );
 }
@@ -1126,7 +1130,9 @@ function InvestorToken({
         <span className="wolf-chip-name">{name}</span>
         <span className="wolf-chip-amount">{amount}</span>
       </span>
-      <span className="wolf-chip-kind">{locked ? "closed" : (note ?? "deal")}</span>
+      <span className="wolf-chip-kind">
+        {locked ? "closed" : note === "close" ? "if you close" : (note ?? "deal")}
+      </span>
       {children}
     </span>
   );

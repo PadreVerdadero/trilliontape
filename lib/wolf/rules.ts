@@ -434,7 +434,6 @@ export function makeOffer(
   if (kind !== "bid" && kind !== "ask" && kind !== "close") kind = input.lock ? "close" : isManager ? "ask" : "bid";
   if (kind === "ask" && !isManager) throw new Error("Only the manager can ask.");
   if (kind === "bid" && !isInvestor) throw new Error("Only an investor can bid.");
-  if (kind === "close" && !isManager) throw new Error("Only the manager can close that company.");
   if (isInvestor && from.tokens < 1 && card.investorId !== from.userId) throw new Error("You have no token free.");
   table.offers = table.offers.filter((offer) => !(offer.fromId === from.userId && offer.cardId === card.id));
   table.offers.push({
