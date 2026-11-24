@@ -1182,42 +1182,42 @@ export function MarketPanel({
               </div>
               {statGrid("grid shrink-0 grid-cols-4 gap-1.5 xl:grid-cols-8")}
               <div className="min-h-0 flex-1">{chartEl(true)}</div>
+              <div className="h-[24%] min-h-40 max-h-64 shrink-0 overflow-hidden rounded-xl bg-card/40 ring-1 ring-foreground/10">
+                {selected ? (
+                  <OrderBookPanel
+                    classic
+                    asks={book?.asks ?? []}
+                    bids={book?.bids ?? []}
+                    myStops={state.myOrders.filter((row) => row.itemId === selected.id && row.orderType === "stop")}
+                    selfId={state.player.id}
+                    pending={pending}
+                    mv={Math.round(price?.vwap ?? selected.basePrice)}
+                    onTake={(row) =>
+                      void takeQuote({
+                        orderId: row.id,
+                        itemId: row.itemId,
+                        side: row.side,
+                        price: row.price,
+                        treasury: row.isGov,
+                      })
+                    }
+                    onCancel={(id) => {
+                      void (async () => {
+                        await onCancel(id);
+                        await reloadBook();
+                      })();
+                    }}
+                  />
+                ) : null}
+              </div>
               <div className="shrink-0">{depthEl("h-24 w-full")}</div>
               <div className="shrink-0">{controlsRow}</div>
             </>
           ) : null}
         </main>
         <aside className="flex min-h-0 flex-col overflow-hidden border-l border-border/70 bg-card/40">
-          <div className="flex max-h-[40%] min-h-0 shrink-0 flex-col overflow-hidden border-b border-border/70">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             {orders}
-          </div>
-          <div className="min-h-0 flex-1">
-            {selected ? (
-              <OrderBookPanel
-                classic
-                asks={book?.asks ?? []}
-                bids={book?.bids ?? []}
-                myStops={state.myOrders.filter((row) => row.itemId === selected.id && row.orderType === "stop")}
-                selfId={state.player.id}
-                pending={pending}
-                mv={Math.round(price?.vwap ?? selected.basePrice)}
-                onTake={(row) =>
-                  void takeQuote({
-                    orderId: row.id,
-                    itemId: row.itemId,
-                    side: row.side,
-                    price: row.price,
-                    treasury: row.isGov,
-                  })
-                }
-                onCancel={(id) => {
-                  void (async () => {
-                    await onCancel(id);
-                    await reloadBook();
-                  })();
-                }}
-              />
-            ) : null}
           </div>
         </aside>
       </div>
