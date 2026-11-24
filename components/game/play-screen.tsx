@@ -169,6 +169,12 @@ export function PlayScreen({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            <Link
+              href="/wolf"
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9 px-2 sm:px-3")}
+            >
+              {mobile ? "Wolf" : "Wolf Street"}
+            </Link>
             <SoundToggle />
             <MobileToggle checked={mobile} onChange={setMobile} />
             {player.canOffice ? (
