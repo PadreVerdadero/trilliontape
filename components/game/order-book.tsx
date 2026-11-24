@@ -228,18 +228,18 @@ export function OrderBookPanel({
 
     return (
       <div className="flex h-full min-h-0 flex-col gap-1 p-1.5">
-        <div className="flex min-h-0 flex-1 flex-col gap-1">
-          {quoteList("Asks", askRows, "sell")}
-          <div className="shrink-0 border-y border-border/60 bg-muted/40 px-2 py-0.5 text-center text-[11px] tabular-nums">
-            <span className="font-medium">Spread {spread != null ? formatNumber(spread) : "—"}</span>
-            <span className="text-muted-foreground">
-              {bestBid != null && bestAsk != null
-                ? ` · bid ${formatNumber(bestBid)} · ask ${formatNumber(bestAsk)}`
-                : ""}
-              {` · MV ${formatNumber(mv)}`}
-            </span>
-          </div>
+        <div className="shrink-0 border-y border-border/60 bg-muted/40 px-2 py-0.5 text-center text-[11px] tabular-nums">
+          <span className="font-medium">Spread {spread != null ? formatNumber(spread) : "—"}</span>
+          <span className="text-muted-foreground">
+            {bestBid != null && bestAsk != null
+              ? ` · bid ${formatNumber(bestBid)} · ask ${formatNumber(bestAsk)}`
+              : ""}
+            {` · MV ${formatNumber(mv)}`}
+          </span>
+        </div>
+        <div className="grid min-h-0 flex-1 grid-cols-2 gap-1">
           {quoteList("Bids", bidRows, "buy")}
+          {quoteList("Asks", askRows, "sell")}
         </div>
       </div>
     );
