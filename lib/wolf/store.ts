@@ -75,7 +75,7 @@ type WolfAction =
   | { action: "removeStock"; stockId: string }
   | { action: "start" }
   | { action: "draft"; cardId: string }
-  | { action: "offer"; cardId: string; toId: number; price: number; lock: boolean }
+  | { action: "offer"; cardId: string; price: number; kind?: "bid" | "ask" | "close"; toId?: number | null; lock?: boolean }
   | { action: "cancelOffer"; offerId: string }
   | { action: "accept"; offerId: string }
   | { action: "pull"; cardId: string }
@@ -213,11 +213,17 @@ function present(table: WolfTable, userId: number, username: string): WolfView {
         price: card.price,
         locked: card.locked,
       })),
-    offers: table.offers.map((offer) => ({
-      ...offer,
-      fromName: table.seats.find((seat) => seat.userId === offer.fromId)?.username ?? "",
-      toName: table.seats.find((seat) => seat.userId === offer.toId)?.username ?? "",
-    })),
+    offers: table.offers.map((offer) => {
+      const card = table.cards.find((row) => row.id === offer.cardId);
+      const kind = offer.kind ?? (offer.lock ? "close" : offer.fromId === card?.managerId ? "ask" : "bid");
+      return {
+        ...offer,
+        kind,
+        toId: offer.toId ?? null,
+        fromName: table.seats.find((seat) => seat.userId === offer.fromId)?.username ?? "",
+        toName: offer.toId == null ? "" : (table.seats.find((seat) => seat.userId === offer.toId)?.username ?? ""),
+      };
+    }),
     draft: table.draft
       ? {
           hand: hand.map((id) => {

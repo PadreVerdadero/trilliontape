@@ -408,41 +408,34 @@ function openNegotiation(table: WolfTable, now: number) {
 export function makeOffer(
   table: WolfTable,
   userId: number,
-  input: { cardId: string; toId: number; price: number; lock: boolean }
+  input: { cardId: string; price: number; kind?: "bid" | "ask" | "close"; toId?: number | null; lock?: boolean }
 ) {
   if (table.phase !== "negotiation") throw new Error("Deals wait for the negotiation.");
   const from = seatById(table, userId);
-  const to = seatById(table, input.toId);
   const card = cardById(table, input.cardId);
   if (card.zone !== "held" || card.managerId == null) throw new Error("That company is not for sale.");
   if (card.locked) throw new Error("That deal is locked.");
   const price = Math.floor(Number(input.price));
   if (!Number.isInteger(price) || price < 0 || price > 999) throw new Error("The price is a whole number from 0 to 999.");
   const managerId = card.managerId;
-  const seller = seatById(table, managerId);
-  const buyerIsFrom = from.investing && from.userId !== managerId;
-  const sellerIsFrom = from.userId === managerId;
-  if (sellerIsFrom) {
-    if (!to.investing || to.userId === managerId) throw new Error("Ask an investor who is not you.");
-  } else if (buyerIsFrom) {
-    if (to.userId !== managerId) throw new Error("Bid to the manager of that company.");
-  } else {
-    throw new Error("Only the manager and an investor can deal on that company.");
-  }
-  if (from.investing && from.userId !== managerId && from.tokens < 1 && card.investorId !== from.userId) {
-    throw new Error("You have no token free.");
-  }
-  table.offers = table.offers.filter((offer) => !(offer.fromId === from.userId && offer.cardId === card.id && offer.toId === to.userId));
-  const offer: Offer = {
+  const isManager = from.userId === managerId;
+  const isInvestor = from.investing && !isManager;
+  if (!isManager && !isInvestor) throw new Error("Only the manager and an investor can deal on that company.");
+  let kind = input.kind;
+  if (kind !== "bid" && kind !== "ask" && kind !== "close") kind = input.lock ? "close" : isManager ? "ask" : "bid";
+  if (kind === "ask" && !isManager) throw new Error("Only the manager can ask.");
+  if (kind === "bid" && !isInvestor) throw new Error("Only an investor can bid.");
+  if (isInvestor && from.tokens < 1 && card.investorId !== from.userId) throw new Error("You have no token free.");
+  table.offers = table.offers.filter((offer) => !(offer.fromId === from.userId && offer.cardId === card.id));
+  table.offers.push({
     id: nextId(table, "o"),
     cardId: card.id,
     fromId: from.userId,
-    toId: to.userId,
+    toId: isManager ? null : managerId,
     price,
-    lock: Boolean(input.lock),
-  };
-  table.offers.push(offer);
-  void seller;
+    lock: kind === "close",
+    kind,
+  });
 }
 
 export function cancelOffer(table: WolfTable, userId: number, offerId: string) {
@@ -454,11 +447,12 @@ export function cancelOffer(table: WolfTable, userId: number, offerId: string) {
 export function acceptOffer(table: WolfTable, userId: number, offerId: string, now: number) {
   if (table.phase !== "negotiation") throw new Error("The floor is closed.");
   const offer = table.offers.find((row) => row.id === offerId);
-  if (!offer || offer.toId !== userId) throw new Error("That offer was not made to you.");
+  if (!offer) throw new Error("That offer is gone.");
   const card = cardById(table, offer.cardId);
   if (card.locked) throw new Error("That deal is locked.");
   if (card.zone !== "held" || card.managerId == null) throw new Error("That company is not for sale.");
-  const investorId = card.managerId === offer.fromId ? offer.toId : offer.fromId;
+  if (!mayTake(table, userId, offer, card)) throw new Error("That quote is not yours to take.");
+  const investorId = card.managerId === offer.fromId ? userId : offer.fromId;
   const investor = seatById(table, investorId);
   if (!investor.investing) throw new Error("That traveler is not investing.");
   if (card.investorId !== investor.userId) {
@@ -475,6 +469,16 @@ export function acceptOffer(table: WolfTable, userId: number, offerId: string, n
     `${investor.username} ${card.locked ? "locks" : "marks"} ${labelOf(table, card)} at ${offer.price}.`
   );
   maybeCloseFloor(table, now);
+}
+
+function mayTake(table: WolfTable, userId: number, offer: Offer, card: Card) {
+  if (card.managerId == null || userId === offer.fromId) return false;
+  if (offer.toId != null) return offer.toId === userId;
+  if (offer.fromId === card.managerId) {
+    const seat = seatById(table, userId);
+    return seat.investing && userId !== card.managerId;
+  }
+  return userId === card.managerId;
 }
 
 function releaseDeal(table: WolfTable, card: Card) {

@@ -3,8 +3,10 @@ import {
   INVESTOR_TOKENS,
   LOAN,
   STARTING_CASH,
+  acceptOffer,
   bid,
   draftPick,
+  makeOffer,
   emptyTable,
   enterUpkeep,
   incomeOf,
@@ -166,4 +168,56 @@ function auctionTable(): WolfTable {
 }
 
 enterUpkeep;
+
+{
+  const table = tableOf(3);
+  startGame(table, 1_000, zero);
+  for (let round = 0; round < 3; round += 1) {
+    for (const seat of table.seats) {
+      const hand = table.draft?.hands[String(seat.userId)] ?? [];
+      if (hand[0]) draftPick(table, seat.userId, hand[0], 1_000);
+    }
+  }
+  assert.equal(table.phase, "negotiation");
+  const ada = table.seats.find((seat) => seat.username === "Ada");
+  const ben = table.seats.find((seat) => seat.username === "Ben");
+  const cam = table.seats.find((seat) => seat.username === "Cam");
+  assert.ok(ada && ben && cam);
+  const adaCard = table.cards.find((card) => card.zone === "held" && card.managerId === ada.userId);
+  const benCard = table.cards.find((card) => card.zone === "held" && card.managerId === ben.userId);
+  const camCard = table.cards.find((card) => card.zone === "held" && card.managerId === cam.userId);
+  assert.ok(adaCard && benCard && camCard);
+
+  makeOffer(table, ben.userId, { cardId: adaCard.id, price: 25, kind: "bid" });
+  assert.equal(table.offers[0]?.kind, "bid");
+  assert.equal(table.offers[0]?.toId, ada.userId);
+  assert.throws(() => makeOffer(table, ada.userId, { cardId: adaCard.id, price: 10, kind: "bid" }), /investor/);
+  acceptOffer(table, ada.userId, table.offers[0].id, 1_000);
+  assert.equal(adaCard.investorId, ben.userId);
+  assert.equal(adaCard.price, 25);
+  assert.equal(adaCard.locked, false);
+  assert.equal(ben.tokens, INVESTOR_TOKENS - 1);
+
+  makeOffer(table, ben.userId, { cardId: benCard.id, price: 40, kind: "ask" });
+  const ask = table.offers.find((offer) => offer.cardId === benCard.id);
+  assert.equal(ask?.kind, "ask");
+  assert.equal(ask?.toId, null);
+  assert.throws(() => acceptOffer(table, ben.userId, ask!.id, 1_000), /not yours to take/);
+  acceptOffer(table, ada.userId, ask!.id, 1_000);
+  assert.equal(benCard.investorId, ada.userId);
+  assert.equal(benCard.price, 40);
+  assert.equal(benCard.locked, false);
+  assert.equal(ada.tokens, INVESTOR_TOKENS - 1);
+
+  makeOffer(table, ben.userId, { cardId: camCard.id, price: 12, kind: "close" });
+  const close = table.offers.find((offer) => offer.cardId === camCard.id);
+  assert.equal(close?.kind, "close");
+  assert.equal(close?.lock, true);
+  acceptOffer(table, cam.userId, close!.id, 1_000);
+  assert.equal(camCard.investorId, ben.userId);
+  assert.equal(camCard.price, 12);
+  assert.equal(camCard.locked, true);
+  assert.equal(ben.tokens, INVESTOR_TOKENS - 2);
+}
+
 console.log("wolf street rules ok");

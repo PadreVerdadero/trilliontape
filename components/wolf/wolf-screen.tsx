@@ -127,7 +127,7 @@ export function WolfScreen({ initial }: { initial: WolfView }) {
         ) : null}
         {state.phase === "negotiation" ? (
           <p className="text-sm text-muted-foreground">
-            Every company sits with the manager who owns it. Click one on another manager&apos;s table and enter what you will pay. Your token drops onto it with the amount.
+            Every company sits with the manager who owns it. Investors bid, managers ask, and either side can put in a close. Take a price if you want it.
           </p>
         ) : null}
         {state.phase === "market" ? (
@@ -639,8 +639,7 @@ function Companies({
   pending: boolean;
   act: (body: Action) => Promise<boolean>;
 }) {
-  const [biddingId, setBiddingId] = useState<string | null>(null);
-  const [askingId, setAskingId] = useState<string | null>(null);
+  const [quotingId, setQuotingId] = useState<string | null>(null);
   const offerKeys = state.offers.map((offer) => offer.id);
   const dealKeys = state.companies
     .filter((card) => card.investorId != null && card.price != null)
@@ -660,7 +659,6 @@ function Companies({
         ),
     }))
     .filter((table) => table.cards.length > 0);
-  const investors = state.seats.filter((seat) => seat.investing && seat.userId !== state.you.id);
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       <style>{`
@@ -696,22 +694,25 @@ function Companies({
           <CardContent className="flex flex-col gap-2">
             {cards.map((card) => {
               const color = stockColor(state, card.stockId);
-              const offers = state.offers.filter((offer) => offer.cardId === card.id);
+              const offers = state.offers
+                .filter((offer) => offer.cardId === card.id)
+                .map((offer) => ({ offer, kind: quoteKind(offer, card.managerId) }))
+                .sort((a, b) => quoteRank(a.kind) - quoteRank(b.kind) || a.offer.price - b.offer.price);
               const canBid =
                 state.phase === "negotiation" &&
                 state.you.investing &&
                 card.managerId !== state.you.id &&
                 !card.locked;
               const canAsk = state.phase === "negotiation" && card.managerId === state.you.id && !card.locked;
+              const canQuote = canBid || canAsk;
               const dealKey =
                 card.investorId != null && card.price != null ? `${card.id}:${card.investorId}:${card.price}` : null;
               return (
                 <div
                   key={card.id}
                   onClick={() => {
-                    if (!canBid) return;
-                    setAskingId(null);
-                    setBiddingId(card.id);
+                    if (!canQuote) return;
+                    setQuotingId(card.id);
                   }}
                 >
                   <CompanyBox
@@ -719,13 +720,15 @@ function Companies({
                     color={color}
                     title={`${card.double ? "2× " : ""}${stockName(state, card.stockId)}`}
                     detail={
-                      canBid && biddingId !== card.id
-                        ? "Click and enter an amount"
+                      canQuote && quotingId !== card.id
+                        ? canAsk
+                          ? "Ask or close"
+                          : "Bid or close"
                         : card.locked
                           ? "Locked"
                           : undefined
                     }
-                    className={canBid ? "cursor-pointer" : undefined}
+                    className={canQuote ? "cursor-pointer" : undefined}
                     tokens={
                       card.investorName != null || offers.length > 0 ? (
                         <span className="mb-1 flex flex-wrap items-center gap-1" onClick={(event) => event.stopPropagation()}>
@@ -737,24 +740,21 @@ function Companies({
                             drop={dealKey != null && fresh.has(dealKey)}
                           />
                         ) : null}
-                        {offers.map((offer) => {
-                          const investorName = offer.fromId === card.managerId ? offer.toName : offer.fromName;
-                          return (
+                        {offers.map(({ offer, kind }) => (
                             <InvestorToken
                               key={offer.id}
-                              name={investorName}
+                              name={offer.fromName}
                               amount={offer.price}
-                              locked={offer.lock}
                               drop={fresh.has(offer.id)}
-                              note={offer.fromId === card.managerId ? "ask" : undefined}
+                              note={kind}
                             >
-                              {offer.toId === state.you.id ? (
+                              {canTakeQuote(state, offer, card.managerId) ? (
                                 <Button
                                   size="sm"
                                   disabled={pending}
                                   onClick={() => void act({ action: "accept", offerId: offer.id })}
                                 >
-                                  Accept
+                                  Take
                                 </Button>
                               ) : null}
                               {offer.fromId === state.you.id ? (
@@ -768,57 +768,25 @@ function Companies({
                                 </Button>
                               ) : null}
                             </InvestorToken>
-                          );
-                        })}
+                          ))}
                       </span>
                       ) : undefined
                     }
                   >
-                    {biddingId === card.id && canBid ? (
-                      <BidForm
+                    {quotingId === card.id && canQuote ? (
+                      <QuoteForm
+                        mode={canAsk ? "ask" : "bid"}
                         pending={pending}
-                        onSubmit={async (price, lock) => {
+                        onSubmit={async (price, kind) => {
                           const ok = await act({
                             action: "offer",
                             cardId: card.id,
-                            toId: card.managerId,
                             price,
-                            lock,
+                            kind,
                           });
-                          if (ok) setBiddingId(null);
+                          if (ok) setQuotingId(null);
                         }}
                       />
-                    ) : null}
-                    {canAsk ? (
-                      askingId === card.id ? (
-                        <AskForm
-                          investors={investors}
-                          pending={pending}
-                          onSubmit={async (price, toId, lock) => {
-                            const ok = await act({
-                              action: "offer",
-                              cardId: card.id,
-                              toId,
-                              price,
-                              lock,
-                            });
-                            if (ok) setAskingId(null);
-                          }}
-                        />
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          className="mt-2"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setBiddingId(null);
-                            setAskingId(card.id);
-                          }}
-                        >
-                          Ask an investor
-                        </Button>
-                      )
                     ) : null}
                     {state.phase === "negotiation" &&
                     (card.managerId === state.you.id || card.investorId === state.you.id) &&
@@ -834,7 +802,7 @@ function Companies({
                           Pull deal
                         </Button>
                         <Button size="sm" disabled={pending} onClick={() => void act({ action: "lock", cardId: card.id })}>
-                          Lock
+                          Close deal
                         </Button>
                       </span>
                     ) : null}
@@ -849,22 +817,45 @@ function Companies({
   );
 }
 
-function BidForm({
+function quoteKind(
+  offer: WolfView["offers"][number],
+  managerId: number | null
+): "bid" | "ask" | "close" {
+  if (offer.kind === "bid" || offer.kind === "ask" || offer.kind === "close") return offer.kind;
+  if (offer.lock) return "close";
+  return offer.fromId === managerId ? "ask" : "bid";
+}
+
+function quoteRank(kind: "bid" | "ask" | "close") {
+  if (kind === "bid") return 0;
+  if (kind === "ask") return 1;
+  return 2;
+}
+
+function canTakeQuote(state: WolfView, offer: WolfView["offers"][number], managerId: number | null) {
+  if (state.phase !== "negotiation" || offer.fromId === state.you.id || managerId == null) return false;
+  if (offer.toId != null) return offer.toId === state.you.id;
+  if (offer.fromId === managerId) return state.you.investing && state.you.id !== managerId;
+  return state.you.id === managerId;
+}
+
+function QuoteForm({
+  mode,
   pending,
   onSubmit,
 }: {
+  mode: "bid" | "ask";
   pending: boolean;
-  onSubmit: (price: number, lock: boolean) => Promise<void>;
+  onSubmit: (price: number, kind: "bid" | "ask" | "close") => Promise<void>;
 }) {
   const [amount, setAmount] = useState("10");
-  const [lock, setLock] = useState(false);
   return (
     <form
       className="mt-2 flex flex-wrap items-center gap-2"
       onClick={(event) => event.stopPropagation()}
       onSubmit={(event) => {
         event.preventDefault();
-        void onSubmit(Number(amount), lock);
+        void onSubmit(Number(amount), mode);
       }}
     >
       <Input
@@ -875,59 +866,17 @@ function BidForm({
         onChange={(event) => setAmount(event.target.value)}
         className="h-8 w-20 bg-background text-foreground"
       />
-      <label className="flex items-center gap-1 text-xs">
-        <input type="checkbox" checked={lock} onChange={(event) => setLock(event.target.checked)} />
-        Lock
-      </label>
       <Button type="submit" size="sm" disabled={pending}>
-        Offer
+        {mode === "bid" ? "Bid" : "Ask"}
       </Button>
-    </form>
-  );
-}
-
-function AskForm({
-  investors,
-  pending,
-  onSubmit,
-}: {
-  investors: WolfView["seats"];
-  pending: boolean;
-  onSubmit: (price: number, toId: number, lock: boolean) => Promise<void>;
-}) {
-  const [amount, setAmount] = useState("10");
-  const [toId, setToId] = useState(investors[0] ? String(investors[0].userId) : "");
-  const [lock, setLock] = useState(false);
-  return (
-    <form
-      className="mt-2 flex flex-wrap items-center gap-2"
-      onClick={(event) => event.stopPropagation()}
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!toId) return;
-        void onSubmit(Number(amount), Number(toId), lock);
-      }}
-    >
-      <select className={cn(fieldClass, "w-auto bg-background")} value={toId} onChange={(event) => setToId(event.target.value)}>
-        {investors.map((seat) => (
-          <option key={seat.userId} value={seat.userId}>
-            {seat.username}
-          </option>
-        ))}
-      </select>
-      <Input
-        inputMode="numeric"
-        aria-label="Amount"
-        value={amount}
-        onChange={(event) => setAmount(event.target.value)}
-        className="h-8 w-20 bg-background text-foreground"
-      />
-      <label className="flex items-center gap-1 text-xs">
-        <input type="checkbox" checked={lock} onChange={(event) => setLock(event.target.checked)} />
-        Lock
-      </label>
-      <Button type="submit" size="sm" disabled={pending || !toId}>
-        Ask
+      <Button
+        type="button"
+        size="sm"
+        variant="secondary"
+        disabled={pending}
+        onClick={() => void onSubmit(Number(amount), "close")}
+      >
+        Close
       </Button>
     </form>
   );

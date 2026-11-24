@@ -32,13 +32,16 @@ export type Card = {
   locked: boolean;
 };
 
+export type QuoteKind = "bid" | "ask" | "close";
+
 export type Offer = {
   id: string;
   cardId: string;
   fromId: number;
-  toId: number;
+  toId: number | null;
   price: number;
   lock: boolean;
+  kind?: QuoteKind;
 };
 
 export type Seat = {
