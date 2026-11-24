@@ -425,6 +425,7 @@ export function makeOffer(
   if (kind !== "bid" && kind !== "ask" && kind !== "close") kind = input.lock ? "close" : isManager ? "ask" : "bid";
   if (kind === "ask" && !isManager) throw new Error("Only the manager can ask.");
   if (kind === "bid" && !isInvestor) throw new Error("Only an investor can bid.");
+  if (kind === "close" && !isManager) throw new Error("Only the manager can close that company.");
   if (isInvestor && from.tokens < 1 && card.investorId !== from.userId) throw new Error("You have no token free.");
   table.offers = table.offers.filter((offer) => !(offer.fromId === from.userId && offer.cardId === card.id));
   table.offers.push({
@@ -503,8 +504,9 @@ export function lockDeal(table: WolfTable, userId: number, cardId: string, now: 
   if (table.phase !== "negotiation") throw new Error("The floor is closed.");
   const card = cardById(table, cardId);
   if (card.investorId == null || card.price == null) throw new Error("There is no deal to lock.");
-  if (userId !== card.investorId && userId !== card.managerId) throw new Error("Only the two sides can lock this deal.");
+  if (userId !== card.managerId) throw new Error("Only the manager can close that company.");
   card.locked = true;
+  table.offers = table.offers.filter((row) => row.cardId !== card.id);
   note(table, `${labelOf(table, card)} is locked at ${card.price}.`);
   maybeCloseFloor(table, now);
 }

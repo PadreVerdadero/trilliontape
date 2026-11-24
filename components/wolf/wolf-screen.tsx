@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { GAME_NAME } from "@/lib/game/brand";
 import { cn } from "@/lib/utils";
 import type { SeatRole, StockDef, WolfView } from "@/lib/wolf/types";
+import { play, toggleSound, unlockSound } from "@/components/wolf/sounds";
 
 type Action = Record<string, unknown> & { action: string };
 
@@ -20,6 +21,10 @@ export function WolfScreen({ initial }: { initial: WolfView }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [now, setNow] = useState(initial.now);
+  const [sound, setSound] = useState(true);
+  const previous = useRef(initial);
+  const flights = useCashFlights(state, previous);
+  const ticked = useRef<number | null>(null);
 
   useEffect(() => {
     const clock = window.setInterval(() => setNow(Date.now()), 250);
@@ -52,6 +57,13 @@ export function WolfScreen({ initial }: { initial: WolfView }) {
         return false;
       }
       setState(data);
+      if (body.action === "offer") play(body.kind === "close" ? "close" : body.kind === "ask" ? "ask" : "bid");
+      if (body.action === "accept" || body.action === "lock") play("close");
+      if (body.action === "pull" || body.action === "cancelOffer") play("pull");
+      if (body.action === "draft") play("deal");
+      if (body.action === "bid") play("auction");
+      if (body.action === "fees") play("fee");
+      if (body.action === "take") play("take");
       return true;
     } catch {
       setError("Network hiccup. Try again.");
@@ -71,6 +83,38 @@ export function WolfScreen({ initial }: { initial: WolfView }) {
     state.phase === "lobby" && state.plan === "both"
       ? "Manager and investor"
       : roleLabel(state.you.role);
+  const urgent = left != null && left <= 10_000;
+  const warning = left != null && left <= 30_000;
+
+  useEffect(() => {
+    const onPointer = () => unlockSound();
+    window.addEventListener("pointerdown", onPointer);
+    return () => window.removeEventListener("pointerdown", onPointer);
+  }, []);
+
+  useEffect(() => {
+    if (left == null || left > 10_000) {
+      ticked.current = null;
+      return;
+    }
+    const second = Math.ceil(left / 1000);
+    if (ticked.current === second) return;
+    ticked.current = second;
+    play("tick");
+  }, [left]);
+
+  const phaseHeard = useRef(state.phase);
+  useEffect(() => {
+    if (phaseHeard.current === state.phase) return;
+    const next = state.phase;
+    phaseHeard.current = next;
+    if (next === "market") play("payout");
+    else if (next === "fees") play("fee");
+    else if (next === "auction") play("auction");
+    else if (next === "draft") play("deal");
+    else if (next === "score") play("win");
+    else if (next === "negotiation") play("deal");
+  }, [state.phase]);
 
   return (
     <div className="flex min-h-dvh flex-col pb-[env(safe-area-inset-bottom)]">
@@ -85,6 +129,13 @@ export function WolfScreen({ initial }: { initial: WolfView }) {
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            <button
+              type="button"
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9 px-2 sm:px-3")}
+              onClick={() => setSound(toggleSound())}
+            >
+              {sound ? "♪ On" : "♪ Off"}
+            </button>
             <Link
               href="/play"
               className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-9 px-2 sm:px-3")}
@@ -101,17 +152,27 @@ export function WolfScreen({ initial }: { initial: WolfView }) {
             </form>
           </div>
         </div>
-        <p className="w-full truncate px-3 pb-2 text-sm text-muted-foreground sm:px-4">
-          {state.phase === "lobby" ? "Lobby" : `Round ${state.round} · ${phaseLabel(state.phase)}`}
-          {clock ? ` · ${clock}` : ""}
-          {state.you.seated ? ` · ${role}` : ""}
-          {state.you.seated && state.phase !== "lobby" ? ` · ${state.you.cash} cash` : ""}
-          {state.you.seated && state.phase !== "lobby" && state.you.investing
-            ? ` · ${state.you.tokens} tokens`
-            : ""}
-        </p>
+        <div className="flex w-full items-center justify-between gap-3 px-3 pb-2 sm:px-4">
+          <p className="min-w-0 truncate text-sm text-muted-foreground">
+            {state.phase === "lobby" ? "Lobby" : `Round ${state.round} · ${phaseLabel(state.phase)}`}
+            {state.you.seated ? ` · ${role}` : ""}
+          </p>
+          {clock ? (
+            <p
+              className={cn(
+                "font-heading text-3xl leading-none tabular-nums",
+                urgent ? "text-destructive" : warning ? "text-amber-700" : "text-foreground"
+              )}
+              aria-live="polite"
+              aria-label={`${clock} left`}
+            >
+              {clock}
+            </p>
+          ) : null}
+        </div>
       </header>
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-3 py-4 sm:px-4">
+      <CashFlights flights={flights} />
+      <main className="mx-auto grid w-full max-w-7xl gap-3 px-3 py-4 sm:px-4 lg:grid-cols-[18rem_minmax(0,1fr)_20rem] lg:items-start">
         {error ? (
           <p className="rounded-xl bg-destructive/15 px-3 py-2 text-sm text-destructive ring-1 ring-destructive/30">
             {error}
@@ -120,45 +181,65 @@ export function WolfScreen({ initial }: { initial: WolfView }) {
             </button>
           </p>
         ) : null}
-        <Tracks stocks={state.stocks} />
-        {state.phase === "lobby" ? <Lobby state={state} pending={pending} act={act} /> : null}
-        {state.phase === "draft" && state.draft ? (
-          <Draft state={state} pending={pending} act={act} />
-        ) : null}
-        {state.phase === "negotiation" ? (
-          <p className="text-sm text-muted-foreground">
-            Every company sits with the manager who owns it. Investors bid, managers ask, and either side can put in a close. Take a price if you want it.
-          </p>
-        ) : null}
-        {state.phase === "market" ? (
-          <PhaseNote
-            title="The market moved"
-            body="Investors have been paid, or billed, for every company they held."
-            action="Take the fees"
-            pending={pending}
-            onClick={() => void act({ action: "fees" })}
-          />
-        ) : null}
-        {state.phase === "fees" ? (
-          <PhaseNote
-            title="Managers have been paid"
-            body={
-              state.combo
-                ? "A traveler who cannot cover every fee pays the managers nothing. Their cash and investor tokens are wiped, and they stay in as a manager."
-                : "A traveler who cannot cover every fee pays the managers nothing. Their cash is wiped, the bank lends 100, and one token is repaid at the end. Cash on the table is public, so a manager can judge whether the promise is good."
-            }
-            action="Pay upkeep"
-            pending={pending}
-            onClick={() => void act({ action: "upkeep" })}
-          />
-        ) : null}
-        {state.phase === "upkeep" ? <Upkeep state={state} pending={pending} act={act} /> : null}
-        {state.phase === "auction" && state.auction ? (
-          <Auction state={state} pending={pending} act={act} />
-        ) : null}
-        {state.phase === "score" ? <Score state={state} pending={pending} act={act} /> : null}
-        <Companies state={state} pending={pending} act={act} />
-        <Log lines={state.log} />
+        <aside className="order-2 flex flex-col gap-3 lg:sticky lg:top-24 lg:order-1">
+          <h2 className="font-heading text-lg">Tracks</h2>
+          <Tracks stocks={state.stocks} stack />
+        </aside>
+        <section className="order-3 flex min-w-0 flex-col gap-3 lg:order-2">
+          {clock ? (
+            <div
+              className={cn(
+                "flex items-center justify-between rounded-2xl px-4 py-3 ring-1 ring-border",
+                urgent ? "bg-destructive/15" : warning ? "bg-amber-500/15" : "bg-card"
+              )}
+            >
+              <span className="text-sm text-muted-foreground">Time left</span>
+              <span className="font-heading text-4xl tabular-nums">{clock}</span>
+            </div>
+          ) : null}
+          {state.phase === "lobby" ? <Lobby state={state} pending={pending} act={act} /> : null}
+          {state.phase === "draft" && state.draft ? (
+            <Draft state={state} pending={pending} act={act} />
+          ) : null}
+          {state.phase === "negotiation" ? (
+            <p className="text-sm text-muted-foreground">
+              Investors bid. The manager asks, and only the manager can close. A closed deal turns gold, and nobody can bid on it.
+            </p>
+          ) : null}
+          {state.phase === "market" ? (
+            <PhaseNote
+              title="The market moved"
+              body="💵 is moving from the companies to the investors who held them."
+              action="Take the fees"
+              pending={pending}
+              onClick={() => void act({ action: "fees" })}
+            />
+          ) : null}
+          {state.phase === "fees" ? (
+            <PhaseNote
+              title="Managers have been paid"
+              body={
+                state.combo
+                  ? "💵 moved from the investors to the managers. A traveler who cannot cover every fee pays nothing. Their 💵 and 🪙 are wiped, and they stay in as a manager."
+                  : "💵 moved from the investors to the managers. A traveler who cannot cover every fee pays nothing. Their 💵 is wiped, the bank lends 100, and one 🪙 is repaid at the end."
+              }
+              action="Pay upkeep"
+              pending={pending}
+              onClick={() => void act({ action: "upkeep" })}
+            />
+          ) : null}
+          {state.phase === "upkeep" ? <Upkeep state={state} pending={pending} act={act} /> : null}
+          {state.phase === "auction" && state.auction ? (
+            <Auction state={state} pending={pending} act={act} />
+          ) : null}
+          {state.phase === "score" ? <Score state={state} pending={pending} act={act} /> : null}
+          {state.phase !== "lobby" ? <SeatPurses state={state} /> : null}
+          <Companies state={state} pending={pending} act={act} side="others" />
+          <Log lines={state.log} />
+        </section>
+        <aside className="order-1 lg:sticky lg:top-24 lg:order-3">
+          <YouColumn state={state} pending={pending} act={act} />
+        </aside>
       </main>
     </div>
   );
@@ -212,7 +293,7 @@ function faceLabel(face: number | null | undefined) {
   return face > 0 ? `+${face}` : String(face);
 }
 
-function Tracks({ stocks }: { stocks: WolfView["stocks"] }) {
+function Tracks({ stocks, stack }: { stocks: WolfView["stocks"]; stack?: boolean }) {
   const stocksRef = useRef(stocks);
   stocksRef.current = stocks;
   const settledRef = useRef(stocks);
@@ -253,6 +334,7 @@ function Tracks({ stocks }: { stocks: WolfView["stocks"] }) {
     setSpinning(true);
     setShownIndex(from);
     setLiveFace(firstFaces);
+    play("dice");
     const spinTimer = window.setInterval(() => {
       if (stopped) return;
       const faces: Record<string, number> = {};
@@ -306,7 +388,7 @@ function Tracks({ stocks }: { stocks: WolfView["stocks"] }) {
   }, [signature]);
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className={stack ? "flex flex-col gap-2" : "grid gap-3 sm:grid-cols-2 xl:grid-cols-4"}>
       <style>{`
         @keyframes wolf-die {
           0% { transform: rotate(-14deg) translateY(0); }
@@ -405,7 +487,7 @@ function Lobby({
         ? `This table needs ${plan.managers} managers and ${plan.investors} investors.`
         : "Seat 3 to 11 travelers.";
   return (
-    <Panel title="Who is at the table" body={`${planText} Everyone starts with 120. Investors hold 10 tokens.`}>
+    <Panel title="Who is at the table" body={`${planText} Everyone starts with 💵 120. Investors hold 🪙 10.`}>
       <ul className="w-full space-y-2">
         {state.seats.map((seat) => (
           <li key={seat.userId} className="flex flex-wrap items-center justify-between gap-2 text-sm">
@@ -592,13 +674,23 @@ function Draft({
       body={`You have kept ${draft.kept}. Still choosing: ${draft.waiting.join(", ") || "no one"}.`}
     >
       <div className="flex w-full flex-wrap gap-2">
-        {draft.hand.map((card) => (
+        <style>{`
+          @keyframes wolf-deal {
+            0% { transform: translateY(-2.5rem) rotate(-8deg); opacity: 0; }
+            100% { transform: none; opacity: 1; }
+          }
+          .wolf-deal { animation: wolf-deal 0.55s ease-out both; }
+          @media (prefers-reduced-motion: reduce) { .wolf-deal { animation: none; } }
+        `}</style>
+        {draft.hand.map((card, index) => (
           <CompanyBox
             key={card.id}
             color={stockColor(state, card.stockId)}
             title={`${card.double ? "2× " : ""}${stockName(state, card.stockId)}`}
             detail="Keep"
             disabled={pending}
+            className="wolf-deal"
+            style={{ animationDelay: `${index * 90}ms` }}
             onClick={() => void act({ action: "draft", cardId: card.id })}
           />
         ))}
@@ -634,10 +726,12 @@ function Companies({
   state,
   pending,
   act,
+  side,
 }: {
   state: WolfView;
   pending: boolean;
   act: (body: Action) => Promise<boolean>;
+  side: "you" | "others";
 }) {
   const [quotingId, setQuotingId] = useState<string | null>(null);
   const offerKeys = state.offers.map((offer) => offer.id);
@@ -658,21 +752,24 @@ function Companies({
             Number(a.double) - Number(b.double)
         ),
     }))
-    .filter((table) => table.cards.length > 0);
+    .filter((table) => table.cards.length > 0)
+    .filter(({ seat }) => (side === "you" ? seat.userId === state.you.id : seat.userId !== state.you.id));
+  if (tables.length === 0) return null;
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <div className={side === "you" ? "flex flex-col gap-3" : "grid gap-3 md:grid-cols-2"}>
       {tables.map(({ seat, cards }) => (
         <Card key={seat.userId} className="min-w-0 overflow-visible">
           <CardHeader>
             <CardTitle className="font-heading text-xl">
-              {seat.username}
-              {seat.userId === state.you.id ? " · you" : ""}
+              {side === "you" ? "Your 🏢" : seat.username}
             </CardTitle>
-            <CardDescription>
-              Manager · {seat.cash} cash
-              {seat.investing ? ` · ${seat.tokens} tokens` : ""}
-              {` · ${cards.length} ${cards.length === 1 ? "company" : "companies"}`}
-            </CardDescription>
+            {side === "you" ? null : (
+              <CardDescription className="flex flex-wrap gap-2">
+                <span aria-label={`${seat.cash} cash`}>💵 {seat.cash}</span>
+                {seat.investing ? <span aria-label={`${seat.tokens} tokens`}>🪙 {seat.tokens}</span> : null}
+                <span aria-label={`${cards.length} companies`}>🏢 {cards.length}</span>
+              </CardDescription>
+            )}
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
             {cards.map((card) => {
@@ -693,6 +790,8 @@ function Companies({
               return (
                 <div
                   key={card.id}
+                  data-wolf={`card:${card.id}`}
+                  className={card.locked ? "rounded-2xl ring-2 ring-amber-400" : undefined}
                   onClick={() => {
                     if (!canQuote) return;
                     setQuotingId(card.id);
@@ -706,9 +805,9 @@ function Companies({
                       canQuote && quotingId !== card.id
                         ? canAsk
                           ? "Ask or close"
-                          : "Bid or close"
+                          : "Bid"
                         : card.locked
-                          ? "Locked"
+                          ? "Closed"
                           : undefined
                     }
                     className={canQuote ? "cursor-pointer" : undefined}
@@ -720,6 +819,7 @@ function Companies({
                             name={card.investorName}
                             amount={card.price}
                             locked={card.locked}
+                            note={card.locked ? "close" : undefined}
                             drop={dealKey != null && fresh.has(dealKey)}
                           />
                         ) : null}
@@ -786,9 +886,11 @@ function Companies({
                         >
                           Pull deal
                         </Button>
-                        <Button size="sm" disabled={pending} onClick={() => void act({ action: "lock", cardId: card.id })}>
-                          Close deal
-                        </Button>
+                        {card.managerId === state.you.id ? (
+                          <Button size="sm" disabled={pending} onClick={() => void act({ action: "lock", cardId: card.id })}>
+                            Close deal
+                          </Button>
+                        ) : null}
                       </span>
                     ) : null}
                   </CompanyBox>
@@ -854,15 +956,17 @@ function QuoteForm({
       <Button type="submit" size="sm" disabled={pending}>
         {mode === "bid" ? "Bid" : "Ask"}
       </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant="secondary"
-        disabled={pending}
-        onClick={() => void onSubmit(Number(amount), "close")}
-      >
-        Close
-      </Button>
+      {mode === "ask" ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={pending}
+          onClick={() => void onSubmit(Number(amount), "close")}
+        >
+          Close
+        </Button>
+      ) : null}
     </form>
   );
 }
@@ -893,7 +997,7 @@ function InvestorToken({
         <span className="wolf-chip-name">{name}</span>
         <span className="wolf-chip-amount">{amount}</span>
       </span>
-      <span className="wolf-chip-kind">{note ?? (locked ? "locked" : "deal")}</span>
+      <span className="wolf-chip-kind">{locked ? "closed" : (note ?? "deal")}</span>
       {children}
     </span>
   );
@@ -945,7 +1049,15 @@ const tokenCss = `
     radial-gradient(circle at 32% 28%, #fde68a, #d97706 52%, #92400e);
   box-shadow: 0 0 0 2px #fff7d6, 0 0 0 4px #b45309, 0 6px 12px rgba(146, 64, 14, 0.3);
 }
-.wolf-chip-deal, .wolf-chip-locked {
+.wolf-chip-locked {
+  border-radius: 999px;
+  color: #1c120c;
+  background:
+    repeating-radial-gradient(circle at 50% 50%, rgba(255,255,255,0.35) 0 2px, transparent 2px 5px),
+    radial-gradient(circle at 32% 28%, #fde68a, #d97706 52%, #92400e);
+  box-shadow: 0 0 0 2px #fff7d6, 0 0 0 4px #b45309, 0 6px 12px rgba(146, 64, 14, 0.3);
+}
+.wolf-chip-deal {
   border-radius: 0.7rem;
   color: #1c120c;
   background:
@@ -1041,30 +1153,62 @@ function Auction({
   if (!auction) return null;
   const manager = state.you.role === "manager" || state.you.role === "both";
   const color = stockColor(state, auction.stockId);
+  const sealed = state.seats.filter(
+    (seat) => (seat.role === "manager" || seat.role === "both") && !auction.waiting.includes(seat.username)
+  );
   return (
-    <Card className="overflow-hidden">
+    <Card key={`${auction.stockId}:${auction.left}:${auction.tieFloor}`} className="wolf-auction overflow-hidden">
+      <style>{`
+        @keyframes wolf-auction-in {
+          0% { transform: translateY(-3rem) rotate(-8deg) scale(0.86); opacity: 0; }
+          70% { transform: translateY(0.3rem) rotate(1deg) scale(1.03); opacity: 1; }
+          100% { transform: none; }
+        }
+        .wolf-auction { animation: wolf-auction-in 0.7s ease-out both; }
+        @keyframes wolf-seal {
+          0% { transform: translateY(-1rem) scale(0.8); opacity: 0; }
+          100% { transform: none; opacity: 1; }
+        }
+        .wolf-seal { animation: wolf-seal 0.45s ease-out both; }
+        @media (prefers-reduced-motion: reduce) {
+          .wolf-auction, .wolf-seal { animation: none; }
+        }
+      `}</style>
       <div className="px-4 py-3" style={{ background: color, color: ink(color) }}>
-        <h2 className="font-heading text-xl">
-          Blind bid · {auction.double ? "2× " : ""}
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] opacity-80">Auction</p>
+        <h2 className="font-heading text-2xl">
+          {auction.double ? "2× " : ""}
           {stockName(state, auction.stockId)}
         </h2>
       </div>
       <CardContent className="flex flex-col gap-3">
         <p className="text-sm text-muted-foreground">
-          {auction.left} still up.{" "}
-          {auction.tieFloor > 0 ? `Tied at ${auction.tieFloor}. Bid higher, or 0 to drop.` : "Bid 0 to pass."} Waiting
+          🏢 {auction.left} still up.{" "}
+          {auction.tieFloor > 0 ? `Tied at 💵 ${auction.tieFloor}. Bid higher, or 0 to drop.` : "Bid 0 to pass."} Waiting
           on {auction.waiting.join(", ") || "no one"}.
         </p>
+        <div className="flex flex-wrap gap-2">
+          {sealed.map((seat, index) => (
+            <span
+              key={seat.userId}
+              className="wolf-seal rounded-full bg-amber-200 px-2 py-1 text-xs font-semibold text-[#1c120c]"
+              style={{ animationDelay: `${index * 80}ms` }}
+            >
+              {seat.username} sealed
+              {seat.userId === state.you.id && auction.yourBid != null ? ` 💵 ${auction.yourBid}` : ""}
+            </span>
+          ))}
+        </div>
         {manager && auction.youBid ? (
           <div className="flex gap-2">
-            <Input value={amount} onChange={(event) => setAmount(event.target.value)} className="max-w-32" />
+            <Input value={amount} onChange={(event) => setAmount(event.target.value)} className="max-w-32" aria-label="Bid" />
             <Button disabled={pending} onClick={() => void act({ action: "bid", amount: Number(amount) })}>
               Bid
             </Button>
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">
-            {auction.yourBid != null ? `Your bid is ${auction.yourBid}.` : "Investors watch this one."}
+            {auction.yourBid != null ? `Your bid is 💵 ${auction.yourBid}.` : "Investors watch this one."}
           </p>
         )}
       </CardContent>
@@ -1082,29 +1226,57 @@ function Score({
   act: (body: Action) => Promise<boolean>;
 }) {
   const winners = state.winners;
+  const ranked = [...state.seats].sort((a, b) => b.cash - a.cash || a.username.localeCompare(b.username));
+  const names = new Set([...(winners?.managers ?? []), ...(winners?.investors ?? [])]);
   return (
-    <Panel title="The street closes" className="bg-primary/15">
-      {winners ? (
-        <p>
-          {state.combo
-            ? `${winners.managers.join(", ")} wins.`
-            : `${winners.managers.join(", ")} wins among managers. ${winners.investors.join(", ")} wins among investors.`}
-        </p>
-      ) : null}
-      <ul className="text-sm">
-        {state.seats.map((seat) => (
-          <li key={seat.userId}>
-            {seat.username} · {roleLabel(seat.role)} · {seat.cash}
-            {seat.lostTokens > 0 ? ` · repaid ${seat.lostTokens} token${seat.lostTokens === 1 ? "" : "s"}` : ""}
-          </li>
-        ))}
-      </ul>
+    <section className="wolf-results rounded-2xl bg-primary/15 p-4 ring-1 ring-primary/30">
+      <style>{`
+        @keyframes wolf-results {
+          0% { transform: translateY(1rem); opacity: 0; }
+          100% { transform: none; opacity: 1; }
+        }
+        .wolf-results { animation: wolf-results 0.6s ease-out both; }
+        @media (prefers-reduced-motion: reduce) { .wolf-results { animation: none; } }
+      `}</style>
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Results</p>
+      <h2 className="mt-1 font-heading text-3xl">
+        {winners
+          ? state.combo
+            ? `${winners.managers.join(", ")} wins`
+            : `${winners.managers.join(", ")} · managers. ${winners.investors.join(", ")} · investors.`
+          : "The street closes"}
+      </h2>
+      <ol className="mt-4 space-y-2">
+        {ranked.map((seat, index) => {
+          const companies = state.companies.filter((card) => card.managerId === seat.userId).length;
+          const winner = names.has(seat.username);
+          return (
+            <li
+              key={seat.userId}
+              className={cn(
+                "flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2",
+                winner ? "bg-amber-300/40 ring-2 ring-amber-500" : "bg-background/70"
+              )}
+            >
+              <span className="font-heading text-xl">
+                {index + 1}. {seat.username}
+                {winner ? " 🏆" : ""}
+              </span>
+              <span className="flex gap-3 text-sm">
+                <span aria-label={`${seat.cash} cash`}>💵 {seat.cash}</span>
+                <span aria-label={`${seat.tokens} tokens`}>🪙 {seat.tokens}</span>
+                <span aria-label={`${companies} companies`}>🏢 {companies}</span>
+              </span>
+            </li>
+          );
+        })}
+      </ol>
       {state.you.office ? (
-        <Button disabled={pending} onClick={() => void act({ action: "reset" })}>
+        <Button className="mt-4" disabled={pending} onClick={() => void act({ action: "reset" })}>
           Back to the lobby
         </Button>
       ) : null}
-    </Panel>
+    </section>
   );
 }
 
@@ -1156,6 +1328,7 @@ function CompanyBox({
   selected,
   fill,
   className: extra,
+  style: extraStyle,
 }: {
   color: string;
   title: string;
@@ -1167,6 +1340,7 @@ function CompanyBox({
   selected?: boolean;
   fill?: boolean;
   className?: string;
+  style?: CSSProperties;
 }) {
   const fg = ink(color);
   const doubled = title.startsWith("2×");
@@ -1185,6 +1359,7 @@ function CompanyBox({
     boxShadow: `inset 0 0 0 1px ${fg}73, inset 0 0 0 5px transparent, inset 0 0 0 6px ${fg}59, 0 10px 18px rgba(28,18,12,0.14)`,
     outline: selected ? `2px solid ${fg}` : undefined,
     outlineOffset: selected ? 2 : undefined,
+    ...extraStyle,
   };
   const body = (
     <>
@@ -1230,4 +1405,161 @@ function CompanyBox({
 
 function stockName(state: WolfView, stockId: string) {
   return state.stocks.find((stock) => stock.id === stockId)?.name ?? stockId;
+}
+
+function YouColumn({
+  state,
+  pending,
+  act,
+}: {
+  state: WolfView;
+  pending: boolean;
+  act: (body: Action) => Promise<boolean>;
+}) {
+  const companies = state.companies.filter((card) => card.managerId === state.you.id).length;
+  return (
+    <div className="flex flex-col gap-3">
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-heading text-xl">{state.you.username}</CardTitle>
+          <CardDescription className="flex flex-wrap gap-3 text-base text-foreground">
+            <span data-wolf={`purse:${state.you.id}`} aria-label={`${state.you.cash} cash`}>
+              💵 {state.you.cash}
+            </span>
+            {state.you.investing ? (
+              <span aria-label={`${state.you.tokens} tokens`}>🪙 {state.you.tokens}</span>
+            ) : null}
+            <span aria-label={`${companies} companies`}>🏢 {companies}</span>
+          </CardDescription>
+        </CardHeader>
+      </Card>
+      <Companies state={state} pending={pending} act={act} side="you" />
+    </div>
+  );
+}
+
+function SeatPurses({ state }: { state: WolfView }) {
+  const others = state.seats.filter((seat) => seat.userId !== state.you.id);
+  if (others.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {others.map((seat) => (
+        <span
+          key={seat.userId}
+          data-wolf={`purse:${seat.userId}`}
+          className="rounded-full bg-card px-3 py-1 text-sm ring-1 ring-border"
+        >
+          {seat.username} <span aria-label={`${seat.cash} cash`}>💵 {seat.cash}</span>
+          {seat.investing ? <span aria-label={`${seat.tokens} tokens`}> 🪙 {seat.tokens}</span> : null}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+type Flight = { id: string; fromKey: string; toKey: string; label: string };
+
+function useCashFlights(state: WolfView, previous: { current: WolfView }) {
+  const [flights, setFlights] = useState<Flight[]>([]);
+  const hide = useRef<number | null>(null);
+  useEffect(() => {
+    const before = previous.current;
+    previous.current = state;
+    if (before === state || before.phase === state.phase) return;
+    const next: Flight[] = [];
+    if (state.phase === "market") {
+      for (const card of state.companies) {
+        if (card.investorId == null) continue;
+        const stock = state.stocks.find((row) => row.id === card.stockId);
+        const amount = (stock?.value ?? 0) * (card.double ? 2 : 1);
+        if (amount === 0) continue;
+        next.push(
+          amount > 0
+            ? { id: `m-${card.id}`, fromKey: `card:${card.id}`, toKey: `purse:${card.investorId}`, label: `💵 ${amount}` }
+            : {
+                id: `m-${card.id}`,
+                fromKey: `purse:${card.investorId}`,
+                toKey: `card:${card.id}`,
+                label: `💵 ${Math.abs(amount)}`,
+              }
+        );
+      }
+    }
+    if (state.phase === "fees" && before.phase === "market") {
+      for (const card of before.companies) {
+        if (card.investorId == null || card.managerId == null || !card.price) continue;
+        next.push({
+          id: `f-${card.id}`,
+          fromKey: `purse:${card.investorId}`,
+          toKey: `purse:${card.managerId}`,
+          label: `💵 ${card.price}`,
+        });
+      }
+    }
+    if (next.length === 0) return;
+    setFlights(next);
+    if (hide.current != null) window.clearTimeout(hide.current);
+    hide.current = window.setTimeout(() => setFlights([]), 1700);
+  }, [previous, state]);
+  return flights;
+}
+
+function CashFlights({ flights }: { flights: Flight[] }) {
+  const [dots, setDots] = useState<{ id: string; label: string; x: number; y: number; dx: number; dy: number }[]>([]);
+  useLayoutEffect(() => {
+    if (flights.length === 0) {
+      setDots([]);
+      return;
+    }
+    setDots(
+      flights.flatMap((flight) => {
+        const from = document.querySelector(`[data-wolf="${flight.fromKey}"]`);
+        const to = document.querySelector(`[data-wolf="${flight.toKey}"]`);
+        if (!(from instanceof HTMLElement) || !(to instanceof HTMLElement)) return [];
+        const start = from.getBoundingClientRect();
+        const end = to.getBoundingClientRect();
+        const x = start.left + start.width / 2;
+        const y = start.top + start.height / 2;
+        return [
+          {
+            id: flight.id,
+            label: flight.label,
+            x,
+            y,
+            dx: end.left + end.width / 2 - x,
+            dy: end.top + end.height / 2 - y,
+          },
+        ];
+      })
+    );
+  }, [flights]);
+  if (dots.length === 0) return null;
+  return (
+    <div className="pointer-events-none fixed inset-0 z-50">
+      <style>{`
+        @keyframes wolf-cash {
+          0% { transform: translate(-50%, -50%) scale(0.7); opacity: 0; }
+          18% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+          100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.85); }
+        }
+        .wolf-cash { position: fixed; font-weight: 700; animation: wolf-cash 1.35s ease-in forwards; }
+        @media (prefers-reduced-motion: reduce) { .wolf-cash { animation: none; opacity: 0; } }
+      `}</style>
+      {dots.map((dot, index) => (
+        <span
+          key={dot.id}
+          className="wolf-cash"
+          style={{
+            left: dot.x,
+            top: dot.y,
+            animationDelay: `${index * 80}ms`,
+            ["--dx" as string]: `${dot.dx}px`,
+            ["--dy" as string]: `${dot.dy}px`,
+          }}
+        >
+          {dot.label}
+        </span>
+      ))}
+    </div>
+  );
 }

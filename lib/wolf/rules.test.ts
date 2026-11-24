@@ -5,6 +5,7 @@ import {
   STARTING_CASH,
   acceptOffer,
   bid,
+  lockDeal,
   draftPick,
   makeOffer,
   emptyTable,
@@ -209,15 +210,23 @@ enterUpkeep;
   assert.equal(benCard.locked, false);
   assert.equal(ada.tokens, INVESTOR_TOKENS - 1);
 
-  makeOffer(table, ben.userId, { cardId: camCard.id, price: 12, kind: "close" });
+  assert.throws(
+    () => makeOffer(table, ben.userId, { cardId: camCard.id, price: 12, kind: "close" }),
+    /manager/
+  );
+  makeOffer(table, cam.userId, { cardId: camCard.id, price: 12, kind: "close" });
   const close = table.offers.find((offer) => offer.cardId === camCard.id);
   assert.equal(close?.kind, "close");
   assert.equal(close?.lock, true);
-  acceptOffer(table, cam.userId, close!.id, 1_000);
+  acceptOffer(table, ben.userId, close!.id, 1_000);
   assert.equal(camCard.investorId, ben.userId);
   assert.equal(camCard.price, 12);
   assert.equal(camCard.locked, true);
   assert.equal(ben.tokens, INVESTOR_TOKENS - 2);
+  assert.throws(() => makeOffer(table, ada.userId, { cardId: camCard.id, price: 30, kind: "bid" }), /locked/);
+  assert.throws(() => lockDeal(table, ben.userId, adaCard.id, 1_000), /manager/);
+  lockDeal(table, ada.userId, adaCard.id, 1_000);
+  assert.equal(adaCard.locked, true);
 }
 
 console.log("wolf street rules ok");
