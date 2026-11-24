@@ -42,325 +42,6 @@ function treasuryAtBest(rows: OrderRow[]) {
   };
 }
 
-function groupLadderRows(rows: OrderRow[], selfId: number) {
-  const byPrice = new Map<number, { mine: OrderRow[]; other: OrderRow[] }>();
-  for (const row of rows) {
-    const bucket = byPrice.get(row.price) ?? { mine: [], other: [] };
-    if (row.playerId === selfId && !row.isGov) bucket.mine.push(row);
-    else bucket.other.push(row);
-    byPrice.set(row.price, bucket);
-  }
-  return byPrice;
-}
-
-function groupStopRows(rows: OrderRow[]) {
-  const buy = new Map<number, OrderRow[]>();
-  const sell = new Map<number, OrderRow[]>();
-  for (const row of rows) {
-    const map = row.side === "buy" ? buy : sell;
-    const list = map.get(row.price) ?? [];
-    list.push(row);
-    map.set(row.price, list);
-  }
-  return { buy, sell };
-}
-
-function PriceLadder({
-  bids,
-  asks,
-  myStops,
-  marketValue,
-  bestBid,
-  bestAsk,
-  selfId,
-  pending,
-  onSelect,
-  onPlaceLimit,
-  onPlaceStop,
-  onMarket,
-  onCancel,
-  fill = false,
-}: {
-  fill?: boolean;
-  bids: OrderRow[];
-  asks: OrderRow[];
-  myStops: OrderRow[];
-  marketValue: number;
-  bestBid?: number | null;
-  bestAsk?: number | null;
-  selfId: number;
-  pending: boolean;
-  onSelect: (price: number) => void;
-  onPlaceLimit: (side: OrderSide, price: number) => void;
-  onPlaceStop: (side: OrderSide, price: number) => void;
-  onMarket: (row: OrderRow, side: OrderSide) => void;
-  onCancel: (id: number) => void;
-}) {
-  const center = Math.max(1, Math.round(marketValue));
-  const [tickInput, setTickInput] = useState("1");
-  const parsedTick = Number(tickInput);
-  const tickSize =
-    Number.isInteger(parsedTick) && parsedTick >= 1 && parsedTick <= 1_000_000
-      ? parsedTick
-      : 1;
-  const [min, setMin] = useState(Math.max(1, center - 100));
-  const [max, setMax] = useState(center + 100);
-  const [recenterToken, setRecenterToken] = useState(0);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const centerRef = useRef<HTMLDivElement>(null);
-  const pendingScrollAdjustRef = useRef<{ prevScrollTop: number; prevScrollHeight: number } | null>(null);
-  const bidGroups = groupLadderRows(bids, selfId);
-  const askGroups = groupLadderRows(asks, selfId);
-  const stopGroups = groupStopRows(myStops);
-  const ladderPrices = new Set<number>();
-  const firstGridPrice = Math.ceil(min / tickSize) * tickSize;
-  for (let price = firstGridPrice; price <= max; price += tickSize) {
-    ladderPrices.add(price);
-  }
-  ladderPrices.add(center);
-  for (const row of [...bids, ...asks, ...myStops]) {
-    if (row.price >= min && row.price <= max) ladderPrices.add(row.price);
-  }
-  const prices = Array.from(ladderPrices).sort((a, b) => b - a);
-
-  function recenter(nextTick = tickSize) {
-    setMin(Math.max(1, center - 100 * nextTick));
-    setMax(center + 100 * nextTick);
-    setRecenterToken((token) => token + 1);
-  }
-
-  // Rows with a higher price than the current max are prepended above the
-  // visible viewport, which shifts everything below down; without this the
-  // browser keeps scrollTop fixed and the ladder appears to jump back toward
-  // higher prices. Compensate scrollTop by the height added once React commits
-  // the new rows. Rows appended below the current min (lower prices) need no
-  // compensation since they land after the visible content.
-  useLayoutEffect(() => {
-    const adjust = pendingScrollAdjustRef.current;
-    const element = scrollRef.current;
-    if (adjust && element) {
-      const delta = element.scrollHeight - adjust.prevScrollHeight;
-      element.scrollTop = adjust.prevScrollTop + delta;
-      pendingScrollAdjustRef.current = null;
-    }
-  }, [max]);
-
-  // Only auto-scroll back to the market-value row when we deliberately recenter
-  // (first mount or an explicit tick-scale change) — not on every book refresh or
-  // on the range simply growing as the trader scrolls, which previously snapped
-  // the ladder back and made it look like it was constantly refreshing.
-  useEffect(() => {
-    centerRef.current?.scrollIntoView({ block: "center" });
-  }, [recenterToken]);
-
-  function buyAction(price: number): { kind: "stop" | "market" | "limit"; label: string } {
-    if (bestAsk != null && price > bestAsk) return { kind: "stop", label: "Buy STP" };
-    if (bestAsk != null && price === bestAsk) return { kind: "market", label: "Buy MKT" };
-    return { kind: "limit", label: "Bid" };
-  }
-
-  function sellAction(price: number): { kind: "stop" | "market" | "limit"; label: string } {
-    if (bestBid != null && price < bestBid) return { kind: "stop", label: "Sell STP" };
-    if (bestBid != null && price === bestBid) return { kind: "market", label: "Sell MKT" };
-    return { kind: "limit", label: "Ask" };
-  }
-
-  function handleBuy(price: number) {
-    const action = buyAction(price);
-    if (action.kind === "market") {
-      const row = askGroups.get(price)?.other[0];
-      if (row) onMarket(row, "sell");
-      return;
-    }
-    if (action.kind === "stop") onPlaceStop("buy", price);
-    else onPlaceLimit("buy", price);
-  }
-
-  function handleSell(price: number) {
-    const action = sellAction(price);
-    if (action.kind === "market") {
-      const row = bidGroups.get(price)?.other[0];
-      if (row) onMarket(row, "buy");
-      return;
-    }
-    if (action.kind === "stop") onPlaceStop("sell", price);
-    else onPlaceLimit("sell", price);
-  }
-
-  return (
-    <div className={cn("rounded-lg border border-border/60 bg-background/30 p-2", fill ? "flex h-full min-h-0 flex-col" : "mt-2")}>
-      <p className={cn("mb-1 text-[10px] text-muted-foreground", fill && "hidden")}>
-        Scroll without a price limit. Tap the middle price to edit it, the left/right buttons to place a
-        bid/ask (auto Buy/Sell STP beyond the book, auto market at the touch), or a resting quote to take
-        it or cancel yours.
-      </p>
-      <label className={cn("flex shrink-0 items-center gap-2 text-xs text-muted-foreground", fill ? "mb-1" : "mb-2")}>
-        Tick scale
-        <input
-          type="number"
-          min={1}
-          max={1_000_000}
-          step={1}
-          inputMode="numeric"
-          aria-label="Ladder tick scale"
-          className="h-7 w-20 rounded-md border border-border bg-background px-2 text-foreground"
-          value={tickInput}
-          onChange={(event) => {
-            const value = event.target.value;
-            setTickInput(value);
-            const nextTick = Number(value);
-            if (Number.isInteger(nextTick) && nextTick >= 1 && nextTick <= 1_000_000) {
-              recenter(nextTick);
-            }
-          }}
-        />
-        <span>{fill ? "per step" : "prices per step (1–1,000,000)"}</span>
-      </label>
-      <div
-        ref={scrollRef}
-        className={cn("overflow-y-auto rounded-md border border-border/60", fill ? "min-h-0 flex-1" : "max-h-[min(55dvh,32rem)]")}
-        onScroll={(event) => {
-          const element = event.currentTarget;
-          const extension = 200 * tickSize;
-          // Prices are listed highest-to-lowest, so the top of the list is the
-          // "max" bound and the bottom is the "min" bound.
-          if (element.scrollTop < 240) {
-            pendingScrollAdjustRef.current = {
-              prevScrollTop: element.scrollTop,
-              prevScrollHeight: element.scrollHeight,
-            };
-            setMax(max + extension);
-          }
-          if (element.scrollHeight - element.scrollTop - element.clientHeight < 240 && min > 1) {
-            setMin(Math.max(1, min - extension));
-          }
-        }}
-      >
-        {prices.map((price) => {
-          const buy = buyAction(price);
-          const sell = sellAction(price);
-          const bidGroup = bidGroups.get(price);
-          const askGroup = askGroups.get(price);
-          const myBuyStops = stopGroups.buy.get(price);
-          const mySellStops = stopGroups.sell.get(price);
-          return (
-            <div
-              key={price}
-              ref={price === center ? centerRef : undefined}
-              className={cn(
-                "grid min-h-9 grid-cols-[1fr_5.5rem_1fr] items-stretch border-b border-border/30 text-xs last:border-0",
-                price === center && "bg-sky-950/30"
-              )}
-            >
-              <button
-                type="button"
-                disabled={pending}
-                className="text-left text-emerald-300 hover:bg-emerald-400/15 disabled:opacity-50"
-                onClick={() => handleBuy(price)}
-              >
-                {buy.label}
-              </button>
-              <button
-                type="button"
-                className="border-x border-border/40 text-center font-medium tabular-nums text-sky-200 hover:bg-sky-400/15"
-                onClick={() => {
-                  onSelect(price);
-                  scrollRef.current?.querySelector<HTMLInputElement>("#px")?.focus();
-                }}
-              >
-                {formatNumber(price)}
-                {price === center ? " · MV" : ""}
-              </button>
-              <button
-                type="button"
-                disabled={pending}
-                className="text-right text-rose-300 hover:bg-rose-400/15 disabled:opacity-50"
-                onClick={() => handleSell(price)}
-              >
-                {sell.label}
-              </button>
-              {bidGroup || askGroup || myBuyStops || mySellStops ? (
-                <div className="col-span-3 flex items-center justify-between gap-1 px-1 pb-1">
-                  <div className="flex gap-1">
-                    {bidGroup?.mine.length ? (
-                      <button
-                        type="button"
-                        disabled={pending}
-                        title="Cancel your bid"
-                        className="rounded bg-amber-400/25 px-1.5 text-[10px] font-medium text-amber-200 hover:bg-amber-400/40"
-                        onClick={() => onCancel(bidGroup.mine[bidGroup.mine.length - 1].id)}
-                      >
-                        ×{bidGroup.mine.length}
-                      </button>
-                    ) : null}
-                    {bidGroup?.other.length ? (
-                      <button
-                        type="button"
-                        disabled={pending}
-                        title="Sell into this bid"
-                        className="rounded bg-emerald-950/50 px-1.5 text-[10px] text-emerald-200 hover:bg-emerald-900/60"
-                        onClick={() => onMarket(bidGroup.other[0], "buy")}
-                      >
-                        ×{bidGroup.other.length}
-                      </button>
-                    ) : null}
-                    {myBuyStops?.length ? (
-                      <button
-                        type="button"
-                        disabled={pending}
-                        title="Cancel your Buy STP"
-                        className="rounded bg-purple-400/25 px-1.5 text-[10px] font-medium text-purple-200 hover:bg-purple-400/40"
-                        onClick={() => onCancel(myBuyStops[myBuyStops.length - 1].id)}
-                      >
-                        ×{myBuyStops.length}
-                      </button>
-                    ) : null}
-                  </div>
-                  <div className="flex gap-1">
-                    {mySellStops?.length ? (
-                      <button
-                        type="button"
-                        disabled={pending}
-                        title="Cancel your Sell STP"
-                        className="rounded bg-purple-400/25 px-1.5 text-[10px] font-medium text-purple-200 hover:bg-purple-400/40"
-                        onClick={() => onCancel(mySellStops[mySellStops.length - 1].id)}
-                      >
-                        ×{mySellStops.length}
-                      </button>
-                    ) : null}
-                    {askGroup?.other.length ? (
-                      <button
-                        type="button"
-                        disabled={pending}
-                        title="Buy from this ask"
-                        className="rounded bg-rose-950/40 px-1.5 text-[10px] text-rose-200 hover:bg-rose-900/50"
-                        onClick={() => onMarket(askGroup.other[0], "sell")}
-                      >
-                        ×{askGroup.other.length}
-                      </button>
-                    ) : null}
-                    {askGroup?.mine.length ? (
-                      <button
-                        type="button"
-                        disabled={pending}
-                        title="Cancel your ask"
-                        className="rounded bg-amber-400/25 px-1.5 text-[10px] font-medium text-amber-200 hover:bg-amber-400/40"
-                        onClick={() => onCancel(askGroup.mine[askGroup.mine.length - 1].id)}
-                      >
-                        ×{askGroup.mine.length}
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function SortHead({
   label,
   column,
@@ -533,7 +214,7 @@ export function MarketPanel({
   cycleSort: (column: SortColumn) => void;
   onSetCandle: (ms: number) => Promise<unknown>;
   compact?: boolean;
-  view?: "market" | "stocks" | "deals" | "chart" | "trade" | "ladder" | "orders";
+  view?: "market" | "stocks" | "deals" | "chart" | "trade" | "book" | "orders";
   pack?: ReactNode;
   orders?: ReactNode;
   onOpenMarket?: () => void;
@@ -1369,79 +1050,35 @@ export function MarketPanel({
       );
     }
     if (view === "orders") {
-      return (
-        <div className="flex h-full min-h-0 flex-col overflow-hidden">
-          <div className="flex max-h-[42%] min-h-0 shrink-0 flex-col overflow-hidden border-b border-border/70">
-            {orders}
-          </div>
-          <div className="min-h-0 flex-1">
-            {selected ? (
-              <OrderBookPanel
-                asks={book?.asks ?? []}
-                bids={book?.bids ?? []}
-                myStops={state.myOrders.filter((row) => row.itemId === selected.id && row.orderType === "stop")}
-                selfId={state.player.id}
-                pending={pending}
-                mv={Math.round(price?.vwap ?? selected.basePrice)}
-                onTake={(row) =>
-                  void takeQuote({
-                    orderId: row.id,
-                    itemId: row.itemId,
-                    side: row.side,
-                    price: row.price,
-                    treasury: row.isGov,
-                  })
-                }
-                onCancel={(id) => {
-                  void (async () => {
-                    await onCancel(id);
-                    await reloadBook();
-                  })();
-                }}
-              />
-            ) : null}
-          </div>
-        </div>
-      );
+      return <div className="h-full min-h-0 overflow-hidden">{orders}</div>;
     }
-    if (view === "ladder") {
+    if (view === "book") {
       return (
-        <div className={wrap}>
-          {itemStrip}
-          {phoneHead}
+        <div className="h-full min-h-0 overflow-hidden">
           {selected ? (
-            <div className="min-h-0 flex-1">
-              <PriceLadder
-                fill
-                key={selected.id}
-                bids={book?.bids ?? []}
-                asks={book?.asks ?? []}
-                myStops={state.myOrders.filter((row) => row.itemId === selected.id && row.orderType === "stop")}
-                marketValue={price?.vwap ?? selected.basePrice}
-                bestBid={price?.bestBid}
-                bestAsk={price?.bestAsk}
-                selfId={state.player.id}
-                pending={pending}
-                onSelect={(value) => setPriceInput(String(value))}
-                onPlaceLimit={(side, value) => void placeAt(side, value, "limit")}
-                onPlaceStop={(side, value) => void placeAt(side, value, "stop")}
-                onMarket={(row, side) =>
-                  void takeQuote({
-                    orderId: row.id,
-                    itemId: row.itemId,
-                    side,
-                    price: row.price,
-                    treasury: row.isGov,
-                  })
-                }
-                onCancel={(id) => {
-                  void (async () => {
-                    await onCancel(id);
-                    await reloadBook();
-                  })();
-                }}
-              />
-            </div>
+            <OrderBookPanel
+              asks={book?.asks ?? []}
+              bids={book?.bids ?? []}
+              myStops={state.myOrders.filter((row) => row.itemId === selected.id && row.orderType === "stop")}
+              selfId={state.player.id}
+              pending={pending}
+              mv={Math.round(price?.vwap ?? selected.basePrice)}
+              onTake={(row) =>
+                void takeQuote({
+                  orderId: row.id,
+                  itemId: row.itemId,
+                  side: row.side,
+                  price: row.price,
+                  treasury: row.isGov,
+                })
+              }
+              onCancel={(id) => {
+                void (async () => {
+                  await onCancel(id);
+                  await reloadBook();
+                })();
+              }}
+            />
           ) : null}
         </div>
       );
@@ -1687,4 +1324,3 @@ function Stat({
     </div>
   );
 }
-

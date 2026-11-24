@@ -21,8 +21,8 @@ import { playItems } from "@/lib/game/shares";
 import { cn } from "@/lib/utils";
 import type { GameState } from "@/lib/game/types";
 
-type PhoneTab = "pack" | "chart" | "trade" | "ladder" | "orders" | "stocks" | "deals" | "firms";
-const PHONE_MARKET_TABS = ["chart", "trade", "ladder", "orders", "stocks", "deals"] as const;
+type PhoneTab = "pack" | "chart" | "trade" | "book" | "orders" | "stocks" | "deals" | "firms";
+const PHONE_MARKET_TABS = ["chart", "trade", "book", "orders", "stocks", "deals"] as const;
 
 export function PlayScreen({
   initialState,
@@ -76,7 +76,7 @@ export function PlayScreen({
     );
   }
 
-  const renderMarket = (view: "market" | "stocks" | "deals" | "chart" | "trade" | "ladder" | "orders") => (
+  const renderMarket = (view: "market" | "stocks" | "deals" | "chart" | "trade" | "book" | "orders") => (
     <MarketPanel
       state={state}
       pending={pending}
@@ -292,7 +292,7 @@ export function PlayScreen({
                 ["pack", "Pack"],
                 ["chart", "Chart"],
                 ["trade", "Trade"],
-                ["ladder", "Ladder"],
+                ["book", "Book"],
                 ["orders", "Orders"],
                 ["stocks", "Stocks"],
                 ["deals", "Deals"],

@@ -166,21 +166,12 @@ export function OrderBookPanel({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 border-b border-border/60 px-2 py-1.5">
-        <p className="font-heading text-base">Order book</p>
+        <p className="font-heading text-base">Bids and asks</p>
         <p className="text-[10px] leading-4 text-muted-foreground">
           Tap a quote for a market order of 1. Tap yours (amber) or a stop (purple) to cancel 1.
         </p>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col-reverse gap-px overflow-y-auto px-1 py-1" aria-label="Asks">
-        {askLevels.length === 0 ? (
-          <p className="px-1 py-2 text-xs text-muted-foreground">No asks.</p>
-        ) : (
-          askLevels.map((level) => (
-            <LevelRow key={level.key} level={level} max={max} pending={pending} onTake={onTake} onCancel={onCancel} />
-          ))
-        )}
-      </div>
-      <div className="shrink-0 border-y border-border/60 bg-muted/40 px-2 py-1 text-center text-xs tabular-nums">
+      <div className="shrink-0 self-center px-2 py-1 text-center text-[11px] tabular-nums">
         <span className="font-medium">
           Spread {spread != null ? formatNumber(spread) : "—"}
         </span>
@@ -191,14 +182,31 @@ export function OrderBookPanel({
           {` · MV ${formatNumber(mv)}`}
         </span>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-1 py-1" aria-label="Bids">
-        {bidLevels.length === 0 ? (
-          <p className="px-1 py-2 text-xs text-muted-foreground">No bids.</p>
-        ) : (
-          bidLevels.map((level) => (
-            <LevelRow key={level.key} level={level} max={max} pending={pending} onTake={onTake} onCancel={onCancel} />
-          ))
-        )}
+      <div className="grid min-h-0 flex-1 grid-rows-2 gap-1 px-1 pb-1 sm:grid-cols-2 sm:grid-rows-1">
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-lg bg-rose-950/15 p-1 ring-1 ring-rose-400/15">
+          <div className="shrink-0 px-1 pb-1 text-xs font-medium text-rose-200">Asks</div>
+          <div className="min-h-0 flex-1 space-y-px overflow-y-auto" aria-label="Asks">
+            {askLevels.length === 0 ? (
+              <p className="px-1 py-2 text-xs text-muted-foreground">No asks.</p>
+            ) : (
+              askLevels.map((level) => (
+                <LevelRow key={level.key} level={level} max={max} pending={pending} onTake={onTake} onCancel={onCancel} />
+              ))
+            )}
+          </div>
+        </section>
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-lg bg-emerald-950/15 p-1 ring-1 ring-emerald-400/15">
+          <div className="shrink-0 px-1 pb-1 text-xs font-medium text-emerald-200">Bids</div>
+          <div className="min-h-0 flex-1 space-y-px overflow-y-auto" aria-label="Bids">
+            {bidLevels.length === 0 ? (
+              <p className="px-1 py-2 text-xs text-muted-foreground">No bids.</p>
+            ) : (
+              bidLevels.map((level) => (
+                <LevelRow key={level.key} level={level} max={max} pending={pending} onTake={onTake} onCancel={onCancel} />
+              ))
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );
