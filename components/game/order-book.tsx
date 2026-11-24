@@ -136,6 +136,7 @@ export function OrderBookPanel({
   mv,
   onTake,
   onCancel,
+  classic = false,
 }: {
   asks: OrderRow[];
   bids: OrderRow[];
@@ -145,6 +146,7 @@ export function OrderBookPanel({
   mv: number;
   onTake: (row: OrderRow) => void;
   onCancel: (id: number) => void;
+  classic?: boolean;
 }) {
   const askLevels = buildLevels(
     asks,
@@ -162,6 +164,86 @@ export function OrderBookPanel({
   const bestAsk = askLevels.find((l) => l.kind !== "stop")?.price ?? null;
   const bestBid = bidLevels.find((l) => l.kind !== "stop")?.price ?? null;
   const spread = bestAsk != null && bestBid != null ? bestAsk - bestBid : null;
+
+  if (classic) {
+    const askRows = [
+      ...asks.filter((row) => row.remaining > 0),
+      ...myStops.filter((row) => row.side === "sell" && row.remaining > 0),
+    ].sort((a, b) => a.price - b.price || a.createdAt - b.createdAt);
+    const bidRows = [
+      ...bids.filter((row) => row.remaining > 0),
+      ...myStops.filter((row) => row.side === "buy" && row.remaining > 0),
+    ].sort((a, b) => b.price - a.price || a.createdAt - b.createdAt);
+
+    const quoteList = (title: string, rows: OrderRow[], side: "buy" | "sell") => (
+      <section className="flex min-h-0 flex-1 flex-col rounded-lg bg-card ring-1 ring-foreground/10">
+        <p className={cn(
+          "shrink-0 border-b border-border/50 px-2 py-1 text-xs font-medium",
+          side === "sell" ? "text-rose-200" : "text-emerald-200"
+        )}>
+          {title}
+        </p>
+        <div className="min-h-0 flex-1 overflow-y-auto p-1">
+          {rows.length === 0 ? (
+            <p className="px-1 py-2 text-xs text-muted-foreground">No {title.toLowerCase()}.</p>
+          ) : (
+            <ul className="space-y-px">
+              {rows.map((row, index) => {
+                const stop = row.orderType === "stop";
+                const mine = stop || (row.playerId === selfId && !row.isGov);
+                const kind = stop
+                  ? side === "buy" ? "Buy STP" : "Sell STP"
+                  : side === "buy" ? "Bid" : "Ask";
+                return (
+                  <li key={`${row.id}-${index}`}>
+                    <button
+                      type="button"
+                      disabled={pending}
+                      title={mine
+                        ? `Cancel your ${kind} at ${formatNumber(row.price)}`
+                        : `Market ${side === "buy" ? "sell" : "buy"} 1 at ${formatNumber(row.price)}`}
+                      onClick={() => mine ? onCancel(row.id) : onTake(row)}
+                      className={cn(
+                        "grid h-7 w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded px-2 text-left text-xs tabular-nums ring-1 disabled:opacity-100",
+                        stop && "bg-purple-400/20 text-purple-200 ring-purple-400/50 hover:bg-purple-400/30",
+                        !stop && mine && "bg-amber-400/20 text-amber-200 ring-amber-400/50 hover:bg-amber-400/30",
+                        !stop && !mine && !row.isGov && side === "buy" && "bg-emerald-950/30 text-emerald-100 ring-emerald-400/15 hover:bg-emerald-900/40",
+                        !stop && !mine && !row.isGov && side === "sell" && "bg-rose-950/25 text-rose-100 ring-rose-400/15 hover:bg-rose-900/35",
+                        !stop && !mine && row.isGov && side === "sell" && "bg-white text-zinc-950 ring-zinc-300 hover:bg-zinc-100",
+                        !stop && !mine && row.isGov && side === "buy" && "bg-black text-white ring-white/40 hover:bg-zinc-900"
+                      )}
+                    >
+                      <span className="min-w-0 truncate">{stop ? kind : row.username}</span>
+                      <span className="font-medium">{formatNumber(row.price)}</span>
+                      <span>×{formatNumber(row.remaining)}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </section>
+    );
+
+    return (
+      <div className="flex h-full min-h-0 flex-col gap-1 p-1.5">
+        <div className="flex min-h-0 flex-1 flex-col gap-1">
+          {quoteList("Asks", askRows, "sell")}
+          <div className="shrink-0 border-y border-border/60 bg-muted/40 px-2 py-0.5 text-center text-[11px] tabular-nums">
+            <span className="font-medium">Spread {spread != null ? formatNumber(spread) : "—"}</span>
+            <span className="text-muted-foreground">
+              {bestBid != null && bestAsk != null
+                ? ` · bid ${formatNumber(bestBid)} · ask ${formatNumber(bestAsk)}`
+                : ""}
+              {` · MV ${formatNumber(mv)}`}
+            </span>
+          </div>
+          {quoteList("Bids", bidRows, "buy")}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">

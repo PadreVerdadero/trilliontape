@@ -1194,6 +1194,7 @@ export function MarketPanel({
           <div className="min-h-0 flex-1">
             {selected ? (
               <OrderBookPanel
+                classic
                 asks={book?.asks ?? []}
                 bids={book?.bids ?? []}
                 myStops={state.myOrders.filter((row) => row.itemId === selected.id && row.orderType === "stop")}
